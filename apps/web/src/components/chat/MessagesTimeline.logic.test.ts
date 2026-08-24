@@ -765,6 +765,174 @@ describe("deriveMessagesTimelineRows", () => {
     expect(retryRow?.kind === "message" && retryRow.showAssistantCopyButton).toBe(true);
   });
 
+  it("folds plan chips, turn-less work, and the spawn CTA of a settled segment", () => {
+    // The reported case: one response split across synthetic turns left a plan
+    // chip, a "Ran 3 subagents" CTA, and background task rows stranded between
+    // folds because they carried no turn id or were exempted from folding.
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Run the fleet",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-first-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        message: {
+          id: "assistant-first" as never,
+          role: "assistant" as const,
+          text: "Planning the run.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:08Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:08Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "background-work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:09Z",
+        entry: {
+          id: "background-work-1",
+          createdAt: "2026-01-01T00:00:09Z",
+          turnId: null,
+          label: "Started background task",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "background-work-entry-2",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:10Z",
+        entry: {
+          id: "background-work-2",
+          createdAt: "2026-01-01T00:00:10Z",
+          turnId: null,
+          label: "Background task output",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "turn-plan-entry",
+        kind: "turn-plan" as const,
+        createdAt: "2026-01-01T00:00:11Z",
+        turnPlan: {
+          id: "turn-plan-1",
+          createdAt: "2026-01-01T00:00:11Z",
+          turnId: "turn-1" as never,
+          plan: {
+            createdAt: "2026-01-01T00:00:11Z",
+            turnId: "turn-1" as never,
+            steps: [
+              { step: "Collect the inputs", status: "completed" as const },
+              { step: "Fan out the agents", status: "completed" as const },
+              { step: "Merge the results", status: "completed" as const },
+            ],
+          },
+        },
+      },
+      {
+        id: "agent-spawn-entry",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:12Z",
+        entry: {
+          id: "agent-spawn-1",
+          createdAt: "2026-01-01T00:00:12Z",
+          turnId: "turn-1" as never,
+          label: "Ran 3 subagents",
+          tone: "tool" as const,
+          agentSpawn: { workflowId: null, agentTaskIds: ["task-1", "task-2", "task-3"] },
+        },
+      },
+      {
+        id: "assistant-progress-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        message: {
+          id: "assistant-progress" as never,
+          role: "assistant" as const,
+          text: "The subagents came back.",
+          turnId: "turn-2" as never,
+          createdAt: "2026-01-01T00:00:20Z",
+          updatedAt: "2026-01-01T00:00:21Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:25Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Here is the merged result.",
+          turnId: "turn-2" as never,
+          createdAt: "2026-01-01T00:00:25Z",
+          updatedAt: "2026-01-01T00:00:30Z",
+          streaming: false,
+        },
+      },
+    ];
+
+    const baseInput = {
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed" as const,
+        startedAt: "2026-01-01T00:00:18Z",
+        completedAt: "2026-01-01T00:00:30Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    };
+
+    const collapsedRows = deriveMessagesTimelineRows(baseInput);
+    expect(collapsedRows.map((row) => row.id)).toEqual([
+      "user-entry",
+      "turn-fold:turn-2",
+      "assistant-final-entry",
+    ]);
+
+    const expandedRows = deriveMessagesTimelineRows({
+      ...baseInput,
+      expandedTurnIds: new Set(["turn-2" as never]),
+    });
+    expect(expandedRows.map((row) => row.id)).toEqual([
+      "user-entry",
+      "turn-fold:turn-2",
+      "assistant-first-entry",
+      "work-toggle:work-entry-1",
+      "turn-plan-entry",
+      "agent-spawn-entry",
+      "assistant-progress-entry",
+      "assistant-final-entry",
+    ]);
+  });
+
   it("keeps the latest segment unfolded while a later turn in it is still running", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [

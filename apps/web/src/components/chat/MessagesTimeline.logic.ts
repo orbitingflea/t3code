@@ -542,9 +542,10 @@ function deriveTurnFolds(input: {
     turnIds: Set<TurnId>;
     /**
      * The fold row is keyed on the segment's last turn, which is the turn the
-     * session reports as latest and expands after an interrupt.
+     * session reports as latest and expands after an interrupt. Null until an
+     * entry carrying a turn id lands in the segment.
      */
-    lastTurnId: TurnId;
+    lastTurnId: TurnId | null;
     terminalEntry: Extract<TimelineEntry, { kind: "message" }> | null;
     hasStreamingMessage: boolean;
     /**
@@ -565,15 +566,10 @@ function deriveTurnFolds(input: {
       segmentBoundary = entry.message.createdAt;
       continue;
     }
-    const turnId =
-      entry.kind === "message" && entry.message.role === "assistant"
-        ? (entry.message.turnId ?? null)
-        : entry.kind === "work"
-          ? (entry.entry.turnId ?? null)
-          : null;
-    if (!turnId) {
-      continue;
-    }
+    // Membership is positional, not by turn id: plan chips and turn-less work
+    // rows (background tasks) are intermediate output of the same response,
+    // and admitting only turn-carrying entries stranded them between folds.
+    const turnId = timelineEntryTurnId(entry);
     let group = groupsBySegmentIndex.get(segmentIndex);
     if (!group) {
       group = {
@@ -587,8 +583,10 @@ function deriveTurnFolds(input: {
       groupsBySegmentIndex.set(segmentIndex, group);
     }
     group.entries.push(entry);
-    group.turnIds.add(turnId);
-    group.lastTurnId = turnId;
+    if (turnId !== null) {
+      group.turnIds.add(turnId);
+      group.lastTurnId = turnId;
+    }
     if (entry.kind === "message") {
       if (input.terminalAssistantMessageIds.has(entry.message.id)) {
         group.terminalEntry = entry;
@@ -602,21 +600,24 @@ function deriveTurnFolds(input: {
   const foldsByAnchorEntryId = new Map<string, TurnFold>();
   for (const group of groupsBySegmentIndex.values()) {
     const turnId = group.lastTurnId;
+    // The fold row keys expand/collapse state on a turn id, so a segment made
+    // only of turn-less entries has nothing to key on; leave it unfolded
+    // rather than invent a key.
+    if (turnId === null) {
+      continue;
+    }
     if (input.unsettledTurnId !== null && group.turnIds.has(input.unsettledTurnId)) {
       continue;
     }
     if (group.hasStreamingMessage) {
       continue;
     }
+    // Agent-spawn CTA rows fold with the rest: a settled segment shows one
+    // result and no intermediate rows, and a still-running fleet stays
+    // reachable from the Agents panel and by expanding the fold.
     const hiddenEntryIds = new Set<string>();
     for (const entry of group.entries) {
       if (entry.id === group.terminalEntry?.id) {
-        continue;
-      }
-      // Agent-spawn CTA rows never fold: workflows outlive their launching
-      // turn (dynamic spawns, background execution), and folding the CTA
-      // when the turn settles makes a still-running fleet invisible.
-      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
         continue;
       }
       hiddenEntryIds.add(entry.id);
