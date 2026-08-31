@@ -161,7 +161,7 @@ interface TimelineRowSharedState {
   onFileOpen: (attachment: ChatFileAttachment) => void;
   openingVideoAttachmentId: string | null;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  onToggleTurnFold: (turnId: TurnId) => void;
+  onToggleTurnFold: (foldId: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
@@ -303,7 +303,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
 }: MessagesTimelineProps) {
-  const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
+  const [expandedFoldIds, setExpandedFoldIds] = useState<ReadonlySet<string>>(new Set());
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
   const [disclosureToggleSettling, setDisclosureToggleSettling] = useState(false);
   const [minimapStripMap] = useState(() => new Map<string, HTMLSpanElement>());
@@ -367,14 +367,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const onToggleTurnFold = useCallback(
-    (turnId: TurnId) => {
-      suspendEndScrollMaintenanceForDisclosure(`turn-fold:${turnId}`);
-      setExpandedTurnIds((existing) => {
+    (foldId: string) => {
+      suspendEndScrollMaintenanceForDisclosure(foldId);
+      setExpandedFoldIds((existing) => {
         const next = new Set(existing);
-        if (next.has(turnId)) {
-          next.delete(turnId);
+        if (next.has(foldId)) {
+          next.delete(foldId);
         } else {
-          next.add(turnId);
+          next.add(foldId);
         }
         return next;
       });
@@ -397,34 +397,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     [suspendEndScrollMaintenanceForDisclosure],
   );
 
-  // An in-session interrupt leaves its turn expanded so the user keeps their
-  // place; the next turn (or a reload, since this is local state) folds it.
   const previousLatestTurnRef = useRef(latestTurn);
-  useEffect(() => {
-    const previous = previousLatestTurnRef.current;
-    previousLatestTurnRef.current = latestTurn;
-    if (!latestTurn || previous?.turnId === undefined) {
-      return;
-    }
-    if (latestTurn.turnId === previous.turnId) {
-      if (previous.state === "running" && latestTurn.state === "interrupted") {
-        setExpandedTurnIds((existing) => {
-          const next = new Set(existing);
-          next.add(latestTurn.turnId);
-          return next;
-        });
-      }
-      return;
-    }
-    setExpandedTurnIds((existing) => {
-      if (!existing.has(previous.turnId)) {
-        return existing;
-      }
-      const next = new Set(existing);
-      next.delete(previous.turnId);
-      return next;
-    });
-  }, [latestTurn]);
 
   const rawRows = useMemo(
     () =>
@@ -432,7 +405,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         timelineEntries,
         latestTurn,
         runningTurnId,
-        expandedTurnIds,
+        expandedFoldIds,
         expandedWorkGroupIds,
         isWorking,
         activeTurnStartedAt,
@@ -443,7 +416,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       timelineEntries,
       latestTurn,
       runningTurnId,
-      expandedTurnIds,
+      expandedFoldIds,
       expandedWorkGroupIds,
       isWorking,
       activeTurnStartedAt,
@@ -451,6 +424,35 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       revertTurnCountByUserMessageId,
     ],
   );
+  // An in-session interrupt leaves its fold expanded so the user keeps their
+  // place; a later user-to-user segment folds it again.
+  useEffect(() => {
+    const previous = previousLatestTurnRef.current;
+    previousLatestTurnRef.current = latestTurn;
+    if (!latestTurn || previous?.turnId === undefined) return;
+
+    if (latestTurn.turnId === previous.turnId) {
+      if (previous.state !== "running" || latestTurn.state !== "interrupted") return;
+      const interruptedFoldId = rawRows.find(
+        (row) => row.kind === "turn-fold" && row.turnId === latestTurn.turnId,
+      )?.id;
+      if (!interruptedFoldId) return;
+      setExpandedFoldIds((existing) => new Set(existing).add(interruptedFoldId));
+      return;
+    }
+
+    const previousFoldId = rawRows.find(
+      (row) => row.kind === "turn-fold" && row.turnId === previous.turnId,
+    )?.id;
+    if (!previousFoldId) return;
+    setExpandedFoldIds((existing) => {
+      if (!existing.has(previousFoldId)) return existing;
+      const next = new Set(existing);
+      next.delete(previousFoldId);
+      return next;
+    });
+  }, [latestTurn, rawRows]);
+
   const rows = useStableRows(rawRows);
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
@@ -1228,7 +1230,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         type="button"
         aria-expanded={row.expanded}
         data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleTurnFold(row.turnId)}
+        onClick={() => ctx.onToggleTurnFold(row.id)}
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>

@@ -336,7 +336,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedTurnIds: new Set(["turn-1" as never]),
+      expandedFoldIds: new Set(["turn-fold:turn-1"]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),
@@ -551,7 +551,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     const expandedRows = deriveMessagesTimelineRows({
       timelineEntries,
-      expandedTurnIds: new Set(["turn-1" as never]),
+      expandedFoldIds: new Set(["turn-fold:turn-1"]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),
@@ -699,7 +699,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.map((row) => row.id)).toEqual([
       "user-entry",
-      "turn-fold:turn-2",
+      "turn-fold:turn-1",
       "assistant-followup-entry",
     ]);
     expect(rows.find((row) => row.kind === "turn-fold")?.label).toBe("Worked for 24s");
@@ -831,17 +831,17 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(deriveMessagesTimelineRows(baseInput).map((row) => row.id)).toEqual([
       "user-entry",
-      "turn-fold:turn-2",
+      "turn-fold:turn-1",
       "assistant-final-entry",
     ]);
     expect(
       deriveMessagesTimelineRows({
         ...baseInput,
-        expandedTurnIds: new Set(["turn-2" as never]),
+        expandedFoldIds: new Set(["turn-fold:turn-1"]),
       }).map((row) => row.id),
     ).toEqual([
       "user-entry",
-      "turn-fold:turn-2",
+      "turn-fold:turn-1",
       "assistant-first-entry",
       "work-toggle:work-entry-1",
       "proposed-plan-entry",
@@ -849,6 +849,107 @@ describe("deriveMessagesTimelineRows", () => {
       "assistant-progress-entry",
       "assistant-final-entry",
     ]);
+  });
+
+  it("gives separate stable fold ids to segments that share a trailing turn id", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-1-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user",
+            text: "Start",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "assistant-1-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:05Z",
+          message: {
+            id: "assistant-1" as never,
+            role: "assistant",
+            text: "First response",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:05Z",
+            updatedAt: "2026-01-01T00:00:06Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-1-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:07Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:07Z",
+            turnId: "turn-1" as never,
+            label: "Finished first response",
+            tone: "tool",
+          },
+        },
+        {
+          id: "user-2-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:08Z",
+          message: {
+            id: "user-2" as never,
+            role: "user",
+            text: "Steer",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:08Z",
+            updatedAt: "2026-01-01T00:00:08Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "trailing-work-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:09Z",
+          entry: {
+            id: "trailing-work",
+            createdAt: "2026-01-01T00:00:09Z",
+            turnId: "turn-1" as never,
+            label: "Late receipt",
+            tone: "tool",
+          },
+        },
+        {
+          id: "assistant-2-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:10Z",
+          message: {
+            id: "assistant-2" as never,
+            role: "assistant",
+            text: "Second response",
+            turnId: "turn-2" as never,
+            createdAt: "2026-01-01T00:00:10Z",
+            updatedAt: "2026-01-01T00:00:11Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:10Z",
+        completedAt: "2026-01-01T00:00:11Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    const foldIds = rows.filter((row) => row.kind === "turn-fold").map((row) => row.id);
+    expect(foldIds).toEqual(["turn-fold:turn-1", "turn-fold:turn-1:user-2-entry"]);
+    expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
   });
 
   it("keeps the latest segment unfolded while a later turn in it is still running", () => {
@@ -1619,7 +1720,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedTurnIds: new Set(["turn-1" as never]),
+      expandedFoldIds: new Set(["turn-fold:turn-1"]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),

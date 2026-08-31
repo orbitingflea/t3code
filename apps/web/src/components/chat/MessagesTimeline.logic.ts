@@ -471,6 +471,7 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
 }
 
 interface TurnFold {
+  foldId: string;
   turnId: TurnId;
   anchorEntryId: string;
   createdAt: string;
@@ -531,7 +532,9 @@ function deriveTurnFolds(input: {
   interface SegmentGroup {
     entries: Array<TimelineEntry>;
     turnIds: Set<TurnId>;
+    firstTurnId: TurnId | null;
     lastTurnId: TurnId | null;
+    boundaryEntryId: string | null;
     terminalEntry: Extract<TimelineEntry, { kind: "message" }> | null;
     hasStreamingMessage: boolean;
     startBoundary: string | null;
@@ -540,10 +543,12 @@ function deriveTurnFolds(input: {
 
   let segmentIndex = 0;
   let segmentBoundary: string | null = null;
+  let segmentBoundaryEntryId: string | null = null;
   for (const entry of input.timelineEntries) {
     if (entry.kind === "message" && entry.message.role === "user") {
       segmentIndex += 1;
       segmentBoundary = entry.message.createdAt;
+      segmentBoundaryEntryId = entry.id;
       continue;
     }
     // Membership is positional, not by turn id: plan chips and turn-less work
@@ -554,7 +559,9 @@ function deriveTurnFolds(input: {
       group = {
         entries: [],
         turnIds: new Set(),
+        firstTurnId: turnId,
         lastTurnId: turnId,
+        boundaryEntryId: segmentBoundaryEntryId,
         terminalEntry: null,
         hasStreamingMessage: false,
         startBoundary: segmentBoundary,
@@ -564,6 +571,7 @@ function deriveTurnFolds(input: {
     group.entries.push(entry);
     if (turnId !== null) {
       group.turnIds.add(turnId);
+      group.firstTurnId ??= turnId;
       group.lastTurnId = turnId;
     }
     if (entry.kind === "message") {
@@ -577,10 +585,12 @@ function deriveTurnFolds(input: {
   }
 
   const foldsByAnchorEntryId = new Map<string, TurnFold>();
+  const foldCountByFirstTurnId = new Map<TurnId, number>();
   for (const group of groupsBySegmentIndex.values()) {
     const turnId = group.lastTurnId;
-    // Expanded state is keyed by turn id, so a turn-less segment stays unfolded.
-    if (turnId === null) {
+    const firstTurnId = group.firstTurnId;
+    // A turn-less segment has no durable fold identity, so it stays unfolded.
+    if (turnId === null || firstTurnId === null) {
       continue;
     }
     if (input.unsettledTurnId !== null && group.turnIds.has(input.unsettledTurnId)) {
@@ -631,7 +641,14 @@ function deriveTurnFolds(input: {
         ? `Worked for ${duration}`
         : "Worked";
 
+    const priorFoldCount = foldCountByFirstTurnId.get(firstTurnId) ?? 0;
+    foldCountByFirstTurnId.set(firstTurnId, priorFoldCount + 1);
+    const foldId =
+      priorFoldCount === 0
+        ? `turn-fold:${firstTurnId}`
+        : `turn-fold:${firstTurnId}:${group.boundaryEntryId ?? firstHiddenEntry.id}`;
     foldsByAnchorEntryId.set(firstHiddenEntry.id, {
+      foldId,
       turnId,
       anchorEntryId: firstHiddenEntry.id,
       createdAt: firstHiddenEntry.createdAt,
@@ -646,7 +663,7 @@ export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
-  expandedTurnIds?: ReadonlySet<TurnId>;
+  expandedFoldIds?: ReadonlySet<string>;
   expandedWorkGroupIds?: ReadonlySet<string>;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
@@ -670,7 +687,7 @@ export function deriveMessagesTimelineRows(input: {
   });
   const collapsedEntryIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {
-    if (!input.expandedTurnIds?.has(fold.turnId)) {
+    if (!input.expandedFoldIds?.has(fold.foldId)) {
       for (const entryId of fold.hiddenEntryIds) {
         collapsedEntryIds.add(entryId);
       }
@@ -795,11 +812,11 @@ export function deriveMessagesTimelineRows(input: {
     if (anchoredTurnFold) {
       nextRows.push({
         kind: "turn-fold",
-        id: `turn-fold:${anchoredTurnFold.turnId}`,
+        id: anchoredTurnFold.foldId,
         createdAt: anchoredTurnFold.createdAt,
         turnId: anchoredTurnFold.turnId,
         label: anchoredTurnFold.label,
-        expanded: input.expandedTurnIds?.has(anchoredTurnFold.turnId) ?? false,
+        expanded: input.expandedFoldIds?.has(anchoredTurnFold.foldId) ?? false,
       });
     }
 
