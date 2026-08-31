@@ -23,7 +23,25 @@ describe("normalizeChatMath", () => {
   });
 
   it("does not alter math-like text in fenced or inline code", () => {
-    const markdown = "```txt\n\\[x\\]\n$$y$$\n```\n`\\(z\\)` and \\(w\\)";
-    expect(normalizeChatMath(markdown)).toBe("```txt\n\\[x\\]\n$$y$$\n```\n`\\(z\\)` and $w$");
+    const markdown = ["```txt", "~~~", "\\(x\\)", "```", "``code ` \\(y\\)`` and \\(z\\)"].join(
+      "\n",
+    );
+    expect(normalizeChatMath(markdown)).toBe(
+      ["```txt", "~~~", "\\(x\\)", "```", "``code ` \\(y\\)`` and $z$"].join("\n"),
+    );
+  });
+
+  it("does not alter math-like text in link destinations or HTML tags", () => {
+    const markdown =
+      '[docs](https://example.com/\\(intro\\)) <a href="/\\(raw\\)">link</a> \\(x\\)';
+    expect(normalizeChatMath(markdown)).toBe(
+      '[docs](https://example.com/\\(intro\\)) <a href="/\\(raw\\)">link</a> $x$',
+    );
+  });
+
+  it("does not parse slash-suffixed prices as math", () => {
+    expect(normalizeChatMath("Plans cost $5/month or $10/month")).toBe(
+      "Plans cost \\$5/month or \\$10/month",
+    );
   });
 });

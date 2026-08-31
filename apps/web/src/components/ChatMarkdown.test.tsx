@@ -117,12 +117,15 @@ describe("ChatMarkdown emphasis", () => {
   it.each([false, true])(
     "renders bold text ending in CJK punctuation with lineBreaks=%s",
     (lineBreaks) => {
+      const text = ["**中文**中文", "**中文：**中文", "**中文。**中文", "**中文，**中文"].join(
+        "\n",
+      );
       const html = renderToStaticMarkup(
-        <ChatMarkdown cwd="/tmp/project" text="**都没修。**Fetch" lineBreaks={lineBreaks} />,
+        <ChatMarkdown cwd="/tmp/project" text={text} lineBreaks={lineBreaks} />,
       );
 
-      expect(html).toContain("<strong>都没修。</strong>Fetch");
-      expect(html).not.toContain("**都没修。**");
+      expect(html.match(/<strong>中文(?:[：。，])?<\/strong>中文/g)).toHaveLength(4);
+      expect(html).not.toContain("**");
     },
   );
 });
