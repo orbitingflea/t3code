@@ -92,6 +92,23 @@ describe("hasMarkdownFilePrimaryAction", () => {
   });
 });
 
+describe("ChatMarkdown emphasis", () => {
+  it.each([false, true])(
+    "renders bold text ending in CJK punctuation with lineBreaks=%s",
+    (lineBreaks) => {
+      const text = ["**中文**中文", "**中文：**中文", "**中文。**中文", "**中文，**中文"].join(
+        "\n",
+      );
+      const html = renderToStaticMarkup(
+        <ChatMarkdown cwd="/tmp/project" text={text} lineBreaks={lineBreaks} />,
+      );
+
+      expect(html.match(/<strong>中文(?:[：。，])?<\/strong>中文/g)).toHaveLength(4);
+      expect(html).not.toContain("**");
+    },
+  );
+});
+
 describe("ChatMarkdown file option chips", () => {
   it("keeps the fallback button text selectable", () => {
     const html = renderToStaticMarkup(
