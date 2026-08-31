@@ -627,6 +627,302 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.id)).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
   });
 
+  it("folds a subagent wake-up continuation into the same user-to-user segment", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "user-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:00Z",
+          message: {
+            id: "user-1" as never,
+            role: "user" as const,
+            text: "Delegate this",
+            turnId: null,
+            createdAt: "2026-01-01T00:00:00Z",
+            updatedAt: "2026-01-01T00:00:00Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "assistant-handoff-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:05Z",
+          message: {
+            id: "assistant-handoff" as never,
+            role: "assistant" as const,
+            text: "Handing this to a subagent.",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:05Z",
+            updatedAt: "2026-01-01T00:00:06Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:08Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:08Z",
+            turnId: "turn-1" as never,
+            label: "Ran subagent",
+            tone: "tool" as const,
+          },
+        },
+        {
+          id: "assistant-followup-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:20Z",
+          message: {
+            id: "assistant-followup" as never,
+            role: "assistant" as const,
+            text: "The subagent came back with the answer.",
+            turnId: "turn-2" as never,
+            createdAt: "2026-01-01T00:00:20Z",
+            updatedAt: "2026-01-01T00:00:24Z",
+            streaming: false,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:18Z",
+        completedAt: "2026-01-01T00:00:24Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-entry",
+      "turn-fold:turn-2",
+      "assistant-followup-entry",
+    ]);
+    expect(rows.find((row) => row.kind === "turn-fold")?.label).toBe("Worked for 24s");
+  });
+
+  it("folds plan chips, turn-less work, and the spawn CTA of a settled segment", () => {
+    const timelineEntries = [
+      {
+        id: "user-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:00Z",
+        message: {
+          id: "user-1" as never,
+          role: "user" as const,
+          text: "Run the fleet",
+          turnId: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-first-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:05Z",
+        message: {
+          id: "assistant-first" as never,
+          role: "assistant" as const,
+          text: "Planning the run.",
+          turnId: "turn-1" as never,
+          createdAt: "2026-01-01T00:00:05Z",
+          updatedAt: "2026-01-01T00:00:06Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "work-entry-1",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:08Z",
+        entry: {
+          id: "work-1",
+          createdAt: "2026-01-01T00:00:08Z",
+          turnId: "turn-1" as never,
+          label: "Ran command",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "background-work-entry",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:09Z",
+        entry: {
+          id: "background-work-1",
+          createdAt: "2026-01-01T00:00:09Z",
+          turnId: null,
+          label: "Background task output",
+          tone: "tool" as const,
+        },
+      },
+      {
+        id: "proposed-plan-entry",
+        kind: "proposed-plan" as const,
+        createdAt: "2026-01-01T00:00:11Z",
+        proposedPlan: {
+          id: "plan-1" as never,
+          createdAt: "2026-01-01T00:00:11Z",
+          updatedAt: "2026-01-01T00:00:11Z",
+          turnId: "turn-1" as never,
+          planMarkdown: "1. Fan out agents\n2. Merge results",
+          implementedAt: null,
+          implementationThreadId: null,
+        },
+      },
+      {
+        id: "agent-spawn-entry",
+        kind: "work" as const,
+        createdAt: "2026-01-01T00:00:12Z",
+        entry: {
+          id: "agent-spawn-1",
+          createdAt: "2026-01-01T00:00:12Z",
+          turnId: "turn-1" as never,
+          label: "Ran 3 subagents",
+          tone: "tool" as const,
+          agentSpawn: { workflowId: null, agentTaskIds: ["task-1", "task-2", "task-3"] },
+        },
+      },
+      {
+        id: "assistant-progress-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:20Z",
+        message: {
+          id: "assistant-progress" as never,
+          role: "assistant" as const,
+          text: "The subagents came back.",
+          turnId: "turn-2" as never,
+          createdAt: "2026-01-01T00:00:20Z",
+          updatedAt: "2026-01-01T00:00:21Z",
+          streaming: false,
+        },
+      },
+      {
+        id: "assistant-final-entry",
+        kind: "message" as const,
+        createdAt: "2026-01-01T00:00:25Z",
+        message: {
+          id: "assistant-final" as never,
+          role: "assistant" as const,
+          text: "Here is the merged result.",
+          turnId: "turn-2" as never,
+          createdAt: "2026-01-01T00:00:25Z",
+          updatedAt: "2026-01-01T00:00:30Z",
+          streaming: false,
+        },
+      },
+    ];
+    const baseInput = {
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed" as const,
+        startedAt: "2026-01-01T00:00:18Z",
+        completedAt: "2026-01-01T00:00:30Z",
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    };
+
+    expect(deriveMessagesTimelineRows(baseInput).map((row) => row.id)).toEqual([
+      "user-entry",
+      "turn-fold:turn-2",
+      "assistant-final-entry",
+    ]);
+    expect(
+      deriveMessagesTimelineRows({
+        ...baseInput,
+        expandedTurnIds: new Set(["turn-2" as never]),
+      }).map((row) => row.id),
+    ).toEqual([
+      "user-entry",
+      "turn-fold:turn-2",
+      "assistant-first-entry",
+      "work-toggle:work-entry-1",
+      "proposed-plan-entry",
+      "agent-spawn-entry",
+      "assistant-progress-entry",
+      "assistant-final-entry",
+    ]);
+  });
+
+  it("keeps the latest segment unfolded while a later turn in it is still running", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "assistant-handoff-entry",
+          kind: "message",
+          createdAt: "2026-01-01T00:00:05Z",
+          message: {
+            id: "assistant-handoff" as never,
+            role: "assistant" as const,
+            text: "Handing this to a subagent.",
+            turnId: "turn-1" as never,
+            createdAt: "2026-01-01T00:00:05Z",
+            updatedAt: "2026-01-01T00:00:06Z",
+            streaming: false,
+          },
+        },
+        {
+          id: "work-entry-1",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:20Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:20Z",
+            turnId: "turn-2" as never,
+            label: "Read files",
+            tone: "tool" as const,
+          },
+        },
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:18Z",
+        completedAt: null,
+      },
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+    expect(rows.map((row) => row.id)).toContain("assistant-handoff-entry");
+  });
+
+  it("leaves a segment with no turn id unfolded", () => {
+    const rows = deriveMessagesTimelineRows({
+      timelineEntries: [
+        {
+          id: "work-entry",
+          kind: "work",
+          createdAt: "2026-01-01T00:00:05Z",
+          entry: {
+            id: "work-1",
+            createdAt: "2026-01-01T00:00:05Z",
+            turnId: null,
+            label: "Background output",
+            tone: "tool" as const,
+          },
+        },
+      ],
+      isWorking: false,
+      activeTurnStartedAt: null,
+      turnDiffSummaryByAssistantMessageId: new Map(),
+      revertTurnCountByUserMessageId: new Map(),
+    });
+
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+    expect(rows.map((row) => row.id)).toEqual(["work-toggle:work-entry"]);
+  });
+
   it("derives a sane duration for a steer-superseded turn with one instant commentary message", () => {
     // A steer ends the previous turn early: its only message completes the
     // instant it is created, and trailing work entries land after it. The
