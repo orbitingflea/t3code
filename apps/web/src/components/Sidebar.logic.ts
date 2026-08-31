@@ -655,18 +655,20 @@ export function sortSettledThreadsForSidebar<
   );
 }
 
-/** The timestamp a working thread's elapsed label counts from: the running
-    turn's start (request time until adoption), falling back to the session's
-    last transition when the turn projection lags behind. Malformed
-    timestamps fall through to the next candidate, not just missing ones. */
+/** The timestamp a working thread's elapsed label counts from: the user
+    message that started the current response segment. Turn ids may change
+    while that response is still running, so turn and session timestamps are
+    only fallbacks when the message projection is missing or malformed. */
 export function resolveWorkingStartedAt(
-  thread: Pick<SidebarThreadSummary, "latestTurn" | "session">,
+  thread: Pick<SidebarThreadSummary, "latestUserMessageAt" | "latestTurn" | "session">,
 ): string | null {
   const turn = thread.latestTurn;
-  if (turn && turn.completedAt === null) {
-    return firstValidTimestamp(turn.startedAt, turn.requestedAt, thread.session?.updatedAt);
-  }
-  return firstValidTimestamp(thread.session?.updatedAt);
+  return firstValidTimestamp(
+    thread.latestUserMessageAt,
+    turn?.completedAt === null ? turn.startedAt : null,
+    turn?.completedAt === null ? turn.requestedAt : null,
+    thread.session?.updatedAt,
+  );
 }
 
 export function formatWorkingDurationLabel(elapsedMs: number): string {
