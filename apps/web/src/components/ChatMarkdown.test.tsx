@@ -92,6 +92,27 @@ describe("hasMarkdownFilePrimaryAction", () => {
   });
 });
 
+describe("ChatMarkdown math", () => {
+  it.each([false, true])("renders inline math with lineBreaks=%s", (lineBreaks) => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text={"Math $x^2$ and \\(y+1\\)"} lineBreaks={lineBreaks} />,
+    );
+
+    expect(html.match(/class="katex"/g)).toHaveLength(2);
+    expect(html).toContain("x^2");
+    expect(html).toContain("y+1");
+  });
+
+  it("keeps an ordinary price literal", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown cwd="/tmp/project" text="The total is $12.50 today." />,
+    );
+
+    expect(html).toContain("The total is $12.50 today.");
+    expect(html).not.toContain('class="katex"');
+  });
+});
+
 describe("ChatMarkdown file option chips", () => {
   it("keeps the fallback button text selectable", () => {
     const html = renderToStaticMarkup(
