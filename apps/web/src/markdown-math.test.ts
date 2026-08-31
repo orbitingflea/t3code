@@ -10,7 +10,7 @@ describe("normalizeChatMath", () => {
       "math $x^2+1$ and \n\n$$\n\\sum_{i=1}^n i\n$$\n\n reply ok",
     ],
     ["before\n\\[\nx=\\pm i\n\\]\nafter", "before\n$$\nx=\\pm i\n$$\nafter"],
-    ["Inline \\(x^2=-1\\) and \\[y=\\pm i\\]", "Inline $x^2=-1$ and \n\n$$\ny=\\pm i\n$$\n\n"],
+    ["Inline \\(x^2=-1\\)", "Inline $x^2=-1$"],
   ])("normalizes chat math in %s", (markdown, expected) => {
     expect(normalizeChatMath(markdown)).toBe(expected);
   });
@@ -39,9 +39,40 @@ describe("normalizeChatMath", () => {
     );
   });
 
-  it("does not parse slash-suffixed prices as math", () => {
-    expect(normalizeChatMath("Plans cost $5/month or $10/month")).toBe(
-      "Plans cost \\$5/month or \\$10/month",
+  it("does not pair common price contexts into math", () => {
+    expect(normalizeChatMath("$5-$10, ($5 off), $5%, and $5: each")).toBe(
+      "\\$5-\\$10, (\\$5 off), \\$5%, and \\$5: each",
+    );
+  });
+
+  it("normalizes multiple display spans on one line separately", () => {
+    expect(normalizeChatMath("$$a$$ and $$b$$")).toBe("\n\n$$\na\n$$\n\n and \n\n$$\nb\n$$\n\n");
+  });
+
+  it("normalizes math in prose comparisons", () => {
+    expect(normalizeChatMath("for 0 < x, \\(x^2\\) grows when x > 1")).toBe(
+      "for 0 < x, $x^2$ grows when x > 1",
+    );
+  });
+
+  it("does not alter indented code or blockquote fenced code", () => {
+    const markdown = [
+      "    code block \\(x\\) indented",
+      "> ```txt",
+      "> \\(y\\)",
+      "> ```",
+      "after \\(z\\)",
+    ].join("\n");
+    expect(normalizeChatMath(markdown)).toBe(
+      ["    code block \\(x\\) indented", "> ```txt", "> \\(y\\)", "> ```", "after $z$"].join("\n"),
+    );
+  });
+
+  it("only treats bracket math as display math when it stands alone", () => {
+    // Inline bracket escapes are commonly emitted as citations, so only a
+    // whole-line \\[…] span is interpreted as display math.
+    expect(normalizeChatMath("See \\[1\\] for details\n\\[x+y\\]")).toBe(
+      "See \\[1\\] for details\n$$\nx+y\n$$",
     );
   });
 });

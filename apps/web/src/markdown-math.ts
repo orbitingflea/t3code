@@ -3,8 +3,12 @@ interface Fence {
   length: number;
 }
 
+function stripBlockquotePrefix(line: string): string {
+  return line.replace(/^ {0,3}(?:> ?)+/, "");
+}
+
 function readFence(line: string): Fence | null {
-  const match = /^\s{0,3}(`{3,}|~{3,})/.exec(line);
+  const match = /^\s{0,3}(`{3,}|~{3,})/.exec(stripBlockquotePrefix(line));
   const delimiter = match?.[1];
   if (!delimiter) return null;
   return {
@@ -14,7 +18,7 @@ function readFence(line: string): Fence | null {
 }
 
 function closesFence(line: string, fence: Fence): boolean {
-  const match = /^\s{0,3}(`+|~+)\s*$/.exec(line);
+  const match = /^\s{0,3}(`+|~+)\s*$/.exec(stripBlockquotePrefix(line));
   const delimiter = match?.[1];
   return (
     delimiter !== undefined && delimiter[0] === fence.marker && delimiter.length >= fence.length
@@ -22,6 +26,8 @@ function closesFence(line: string, fence: Fence): boolean {
 }
 
 function findHtmlTagEnd(text: string, start: number): number {
+  if (!/[A-Za-z/!]/.test(text[start + 1] ?? "")) return -1;
+
   let quote: '"' | "'" | null = null;
   for (let index = start + 1; index < text.length; index += 1) {
     const character = text[index];
@@ -56,12 +62,14 @@ function findLinkDestinationEnd(text: string, start: number): number {
 
 function normalizeMathText(text: string): string {
   return text
-    .replace(/\\\[(.+?)\\\]/g, (_, math: string) => `\n\n$$\n${math}\n$$\n\n`)
     .replace(/\\\((.+?)\\\)/g, (_, math: string) => `$${math}$`)
     .replace(/\$\$(.+?)\$\$/g, (_, math: string) => `\n\n$$\n${math}\n$$\n\n`)
     .replace(/^\s*\\\[\s*$/, "$$$$")
     .replace(/^\s*\\\]\s*$/, "$$$$")
-    .replace(/(^|\s)\$(?=\d+(?:[.,]\d+)?(?:\s|[.,!?/]|$))/g, (_, prefix: string) => `${prefix}\\$`);
+    .replace(
+      /(^|[\s([{:;,-])\$(?=\d+(?:[.,]\d+)?(?:\s|[.,!?/%:;)\]}-]|$))/g,
+      (_, prefix: string) => `${prefix}\\$`,
+    );
 }
 
 function normalizeOutsideMarkdownDestinations(text: string): string {
@@ -148,10 +156,15 @@ export function normalizeChatMath(markdown: string): string {
         return line;
       }
 
-      const bracketMath = /^\s*\\\[(.*)\\\]\s*$/.exec(line);
+      const content = stripBlockquotePrefix(line);
+      if (/^(?: {4}|\t)/.test(content)) return line;
+
+      const bracketMath = /^\s*\\\[(.*)\\\]\s*$/.exec(content);
       if (bracketMath) return `$$\n${bracketMath[1] ?? ""}\n$$`;
-      const dollarMath = /^\s*\$\$(.+)\$\$\s*$/.exec(line);
-      if (dollarMath) return `$$\n${dollarMath[1] ?? ""}\n$$`;
+      const dollarMath = [...content.matchAll(/\$\$(.+?)\$\$/g)];
+      if (dollarMath.length === 1 && content.trim() === dollarMath[0]?.[0]) {
+        return `$$\n${dollarMath[0]?.[1] ?? ""}\n$$`;
+      }
       return normalizeOutsideInlineCode(line);
     })
     .join("\n");
