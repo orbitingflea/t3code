@@ -93,6 +93,22 @@ describe("hasMarkdownFilePrimaryAction", () => {
 });
 
 describe("ChatMarkdown math", () => {
+  it.each([false, true])(
+    "renders dollar, inline bracket, and display bracket math with lineBreaks=%s",
+    (lineBreaks) => {
+      const html = renderToStaticMarkup(
+        <ChatMarkdown
+          cwd="/tmp/project"
+          text={["$$math$$", "\\(math\\)", "\\[math\\]"].join("\n")}
+          lineBreaks={lineBreaks}
+        />,
+      );
+
+      expect(html.match(/class="katex"/g)).toHaveLength(3);
+      expect(html.match(/class="katex-display"/g)).toHaveLength(2);
+    },
+  );
+
   it.each([false, true])("renders inline math with lineBreaks=%s", (lineBreaks) => {
     const html = renderToStaticMarkup(
       <ChatMarkdown cwd="/tmp/project" text={"Math $x^2$ and \\(y+1\\)"} lineBreaks={lineBreaks} />,
