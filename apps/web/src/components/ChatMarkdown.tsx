@@ -69,6 +69,7 @@ import React, {
 import type { Components, Options as ReactMarkdownOptions } from "react-markdown";
 import ReactMarkdown from "react-markdown";
 import { defaultUrlTransform } from "react-markdown";
+import rehypeKatex from "rehype-katex";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
@@ -76,6 +77,8 @@ import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import "katex/dist/katex.min.css";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
 import {
   artifactTemplateFromHastProperties,
@@ -459,6 +462,8 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkCjkFriendly,
+  remarkMath,
+  remarkPandocDollarMath,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ] satisfies NonNullable<ReactMarkdownOptions["remarkPlugins"]>;
@@ -469,6 +474,8 @@ const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkCjkFriendly,
+  remarkMath,
+  remarkPandocDollarMath,
   remarkBreaks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
@@ -478,7 +485,13 @@ const CHAT_MARKDOWN_REHYPE_PLUGINS = [
   rehypeRaw,
   rehypePreserveImageSourceMeta,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
+  // KaTeX renders after sanitizing: its own markup is generated, not authored.
+  rehypeKatex,
 ] satisfies NonNullable<ReactMarkdownOptions["rehypePlugins"]>;
+
+const KATEX_ONLY_REHYPE_PLUGINS = [rehypeKatex] satisfies NonNullable<
+  ReactMarkdownOptions["rehypePlugins"]
+>;
 
 /** GitHub's own five alert kinds, in its colors: the glyph names the urgency, the title says it. */
 const GITHUB_ALERT_PRESENTATIONS: Record<
@@ -558,11 +571,39 @@ type MarkdownAstNode = {
   type?: string;
   meta?: unknown;
   url?: string;
+  value?: string;
+  position?: { start: { offset?: number }; end: { offset?: number } };
   data?: {
     hProperties?: Record<string, unknown>;
   };
   children?: MarkdownAstNode[];
 };
+
+/**
+ * `remark-math` reads `$…$` with code-span rules, which turns prices such as
+ * "$5 and $3" into math. Demote every single-dollar span Pandoc would refuse:
+ * the content must not start or end with whitespace, and the closing dollar
+ * must not be followed by a digit.
+ */
+function remarkPandocDollarMath() {
+  return (tree: MarkdownAstNode, file: { value?: unknown }) => {
+    const source = typeof file.value === "string" ? file.value : "";
+    const visit = (node: MarkdownAstNode) => {
+      node.children?.forEach((child, index, children) => {
+        visit(child);
+        const from = child.position?.start.offset;
+        const to = child.position?.end.offset;
+        if (child.type !== "inlineMath" || from === undefined || to === undefined) return;
+        const raw = source.slice(from, to);
+        if (!raw.startsWith("$") || raw.startsWith("$$")) return;
+        const content = raw.slice(1, -1);
+        if (/^\S/.test(content) && /\S$/.test(content) && !/\d/.test(source[to] ?? "")) return;
+        children[index] = { type: "text", value: raw };
+      });
+    };
+    visit(tree);
+  };
+}
 
 function remarkPreserveCodeMeta() {
   return (tree: MarkdownAstNode) => {
@@ -3106,7 +3147,7 @@ function ChatMarkdown({
       <ChatMarkdownRendererContext value={componentState}>
         <ReactMarkdown
           remarkPlugins={remarkPlugins}
-          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
+          rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : KATEX_ONLY_REHYPE_PLUGINS}
           skipHtml={false}
           components={CHAT_MARKDOWN_COMPONENTS}
           urlTransform={markdownUrlTransform}
