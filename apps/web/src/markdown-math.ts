@@ -109,11 +109,18 @@ function escapeUnpairedInlineDollars(text: string): string {
   return output;
 }
 
+function isCitationLikeBracketContent(content: string): boolean {
+  return /^\s*\d+(?:\s*(?:,|-)\s*\d+)*\s*$/.test(content);
+}
+
 function normalizeMathText(text: string): string {
   return escapeUnpairedInlineDollars(
     text
       .replace(/\\\((.+?)\\\)/g, (_, math: string) => `$${math}$`)
       .replace(/\$\$(.+?)\$\$/g, (_, math: string) => `\n\n$$\n${math}\n$$\n\n`)
+      .replace(/\\\[(.+?)\\\]/g, (match: string, math: string) =>
+        isCitationLikeBracketContent(math) ? match : `\n\n$$\n${math}\n$$\n\n`,
+      )
       .replace(/^\s*\\\[\s*$/, "$$$$")
       .replace(/^\s*\\\]\s*$/, "$$$$"),
   );
