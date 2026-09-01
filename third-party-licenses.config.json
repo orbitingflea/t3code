@@ -131,7 +131,7 @@
       "generatedNotices": [
         {
           "licenseId": "Apache-2.0",
-          "copyrights": ["Copyright 2009, 2010, 2013 André Berg"]
+          "copyrights": ["Copyright 2009, 2010, 2013 Andr\u00e9 Berg"]
         }
       ]
     },
@@ -472,6 +472,24 @@
       "generatedNotice": {
         "licenseId": "MIT",
         "copyrights": ["Copyright (c) 2025 opencode"]
+      }
+    },
+    {
+      "license": "MIT",
+      "name": "remark-math",
+      "sourceUrl": "https://github.com/remarkjs/remark-math",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2016 Junyoung Choi"]
+      }
+    },
+    {
+      "license": "MIT",
+      "name": "rehype-katex",
+      "sourceUrl": "https://github.com/remarkjs/remark-math",
+      "generatedNotice": {
+        "licenseId": "MIT",
+        "copyrights": ["Copyright (c) 2016 Junyoung Choi"]
       }
     }
   ]
