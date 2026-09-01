@@ -111,12 +111,12 @@ describe("ChatMarkdown emphasis", () => {
 
 describe("ChatMarkdown math", () => {
   it.each([false, true])(
-    "renders dollar, inline bracket, and display bracket math with lineBreaks=%s",
+    "renders mixed inline and display delimiters with lineBreaks=%s",
     (lineBreaks) => {
       const html = renderToStaticMarkup(
         <ChatMarkdown
           cwd="/tmp/project"
-          text={["$$math$$", "\\(math\\)", "\\[math\\]"].join("\n")}
+          text={"\\(inline1\\), \\[big1\\], $$big2$$"}
           lineBreaks={lineBreaks}
         />,
       );

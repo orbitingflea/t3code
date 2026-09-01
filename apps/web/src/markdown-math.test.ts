@@ -11,6 +11,7 @@ describe("normalizeChatMath", () => {
     ],
     ["before\n\\[\nx=\\pm i\n\\]\nafter", "before\n$$\nx=\\pm i\n$$\nafter"],
     ["Inline \\(x^2=-1\\)", "Inline $x^2=-1$"],
+    ["before \\[x+y\\] after", "before \n\n$$\nx+y\n$$\n\n after"],
   ])("normalizes chat math in %s", (markdown, expected) => {
     expect(normalizeChatMath(markdown)).toBe(expected);
   });
@@ -78,8 +79,8 @@ describe("normalizeChatMath", () => {
   });
 
   it("only treats bracket math as display math when it stands alone", () => {
-    // Inline bracket escapes are commonly emitted as citations, so only a
-    // whole-line \\[…] span is interpreted as display math.
+    // Numeric bracket escapes are commonly emitted as citations, while
+    // non-citation bracket spans are display math even within prose.
     expect(normalizeChatMath("See \\[1\\] for details\n\\[x+y\\]")).toBe(
       "See \\[1\\] for details\n$$\nx+y\n$$",
     );
