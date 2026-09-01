@@ -60,16 +60,63 @@ function findLinkDestinationEnd(text: string, start: number): number {
   return -1;
 }
 
+function isEscaped(text: string, index: number): boolean {
+  let backslashes = 0;
+  for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+function escapeUnpairedInlineDollars(text: string): string {
+  const candidates: Array<number> = [];
+  const openers: Array<number> = [];
+  const paired = new Set<number>();
+
+  for (let index = 0; index < text.length; index += 1) {
+    if (text[index] !== "$" || isEscaped(text, index)) continue;
+
+    let runEnd = index + 1;
+    while (text[runEnd] === "$") runEnd += 1;
+    if (runEnd - index !== 1) {
+      index = runEnd - 1;
+      continue;
+    }
+
+    candidates.push(index);
+    const previous = text[index - 1];
+    const next = text[index + 1];
+    const canOpen = next !== undefined && !/\s/.test(next);
+    const canClose = previous !== undefined && !/\s/.test(previous) && !/\d/.test(next ?? "");
+
+    if (canClose && openers.length > 0) {
+      const opener = openers.pop();
+      if (opener !== undefined) {
+        paired.add(opener);
+        paired.add(index);
+      }
+    } else if (canOpen) {
+      openers.push(index);
+    }
+  }
+
+  if (paired.size === candidates.length) return text;
+  const unpaired = new Set(candidates.filter((index) => !paired.has(index)));
+  let output = "";
+  for (let index = 0; index < text.length; index += 1) {
+    output += unpaired.has(index) ? `\\${text[index]}` : text[index];
+  }
+  return output;
+}
+
 function normalizeMathText(text: string): string {
-  return text
-    .replace(/\\\((.+?)\\\)/g, (_, math: string) => `$${math}$`)
-    .replace(/\$\$(.+?)\$\$/g, (_, math: string) => `\n\n$$\n${math}\n$$\n\n`)
-    .replace(/^\s*\\\[\s*$/, "$$$$")
-    .replace(/^\s*\\\]\s*$/, "$$$$")
-    .replace(
-      /(^|[\s([{:;,-])\$(?=\d+(?:[.,]\d+)?(?:\s|[.,!?/%:;)\]}-]|$))/g,
-      (_, prefix: string) => `${prefix}\\$`,
-    );
+  return escapeUnpairedInlineDollars(
+    text
+      .replace(/\\\((.+?)\\\)/g, (_, math: string) => `$${math}$`)
+      .replace(/\$\$(.+?)\$\$/g, (_, math: string) => `\n\n$$\n${math}\n$$\n\n`)
+      .replace(/^\s*\\\[\s*$/, "$$$$")
+      .replace(/^\s*\\\]\s*$/, "$$$$"),
+  );
 }
 
 function normalizeOutsideMarkdownDestinations(text: string): string {

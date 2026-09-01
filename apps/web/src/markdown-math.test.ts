@@ -15,7 +15,16 @@ describe("normalizeChatMath", () => {
     expect(normalizeChatMath(markdown)).toBe(expected);
   });
 
-  it("does not parse paired prices as math", () => {
+  it.each([
+    ["$5.5$", "$5.5$"],
+    ["$5$", "$5$"],
+    ["价格：$5 和 $5/month", "价格：\\$5 和 \\$5/month"],
+    ["$20,000 and $30,000", "\\$20,000 and \\$30,000"],
+  ])("keeps only valid Pandoc-style dollar pairs in %s", (markdown, expected) => {
+    expect(normalizeChatMath(markdown)).toBe(expected);
+  });
+
+  it("keeps unpaired dollar amounts literal", () => {
     expect(normalizeChatMath("Prices are $5 and $3 today.")).toBe(
       "Prices are \\$5 and \\$3 today.",
     );
@@ -39,7 +48,7 @@ describe("normalizeChatMath", () => {
     );
   });
 
-  it("does not pair common price contexts into math", () => {
+  it("escapes dollar signs that cannot form valid pairs", () => {
     expect(normalizeChatMath("$5-$10, ($5 off), $5%, and $5: each")).toBe(
       "\\$5-\\$10, (\\$5 off), \\$5%, and \\$5: each",
     );
