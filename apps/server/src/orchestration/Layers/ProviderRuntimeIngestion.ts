@@ -977,6 +977,12 @@ const make = Effect.gen(function* () {
     lookup: () => Effect.succeed(""),
   });
 
+  const bufferedAssistantStartedAtByMessageId = yield* Cache.make<MessageId, string>({
+    capacity: BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_CACHE_CAPACITY,
+    timeToLive: BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_TTL,
+    lookup: () => Effect.succeed(""),
+  });
+
   const assistantSegmentStateByTurnKey = yield* Cache.make<string, AssistantSegmentState>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
     timeToLive: TURN_MESSAGE_IDS_BY_TURN_TTL,
@@ -1183,6 +1189,11 @@ const make = Effect.gen(function* () {
   const clearBufferedAssistantText = (messageId: MessageId) =>
     Cache.invalidate(bufferedAssistantTextByMessageId, messageId);
 
+  const bufferedAssistantStartedAt = (messageId: MessageId) =>
+    Effect.map(Cache.getOption(bufferedAssistantStartedAtByMessageId, messageId), (startedAt) =>
+      Option.isSome(startedAt) ? { startedAt: startedAt.value } : {},
+    );
+
   const appendBufferedProposedPlan = (planId: string, delta: string, createdAt: string) =>
     Cache.getOption(bufferedProposedPlanById, planId).pipe(
       Effect.flatMap((existingEntry) => {
@@ -1208,7 +1219,9 @@ const make = Effect.gen(function* () {
     Cache.invalidate(bufferedProposedPlanById, planId);
 
   const clearAssistantMessageState = (messageId: MessageId) =>
-    clearBufferedAssistantText(messageId);
+    clearBufferedAssistantText(messageId).pipe(
+      Effect.andThen(Cache.invalidate(bufferedAssistantStartedAtByMessageId, messageId)),
+    );
 
   const flushBufferedAssistantMessage = (input: {
     event: ProviderRuntimeEvent;
@@ -1232,6 +1245,7 @@ const make = Effect.gen(function* () {
         delta: bufferedText,
         ...(input.turnId ? { turnId: input.turnId } : {}),
         createdAt: input.createdAt,
+        ...(yield* bufferedAssistantStartedAt(input.messageId)),
       });
       return true;
     });
@@ -1299,6 +1313,7 @@ const make = Effect.gen(function* () {
           delta: text,
           ...(input.turnId ? { turnId: input.turnId } : {}),
           createdAt: input.createdAt,
+          ...(yield* bufferedAssistantStartedAt(input.messageId)),
         });
       }
 
@@ -1769,6 +1784,9 @@ const make = Effect.gen(function* () {
           (settings) => (settings.enableLegacyTokenStreaming ? "streaming" : "buffered"),
         );
         if (assistantDeliveryMode === "buffered") {
+          if (!(yield* Cache.has(bufferedAssistantStartedAtByMessageId, assistantMessageId))) {
+            yield* Cache.set(bufferedAssistantStartedAtByMessageId, assistantMessageId, now);
+          }
           const spillChunk = yield* appendBufferedAssistantText(assistantMessageId, assistantDelta);
           if (spillChunk.length > 0) {
             yield* orchestrationEngine.dispatch({
@@ -1779,6 +1797,7 @@ const make = Effect.gen(function* () {
               delta: spillChunk,
               ...(turnId ? { turnId } : {}),
               createdAt: now,
+              ...(yield* bufferedAssistantStartedAt(assistantMessageId)),
             });
           }
         } else {
