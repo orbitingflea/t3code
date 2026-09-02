@@ -94,6 +94,8 @@ export interface WorkLogEntry {
   id: string;
   createdAt: string;
   turnId: TurnId | null;
+  /** Latest lifecycle event, so completion once the tool settles; `createdAt` is when the agent issued the call. */
+  completedAt?: string;
   label: string;
   detail?: string;
   viewedImagePath?: string;
@@ -438,7 +440,9 @@ function deriveWorkLogEntries(
     if (isAgentInternalActivity(activity)) continue;
     const entry = toDerivedWorkLogEntry(activity);
     const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
-    entries.push(startedAt ? { ...entry, createdAt: startedAt } : entry);
+    entries.push(
+      startedAt ? { ...entry, createdAt: startedAt, completedAt: entry.createdAt } : entry,
+    );
   }
   return collapseDerivedWorkLogEntries(entries);
 }
@@ -1483,7 +1487,11 @@ function deriveThreadFeedTurnFolds(
       : null;
     const latestTurnMatches = latestTurn?.turnId === turnId;
     const lastEntryEnd =
-      lastEntry.type === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
+      lastEntry.type === "message"
+        ? lastEntry.message.updatedAt
+        : lastEntry.type === "activity-group"
+          ? (lastEntry.activities.at(-1)?.workEntry.completedAt ?? lastEntry.createdAt)
+          : lastEntry.createdAt;
     const elapsedMs =
       latestTurnMatches && latestTurn.startedAt && latestTurn.completedAt
         ? computeElapsedMs(latestTurn.startedAt, latestTurn.completedAt)

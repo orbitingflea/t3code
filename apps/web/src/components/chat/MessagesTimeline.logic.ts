@@ -679,7 +679,11 @@ function deriveTurnFolds(input: {
     // the user message that started it to its last entry.
     const turn = segment === latestTurnSegment ? input.latestTurn : null;
     const lastEntryEnd =
-      lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
+      lastEntry.kind === "message"
+        ? lastEntry.message.updatedAt
+        : lastEntry.kind === "work"
+          ? (lastEntry.entry.completedAt ?? lastEntry.createdAt)
+          : lastEntry.createdAt;
     const segmentEnd =
       maxIsoTimestamp(
         maxIsoTimestamp(lastEntryEnd, terminalEntry?.message.updatedAt ?? null),

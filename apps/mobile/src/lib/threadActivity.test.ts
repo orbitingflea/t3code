@@ -1063,7 +1063,13 @@ describe("buildThreadFeed", () => {
     expect(buildThreadFeed(thread)).toMatchObject([
       {
         type: "activity-group",
-        activities: [{ id: "tool-completed", createdAt: "2026-04-01T00:00:01.000Z" }],
+        activities: [
+          {
+            id: "tool-completed",
+            createdAt: "2026-04-01T00:00:01.000Z",
+            workEntry: { completedAt: "2026-04-01T00:00:03.000Z" },
+          },
+        ],
       },
     ]);
   });
