@@ -425,6 +425,9 @@ function deriveWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const ordered = Arr.sort(activities, activityOrder);
   const entries: DerivedWorkLogEntry[] = [];
+  // A tool row sits where the agent issued the call, not where the call
+  // finished, so a tool still running when a steer lands sorts before it.
+  const startedAtByToolCallId = new Map<string, string>();
   for (const activity of foldUserInputActivities(ordered)) {
     // The setup card owns its snapshot, including failed and cancelled outcomes.
     if (
@@ -432,7 +435,14 @@ function deriveWorkLogEntries(
       (activity.tone !== "error" || activity.kind === "worktree-setup")
     )
       continue;
-    if (activity.kind === "tool.started") continue;
+    if (activity.kind === "tool.started") {
+      const payload = asRecord(activity.payload);
+      const toolCallId =
+        asTrimmedString(payload?.toolCallId) ??
+        asTrimmedString(asRecord(payload?.data)?.toolCallId);
+      if (toolCallId) startedAtByToolCallId.set(toolCallId, activity.createdAt);
+      continue;
+    }
     // Like web: an agent's task.started row anchors its batch. It has a fixed
     // id and timestamp, unlike progress ticks, whose stable per-task id is
     // rewritten with a new createdAt on every update (and would otherwise
@@ -445,7 +455,9 @@ function deriveWorkLogEntries(
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     if (isAgentInternalActivity(activity)) continue;
-    entries.push(toDerivedWorkLogEntry(activity));
+    const entry = toDerivedWorkLogEntry(activity);
+    const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
+    entries.push(startedAt ? { ...entry, createdAt: startedAt } : entry);
   }
   return collapseDerivedWorkLogEntries(entries);
 }
