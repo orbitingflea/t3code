@@ -71,6 +71,8 @@ export interface WorkLogEntry {
   turnId?: TurnId | null;
   /** Stable provider identity across in-progress and completed lifecycle updates. */
   toolCallId?: string;
+  /** Latest lifecycle event, so completion once the tool settles; `createdAt` is when the agent issued the call. */
+  completedAt?: string;
   label: string;
   detail?: string;
   command?: string;
@@ -834,7 +836,9 @@ export function deriveWorkLogEntries(
     if (isAgentInternalActivity(activity)) continue;
     const entry = toDerivedWorkLogEntry(activity);
     const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
-    entries.push(startedAt ? { ...entry, createdAt: startedAt } : entry);
+    entries.push(
+      startedAt ? { ...entry, createdAt: startedAt, completedAt: entry.createdAt } : entry,
+    );
   }
   return collapseDerivedWorkLogEntries(entries);
 }

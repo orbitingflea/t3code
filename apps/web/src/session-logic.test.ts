@@ -893,8 +893,8 @@ describe("deriveWorkLogEntries", () => {
     ];
 
     const entries = deriveWorkLogEntries(activities);
-    expect(entries.map((entry) => [entry.id, entry.createdAt])).toEqual([
-      ["tool-complete", "2026-02-23T00:00:02.000Z"],
+    expect(entries.map((entry) => [entry.id, entry.createdAt, entry.completedAt])).toEqual([
+      ["tool-complete", "2026-02-23T00:00:02.000Z", "2026-02-23T00:00:03.000Z"],
     ]);
   });
 
