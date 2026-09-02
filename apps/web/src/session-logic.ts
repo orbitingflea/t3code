@@ -1807,31 +1807,9 @@ export function deriveTimelineEntries(
     createdAt: entry.createdAt,
     entry,
   }));
-  const entries = [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
+  return [...messageRows, ...proposedPlanRows, ...workRows].toSorted((a, b) =>
     a.createdAt.localeCompare(b.createdAt),
   );
-  // A user message the agent only read when its turn started (a queued steer)
-  // is shown right before that turn's first record, not at its send time.
-  const firstIndexByTurnId = new Map<TurnId, number>();
-  entries.forEach((entry, index) => {
-    const turnId =
-      entry.kind === "work"
-        ? entry.entry.turnId
-        : entry.kind === "proposed-plan"
-          ? entry.proposedPlan.turnId
-          : entry.message.role === "user"
-            ? null
-            : entry.message.turnId;
-    if (turnId != null && !firstIndexByTurnId.has(turnId)) firstIndexByTurnId.set(turnId, index);
-  });
-  const position = (entry: TimelineEntry, index: number) =>
-    entry.kind === "message" && entry.message.role === "user" && entry.message.turnId != null
-      ? Math.max(index, (firstIndexByTurnId.get(entry.message.turnId) ?? 0) - 0.5)
-      : index;
-  return entries
-    .map((entry, index) => ({ entry, position: position(entry, index) }))
-    .toSorted((a, b) => a.position - b.position)
-    .map(({ entry }) => entry);
 }
 
 export function inferCheckpointTurnCountByTurnId(

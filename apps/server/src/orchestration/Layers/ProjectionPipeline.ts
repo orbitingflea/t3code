@@ -1386,20 +1386,6 @@ const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjecti
             });
           }
 
-          // Bind the claimed user message to this turn so clients can show it
-          // where the agent actually read it (a queued steer surfaces later).
-          const claimedMessageId =
-            (Option.isSome(existingTurn) ? existingTurn.value.pendingMessageId : null) ??
-            (Option.isSome(pendingTurnStart) ? pendingTurnStart.value.messageId : null);
-          const claimedMessage =
-            claimedMessageId === null
-              ? Option.none()
-              : yield* projectionThreadMessageRepository.getByMessageId({
-                  messageId: claimedMessageId,
-                });
-          if (Option.isSome(claimedMessage) && claimedMessage.value.turnId !== turnId) {
-            yield* projectionThreadMessageRepository.upsert({ ...claimedMessage.value, turnId });
-          }
           yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
             threadId: event.payload.threadId,
           });

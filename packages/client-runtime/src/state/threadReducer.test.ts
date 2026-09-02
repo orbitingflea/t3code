@@ -570,64 +570,6 @@ describe("applyThreadDetailEvent", () => {
         expect(result.thread.latestTurn?.state).toBe("running");
       }
     });
-
-    it("binds the latest unbound user message to a newly started turn", () => {
-      const threadWithUnboundMessage: OrchestrationThread = {
-        ...baseThread,
-        messages: [
-          {
-            id: MessageId.make("msg-1"),
-            role: "user",
-            text: "queued while idle",
-            turnId: null,
-            streaming: false,
-            createdAt: "2026-04-01T07:00:00.000Z",
-            updatedAt: "2026-04-01T07:00:00.000Z",
-          },
-        ],
-      };
-
-      const sessionSetEvent = (occurredAt: string, sequence: number) => ({
-        ...baseEventFields,
-        sequence,
-        occurredAt,
-        aggregateKind: "thread" as const,
-        aggregateId: ThreadId.make("thread-1"),
-        type: "thread.session-set" as const,
-        payload: {
-          threadId: ThreadId.make("thread-1"),
-          session: {
-            threadId: ThreadId.make("thread-1"),
-            status: "running" as const,
-            providerName: "codex" as const,
-            runtimeMode: "full-access" as const,
-            activeTurnId: TurnId.make("turn-1"),
-            lastError: null,
-            updatedAt: occurredAt,
-          },
-        },
-      });
-
-      const firstResult = applyThreadDetailEvent(
-        threadWithUnboundMessage,
-        sessionSetEvent("2026-04-01T08:00:00.000Z", 9),
-      );
-
-      expect(firstResult.kind).toBe("updated");
-      if (firstResult.kind !== "updated") return;
-      expect(firstResult.thread.messages[0]?.turnId).toBe("turn-1");
-
-      // A second session-set carrying the same activeTurnId is not a new
-      // turn starting, so no (already-bound) message should be touched.
-      const secondResult = applyThreadDetailEvent(
-        firstResult.thread,
-        sessionSetEvent("2026-04-01T08:00:05.000Z", 10),
-      );
-
-      expect(secondResult.kind).toBe("updated");
-      if (secondResult.kind !== "updated") return;
-      expect(secondResult.thread.messages).toEqual(firstResult.thread.messages);
-    });
   });
 
   describe("thread.session-stop-requested", () => {
