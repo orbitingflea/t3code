@@ -1486,6 +1486,104 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
   });
 
+  it("folds turn-less background rows into the latest response segment", () => {
+    // Background subagent activity carries no turn id at all.
+    const turnlessEntry = (id: string, createdAt: string) => ({
+      id: `${id}-entry`,
+      kind: "work" as const,
+      createdAt,
+      entry: { id, createdAt, label: "Ran command", tone: "tool" as const },
+    });
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+        turnlessEntry("bg-1", "2026-01-01T00:00:10Z"),
+        assistantEntry("assistant-one", "2026-01-01T00:00:15Z", "turn-1"),
+        userEntry("user-2", "2026-01-01T00:00:20Z"),
+        // Residue of the first response landing before the next turn starts.
+        turnlessEntry("bg-2", "2026-01-01T00:00:21Z"),
+        workEntry("work-2", "2026-01-01T00:00:25Z", "turn-2"),
+        turnlessEntry("bg-3", "2026-01-01T00:00:26Z"),
+        assistantEntry("assistant-two", "2026-01-01T00:00:40Z", "turn-2"),
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:24Z",
+        completedAt: "2026-01-01T00:00:40Z",
+      },
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:turn-1",
+      "assistant-one-entry",
+      "user-2-entry",
+      "turn-fold:turn-2",
+      "assistant-two-entry",
+    ]);
+  });
+
+  const spawnEntry = (
+    id: string,
+    createdAt: string,
+    turnId: string,
+    agentTaskIds: ReadonlyArray<string>,
+    workflowId: string | null = null,
+  ) => {
+    const base = workEntry(id, createdAt, turnId);
+    return { ...base, entry: { ...base.entry, agentSpawn: { workflowId, agentTaskIds } } };
+  };
+
+  it("merges direct-spawn CTA rows across a synthetic continuation into the segment's first one", () => {
+    const timelineEntries = [
+      userEntry("user-1", "2026-01-01T00:00:00Z"),
+      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+      spawnEntry("spawn-1", "2026-01-01T00:00:06Z", "turn-1", ["agent-a"]),
+      workEntry("work-2", "2026-01-01T00:00:15Z", "turn-2"),
+      spawnEntry("spawn-2", "2026-01-01T00:00:16Z", "turn-2", ["agent-b"]),
+      // A workflow CTA keeps its own row: the workflow outlives the turn.
+      spawnEntry("spawn-wf", "2026-01-01T00:00:17Z", "turn-2", ["wf-1", "agent-c"], "wf-1"),
+      assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-2"),
+    ];
+    const latestTurn = {
+      turnId: "turn-2" as never,
+      state: "completed" as const,
+      startedAt: "2026-01-01T00:00:14Z",
+      completedAt: "2026-01-01T00:00:30Z",
+    };
+
+    const rows = deriveMessagesTimelineRows({ ...baseFoldInput, timelineEntries, latestTurn });
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:turn-1",
+      "spawn-1-entry",
+      "spawn-wf-entry",
+      "assistant-final-entry",
+    ]);
+    const mergedRow = rows.find((row) => row.id === "spawn-1-entry");
+    expect(mergedRow?.kind === "work" && mergedRow.groupedEntries[0]?.agentSpawn).toEqual({
+      workflowId: null,
+      agentTaskIds: ["agent-a", "agent-b"],
+    });
+
+    // Expanding the fold shows every CTA as it was recorded.
+    const expandedRows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries,
+      latestTurn,
+      expandedTurnIds: new Set(["turn-1" as never]),
+    });
+    expect(expandedRows.map((row) => row.id)).toContain("spawn-2-entry");
+    const originalRow = expandedRows.find((row) => row.id === "spawn-1-entry");
+    expect(originalRow?.kind === "work" && originalRow.groupedEntries[0]?.agentSpawn).toEqual({
+      workflowId: null,
+      agentTaskIds: ["agent-a"],
+    });
+  });
+
   it("uses the stopped label when the interrupted turn is a grouped synthetic continuation", () => {
     const rows = deriveMessagesTimelineRows({
       ...baseFoldInput,
