@@ -401,6 +401,8 @@ function deriveTurnFolds(input: {
   unsettledTurnId: TurnId | null;
 }): ReadonlyMap<string, TurnFold> {
   interface TurnGroup {
+    /** The turn id that opened the group; keeps the fold's identity stable. */
+    turnId: TurnId;
     entries: Array<TimelineEntry>;
     terminalEntry: Extract<TimelineEntry, { kind: "message" }> | null;
     hasStreamingMessage: boolean;
@@ -415,6 +417,7 @@ function deriveTurnFolds(input: {
   const groupsByTurnId = new Map<TurnId, TurnGroup>();
 
   let pendingUserBoundary: string | null = null;
+  let lastGroup: TurnGroup | null = null;
   for (const entry of input.timelineEntries) {
     if (entry.kind === "message" && entry.message.role === "user") {
       pendingUserBoundary = entry.message.createdAt;
@@ -431,17 +434,19 @@ function deriveTurnFolds(input: {
     }
     let group = groupsByTurnId.get(turnId);
     if (!group) {
-      group = {
+      // A fresh turn id with no user message since the last group opened is a
+      // synthetic mid-response continuation (subagent wake-up, stop-hook
+      // retry): it joins that group instead of starting a fold of its own.
+      group = (pendingUserBoundary === null ? lastGroup : null) ?? {
+        turnId,
         entries: [],
         terminalEntry: null,
         hasStreamingMessage: false,
-        // Each user boundary starts at most one turn; a second turn after the
-        // same user message (e.g. a steer-superseded continuation) falls back
-        // to its own first entry.
         startBoundary: pendingUserBoundary,
       };
       pendingUserBoundary = null;
       groupsByTurnId.set(turnId, group);
+      lastGroup = group;
     }
     group.entries.push(entry);
     if (entry.kind === "message") {
@@ -455,8 +460,9 @@ function deriveTurnFolds(input: {
   }
 
   const foldsByAnchorEntryId = new Map<string, TurnFold>();
-  for (const [turnId, group] of groupsByTurnId) {
-    if (turnId === input.unsettledTurnId) {
+  for (const group of new Set(groupsByTurnId.values())) {
+    const { turnId } = group;
+    if (input.unsettledTurnId !== null && groupsByTurnId.get(input.unsettledTurnId) === group) {
       continue;
     }
     if (group.hasStreamingMessage) {
@@ -487,7 +493,8 @@ function deriveTurnFolds(input: {
     }
 
     const isLatestInterruptedTurn =
-      input.latestTurn?.turnId === turnId && input.latestTurn.state === "interrupted";
+      input.latestTurn?.state === "interrupted" &&
+      groupsByTurnId.get(input.latestTurn.turnId) === group;
     // A turn cut short by a steer leaves trailing work entries behind its
     // terminal message — take whichever ended last.
     const lastEntryEnd =
