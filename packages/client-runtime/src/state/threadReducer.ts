@@ -426,12 +426,29 @@ export function applyThreadDetailEvent(
               }
             : thread.latestTurn;
 
+      // A newly started turn claims the latest unbound user message, mirroring
+      // the server projection, so the timeline can place it where it was read.
+      const claimingTurnId =
+        latestTurn !== null && latestTurn.turnId !== thread.latestTurn?.turnId
+          ? latestTurn.turnId
+          : null;
+      const claimedMessage =
+        claimingTurnId === null
+          ? undefined
+          : thread.messages.findLast((entry) => entry.role === "user" && entry.turnId === null);
+      const messages = claimedMessage
+        ? Arr.map(thread.messages, (entry) =>
+            entry === claimedMessage ? { ...entry, turnId: claimingTurnId } : entry,
+          )
+        : thread.messages;
+
       return {
         kind: "updated",
         thread: {
           ...thread,
           session: event.payload.session,
           latestTurn,
+          messages,
           updatedAt: event.occurredAt,
         },
       };
