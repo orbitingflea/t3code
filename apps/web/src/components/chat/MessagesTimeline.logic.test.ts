@@ -2236,6 +2236,201 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.map((row) => row.id)).toContain("live-activity-row");
   });
 
+  // Compact builders for the synthetic-continuation fold scenarios below.
+  const userEntry = (id: string, createdAt: string) => ({
+    id: `${id}-entry`,
+    kind: "message" as const,
+    createdAt,
+    message: {
+      id: id as never,
+      role: "user" as const,
+      text: "go",
+      turnId: null,
+      createdAt,
+      updatedAt: createdAt,
+      streaming: false,
+    },
+  });
+  const workEntry = (id: string, createdAt: string, turnId: string) => ({
+    id: `${id}-entry`,
+    kind: "work" as const,
+    createdAt,
+    entry: { id, createdAt, turnId: turnId as never, label: "Ran command", tone: "tool" as const },
+  });
+  const assistantEntry = (id: string, createdAt: string, turnId: string, streaming = false) => ({
+    id: `${id}-entry`,
+    kind: "message" as const,
+    createdAt,
+    message: {
+      id: id as never,
+      role: "assistant" as const,
+      text: "Done",
+      turnId: turnId as never,
+      createdAt,
+      updatedAt: createdAt,
+      streaming,
+    },
+  });
+  const baseFoldInput = {
+    isWorking: false,
+    activeTurnStartedAt: null,
+    turnDiffSummaryByAssistantMessageId: new Map(),
+    revertTurnCountByUserMessageId: new Map(),
+  };
+
+  it("folds a synthetic mid-response turn continuation into a single fold", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+        // No user message between the turn-1 and turn-2 rows: turn-2 is a
+        // synthetic wake-up continuation of the same response.
+        workEntry("work-2", "2026-01-01T00:00:10Z", "turn-2"),
+        assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-2"),
+      ],
+      // Realistic continuation timing: turn-2 starts mid-response, so its own
+      // turn span (22s) undercounts the response. The fold must not use it.
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:08Z",
+        completedAt: "2026-01-01T00:00:30Z",
+      },
+    });
+
+    // One fold, one label, covering the work from both turn ids, keyed by the
+    // turn id that opened the response.
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:turn-1",
+      "assistant-final-entry",
+    ]);
+    const foldRow = rows.find(
+      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
+        row.kind === "turn-fold",
+    );
+    expect(foldRow?.label).toBe("Worked for 30s");
+  });
+
+  it("does not fold any part of a response while its synthetic continuation is unsettled", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+        workEntry("work-2", "2026-01-01T00:00:10Z", "turn-2"),
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+    });
+
+    // turn-1 belongs to the same response, so it must stay unfolded too.
+    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
+  });
+
+  it("keeps one fold across a same-turn steer and keeps both user messages visible", () => {
+    const timelineEntries = [
+      userEntry("user-1", "2026-01-01T00:00:00Z"),
+      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+      userEntry("user-steer", "2026-01-01T00:00:10Z"),
+      workEntry("work-2", "2026-01-01T00:00:15Z", "turn-1"),
+      assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-1"),
+    ];
+    const runningRows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: null,
+      },
+      isWorking: true,
+      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+    });
+    expect(runningRows.some((row) => row.kind === "turn-fold")).toBe(false);
+
+    const settledRows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries,
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:30Z",
+      },
+    });
+    expect(settledRows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:turn-1",
+      "user-steer-entry",
+      "assistant-final-entry",
+    ]);
+  });
+
+  it("keeps fold row ids unique when an old-turn row straddles the next user message", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+        assistantEntry("assistant-one", "2026-01-01T00:00:10Z", "turn-1"),
+        userEntry("user-2", "2026-01-01T00:00:20Z"),
+        workEntry("work-2", "2026-01-01T00:00:22Z", "turn-2"),
+        // Background turn-1 row landing after the next user message: it must
+        // join turn-1's fold, not spawn a duplicate row id or absorb turn-2.
+        workEntry("work-late", "2026-01-01T00:00:23Z", "turn-1"),
+        // A wake-up continuation after the straddling row still belongs to the
+        // second response, not to the straddler's.
+        workEntry("work-3", "2026-01-01T00:00:25Z", "turn-3"),
+        assistantEntry("assistant-two", "2026-01-01T00:00:40Z", "turn-3"),
+      ],
+      latestTurn: {
+        turnId: "turn-3" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:24Z",
+        completedAt: "2026-01-01T00:00:40Z",
+      },
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:turn-1",
+      "assistant-one-entry",
+      "user-2-entry",
+      "turn-fold:turn-2",
+      "assistant-two-entry",
+    ]);
+  });
+
+  it("uses the stopped label when the interrupted turn is a grouped synthetic continuation", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+        workEntry("work-2", "2026-01-01T00:00:10Z", "turn-2"),
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "interrupted",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:47Z",
+      },
+    });
+
+    expect(rows.filter((row) => row.kind === "turn-fold")).toEqual([
+      expect.objectContaining({ turnId: "turn-1", label: "You stopped after 10s" }),
+    ]);
+  });
+
   it("only shows assistant metadata on the terminal assistant message", () => {
     const rows = deriveMessagesTimelineRows({
       timelineEntries: [
