@@ -236,6 +236,8 @@ export type MessagesTimelineRow =
       message: ChatMessage;
       durationStart: string;
       showAssistantMeta: boolean;
+      /** Draws the fold's separator above this message when a fold leads into it. */
+      showsTurnFoldSeparator: boolean;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
@@ -341,6 +343,8 @@ interface TurnFold {
   createdAt: string;
   hiddenEntryIds: ReadonlySet<string>;
   label: string;
+  /** The terminal assistant message this fold leads into, when it has one. */
+  terminalEntryId: string | null;
   /** The group's direct-spawn CTA, carrying every direct spawn the fold absorbed. */
   spawnRow: { entryId: string; entry: WorkLogEntry } | null;
 }
@@ -395,6 +399,8 @@ function workEntryIsActiveTurnActivity(entry: WorkLogEntry): boolean {
  * Settled turns keep only their terminal assistant message visible.
  * Everything before it folds behind a "Worked for ..." row anchored at the
  * first hidden entry, so the duration leads directly into the final response.
+ * A user message that lands mid-turn (a steer) splits the turn into segments
+ * that fold separately, so each fold stays above the work it covers.
  */
 function deriveTurnFolds(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
@@ -405,6 +411,8 @@ function deriveTurnFolds(input: {
   interface TurnGroup {
     /** The turn id that opened the group; keeps the fold's identity stable. */
     turnId: TurnId;
+    /** Opened by a steer, so it cannot read the turn's own start time. */
+    steered: boolean;
     entries: Array<TimelineEntry>;
     terminalEntry: Extract<TimelineEntry, { kind: "message" }> | null;
     hasStreamingMessage: boolean;
@@ -416,6 +424,8 @@ function deriveTurnFolds(input: {
      */
     startBoundary: string | null;
   }
+  // Every segment in timeline order, plus the one each turn id writes into now.
+  const groups: Array<TurnGroup> = [];
   const groupsByTurnId = new Map<TurnId, TurnGroup>();
 
   let pendingUserBoundary: string | null = null;
@@ -435,6 +445,13 @@ function deriveTurnFolds(input: {
     // group, even past the next user message, since no new response has
     // started until a turn id shows up.
     let group: TurnGroup | null = turnId ? (groupsByTurnId.get(turnId) ?? null) : lastGroup;
+    // The turn read a steer and kept working: close the segment it interrupted
+    // so that fold stays above the work it covers, and open a new one below the
+    // steer. Trade-off: a group that already holds its response is done talking,
+    // so a late row is residue and rides it instead of splitting.
+    const steeredGroup: TurnGroup | null =
+      group?.terminalEntry === null && turnId && pendingUserBoundary !== null ? group : null;
+    if (steeredGroup) group = null;
     if (!group) {
       if (!turnId) {
         continue;
@@ -442,13 +459,18 @@ function deriveTurnFolds(input: {
       // A fresh turn id with no user message since the last group opened is a
       // synthetic mid-response continuation (subagent wake-up, stop-hook
       // retry): it joins that group instead of starting a fold of its own.
-      group = (pendingUserBoundary === null ? lastGroup : null) ?? {
-        turnId,
+      const joinedGroup: TurnGroup | null = pendingUserBoundary === null ? lastGroup : null;
+      group = joinedGroup ?? {
+        // A split segment keeps the interrupted group's turn id, so both of
+        // the turn's folds still expand together.
+        turnId: steeredGroup?.turnId ?? turnId,
+        steered: steeredGroup !== null,
         entries: [],
         terminalEntry: null,
         hasStreamingMessage: false,
         startBoundary: pendingUserBoundary,
       };
+      if (!joinedGroup) groups.push(group);
       pendingUserBoundary = null;
       groupsByTurnId.set(turnId, group);
       lastGroup = group;
@@ -465,7 +487,7 @@ function deriveTurnFolds(input: {
   }
 
   const foldsByAnchorEntryId = new Map<string, TurnFold>();
-  for (const group of new Set(groupsByTurnId.values())) {
+  for (const group of groups) {
     const { turnId } = group;
     if (input.unsettledTurnId !== null && groupsByTurnId.get(input.unsettledTurnId) === group) {
       continue;
@@ -517,20 +539,20 @@ function deriveTurnFolds(input: {
     const isLatestInterruptedTurn =
       input.latestTurn?.state === "interrupted" &&
       groupsByTurnId.get(input.latestTurn.turnId) === group;
+    // The turn's own clock, when this group opened under the latest turn.
+    const ownTurn = input.latestTurn?.turnId === turnId ? input.latestTurn : null;
     // A turn cut short by a steer leaves trailing work entries behind its
     // terminal message — take whichever ended last.
     const lastEntryEnd =
       lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
-    const elapsedMs =
-      input.latestTurn?.turnId === turnId &&
-      input.latestTurn.startedAt &&
-      input.latestTurn.completedAt
-        ? computeElapsedMs(input.latestTurn.startedAt, input.latestTurn.completedAt)
-        : computeElapsedMs(
-            group.startBoundary ?? firstEntry.createdAt,
-            maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
-              lastEntryEnd,
-          );
+    // Only the segment that opened the turn may read its start, and only the
+    // one that closed it may read its completion; a steer bounds the rest.
+    const elapsedMs = computeElapsedMs(
+      (group.steered ? null : ownTurn?.startedAt) ?? group.startBoundary ?? firstEntry.createdAt,
+      (groupsByTurnId.get(turnId) === group ? ownTurn?.completedAt : null) ??
+        maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
+        lastEntryEnd,
+    );
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
     const label = isLatestInterruptedTurn
       ? duration
@@ -546,6 +568,7 @@ function deriveTurnFolds(input: {
       createdAt: firstHiddenEntry.createdAt,
       hiddenEntryIds,
       label,
+      terminalEntryId: group.terminalEntry?.id ?? null,
       spawnRow,
     });
   }
@@ -580,7 +603,13 @@ export function deriveMessagesTimelineRows(input: {
   });
   const collapsedEntryIds = new Set<string>();
   const mergedSpawnEntries = new Map<string, WorkLogEntry>();
+  // A fold's separator rides the response it leads into, so it lands below any
+  // spawn row the fold kept visible.
+  const foldTerminalEntryIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {
+    if (fold.terminalEntryId !== null) {
+      foldTerminalEntryIds.add(fold.terminalEntryId);
+    }
     if (!input.expandedTurnIds?.has(fold.turnId)) {
       for (const entryId of fold.hiddenEntryIds) {
         collapsedEntryIds.add(entryId);
@@ -704,7 +733,8 @@ export function deriveMessagesTimelineRows(input: {
     if (anchoredTurnFold) {
       nextRows.push({
         kind: "turn-fold",
-        id: `turn-fold:${anchoredTurnFold.turnId}`,
+        // Keyed by anchor, not by turn: a steered turn folds once per segment.
+        id: `turn-fold:${anchoredTurnFold.anchorEntryId}`,
         createdAt: anchoredTurnFold.createdAt,
         turnId: anchoredTurnFold.turnId,
         label: anchoredTurnFold.label,
@@ -858,6 +888,7 @@ export function deriveMessagesTimelineRows(input: {
       message: timelineEntry.message,
       durationStart,
       showAssistantMeta,
+      showsTurnFoldSeparator: foldTerminalEntryIds.has(timelineEntry.id),
       showAssistantCopyButton: showAssistantMeta,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantTurnStillInProgress,
       assistantTurnDiffSummary:
@@ -962,6 +993,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.message === bm.message &&
         a.durationStart === bm.durationStart &&
         a.showAssistantMeta === bm.showAssistantMeta &&
+        a.showsTurnFoldSeparator === bm.showsTurnFoldSeparator &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&

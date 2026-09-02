@@ -546,7 +546,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(foldRow?.label).toBe("Worked for 22s");
     expect(collapsedRows.map((row) => row.id)).toEqual([
       "user-entry",
-      "turn-fold:turn-1",
+      "turn-fold:assistant-first-entry",
       "assistant-final-entry",
     ]);
 
@@ -561,7 +561,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(expandedRows.map((row) => row.id)).toEqual([
       "user-entry",
-      "turn-fold:turn-1",
+      "turn-fold:assistant-first-entry",
       "assistant-first-entry",
       "work-toggle:work-entry-1",
       "assistant-final-entry",
@@ -625,7 +625,10 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows.map((row) => row.id)).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
+    expect(rows.map((row) => row.id)).toEqual([
+      "turn-fold:assistant-first-entry",
+      "assistant-final-entry",
+    ]);
   });
 
   it("derives a sane duration for a steer-superseded turn with one instant commentary message", () => {
@@ -822,7 +825,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
 
     expect(rows.map((row) => row.id)).toEqual([
-      "turn-fold:turn-1",
+      "turn-fold:work-entry-1",
       "assistant-final-entry",
       "user-followup-entry",
       "working-indicator-row",
@@ -1379,7 +1382,7 @@ describe("deriveMessagesTimelineRows", () => {
     // turn id that opened the response.
     expect(rows.map((row) => row.id)).toEqual([
       "user-1-entry",
-      "turn-fold:turn-1",
+      "turn-fold:work-1-entry",
       "assistant-final-entry",
     ]);
     const foldRow = rows.find(
@@ -1411,7 +1414,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
   });
 
-  it("keeps one fold across a same-turn steer and keeps both user messages visible", () => {
+  it("folds a same-turn steer as one segment per side of the steer", () => {
     const timelineEntries = [
       userEntry("user-1", "2026-01-01T00:00:00Z"),
       workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
@@ -1425,13 +1428,19 @@ describe("deriveMessagesTimelineRows", () => {
       latestTurn: {
         turnId: "turn-1" as never,
         state: "running",
-        startedAt: "2026-01-01T00:00:00Z",
+        // The turn started after its user message waited in the queue.
+        startedAt: "2026-01-01T00:00:02Z",
         completedAt: null,
       },
       isWorking: true,
-      activeTurnStartedAt: "2026-01-01T00:00:00Z",
+      activeTurnStartedAt: "2026-01-01T00:00:02Z",
     });
-    expect(runningRows.some((row) => row.kind === "turn-fold")).toBe(false);
+    // Work the steer already interrupted is finished, so it folds even though
+    // the turn is still running; the live segment stays open.
+    expect(runningRows.filter((row) => row.kind === "turn-fold")).toEqual([
+      expect.objectContaining({ id: "turn-fold:work-1-entry", label: "Worked for 3.0s" }),
+    ]);
+    expect(runningRows.map((row) => row.id)).toContain("work-toggle:work-2-entry");
 
     const settledRows = deriveMessagesTimelineRows({
       ...baseFoldInput,
@@ -1439,15 +1448,22 @@ describe("deriveMessagesTimelineRows", () => {
       latestTurn: {
         turnId: "turn-1" as never,
         state: "completed",
-        startedAt: "2026-01-01T00:00:00Z",
+        startedAt: "2026-01-01T00:00:02Z",
         completedAt: "2026-01-01T00:00:30Z",
       },
     });
     expect(settledRows.map((row) => row.id)).toEqual([
       "user-1-entry",
-      "turn-fold:turn-1",
+      "turn-fold:work-1-entry",
       "user-steer-entry",
+      "turn-fold:work-2-entry",
       "assistant-final-entry",
+    ]);
+    // Pre-steer segment runs from the turn's own start to the steer; the
+    // post-steer segment runs from the steer to the turn's completion.
+    expect(settledRows.filter((row) => row.kind === "turn-fold").map((row) => row.label)).toEqual([
+      "Worked for 3.0s",
+      "Worked for 20s",
     ]);
   });
 
@@ -1478,11 +1494,47 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.map((row) => row.id)).toEqual([
       "user-1-entry",
-      "turn-fold:turn-1",
+      "turn-fold:work-1-entry",
       "assistant-one-entry",
       "user-2-entry",
-      "turn-fold:turn-2",
+      "turn-fold:work-2-entry",
       "assistant-two-entry",
+    ]);
+  });
+
+  it("keeps a straggling old-turn row from stealing the next response's start", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+        assistantEntry("assistant-one", "2026-01-01T00:00:10Z", "turn-1"),
+        userEntry("user-2", "2026-01-01T00:00:20Z"),
+        // The straggler lands before turn-2 opens: turn-1 already answered, so
+        // the row is residue and the second response still starts at user-2.
+        workEntry("work-late", "2026-01-01T00:00:21Z", "turn-1"),
+        workEntry("work-2", "2026-01-01T00:00:22Z", "turn-2"),
+        assistantEntry("assistant-two", "2026-01-01T00:00:40Z", "turn-2"),
+      ],
+      latestTurn: {
+        turnId: "turn-2" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:21Z",
+        completedAt: "2026-01-01T00:00:40Z",
+      },
+    });
+
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:work-1-entry",
+      "assistant-one-entry",
+      "user-2-entry",
+      "turn-fold:work-2-entry",
+      "assistant-two-entry",
+    ]);
+    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.turnId)).toEqual([
+      "turn-1",
+      "turn-2",
     ]);
   });
 
@@ -1518,10 +1570,10 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(rows.map((row) => row.id)).toEqual([
       "user-1-entry",
-      "turn-fold:turn-1",
+      "turn-fold:work-1-entry",
       "assistant-one-entry",
       "user-2-entry",
-      "turn-fold:turn-2",
+      "turn-fold:work-2-entry",
       "assistant-two-entry",
     ]);
   });
@@ -1558,7 +1610,7 @@ describe("deriveMessagesTimelineRows", () => {
     const rows = deriveMessagesTimelineRows({ ...baseFoldInput, timelineEntries, latestTurn });
     expect(rows.map((row) => row.id)).toEqual([
       "user-1-entry",
-      "turn-fold:turn-1",
+      "turn-fold:work-1-entry",
       "spawn-1-entry",
       "spawn-wf-entry",
       "assistant-final-entry",
@@ -1582,6 +1634,45 @@ describe("deriveMessagesTimelineRows", () => {
       workflowId: null,
       agentTaskIds: ["agent-a"],
     });
+  });
+
+  it("keeps the response and its spawn row in the post-steer segment only", () => {
+    const rows = deriveMessagesTimelineRows({
+      ...baseFoldInput,
+      timelineEntries: [
+        userEntry("user-1", "2026-01-01T00:00:00Z"),
+        assistantEntry("assistant-plan", "2026-01-01T00:00:04Z", "turn-1"),
+        workEntry("work-1", "2026-01-01T00:00:06Z", "turn-1"),
+        userEntry("user-steer", "2026-01-01T00:00:12Z"),
+        workEntry("work-2", "2026-01-01T00:00:18Z", "turn-1"),
+        spawnEntry("spawn-1", "2026-01-01T00:00:20Z", "turn-1", ["agent-a"]),
+        assistantEntry("assistant-final", "2026-01-01T00:00:40Z", "turn-1"),
+      ],
+      latestTurn: {
+        turnId: "turn-1" as never,
+        state: "completed",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:45Z",
+      },
+    });
+
+    // The pre-steer segment hides its commentary too; only the segment that
+    // ends the turn keeps the response, its spawn row and the separator.
+    expect(rows.map((row) => row.id)).toEqual([
+      "user-1-entry",
+      "turn-fold:assistant-plan-entry",
+      "user-steer-entry",
+      "turn-fold:work-2-entry",
+      "spawn-1-entry",
+      "assistant-final-entry",
+    ]);
+    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.label)).toEqual([
+      "Worked for 6.0s",
+      "Worked for 33s",
+    ]);
+    expect(
+      rows.flatMap((row) => (row.kind === "message" && row.showsTurnFoldSeparator ? [row.id] : [])),
+    ).toEqual(["assistant-final-entry"]);
   });
 
   it("uses the stopped label when the interrupted turn is a grouped synthetic continuation", () => {
