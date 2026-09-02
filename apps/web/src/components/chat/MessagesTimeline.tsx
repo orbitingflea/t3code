@@ -209,7 +209,7 @@ interface TimelineRowSharedState {
   onFileOpen: (attachment: ChatFileAttachment) => void;
   onFileDownload: (attachment: ChatFileAttachment) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  onToggleTurnFold: (turnId: TurnId, anchorKey: string) => void;
+  onToggleTurnFold: (foldKey: string, anchorKey: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
   workGroupViewState: WorkGroupViewState;
@@ -397,13 +397,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   topFadeEnabled = false,
   loadEarlier = null,
 }: MessagesTimelineProps) {
-  const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(new Set());
+  const [expandedFoldKeys, setExpandedFoldKeys] = useState<ReadonlySet<string>>(new Set());
   const citationThreadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
-  const expandCitedTurn = useCallback((turnId: TurnId) => {
-    setExpandedTurnIds((current) =>
-      current.has(turnId) ? current : new Set([...current, turnId]),
-    );
-  }, []);
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(new Set());
   // Scroll/disclosure state outlives virtualized rows, but never the current thread.
   const workGroupViewState = useMemo<WorkGroupViewState>(
@@ -468,14 +463,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const onToggleTurnFold = useCallback(
-    (turnId: TurnId, anchorKey: string) => {
+    (foldKey: string, anchorKey: string) => {
       suspendEndScrollMaintenanceForDisclosure(anchorKey);
-      setExpandedTurnIds((existing) => {
+      setExpandedFoldKeys((existing) => {
         const next = new Set(existing);
-        if (next.has(turnId)) {
-          next.delete(turnId);
+        if (next.has(foldKey)) {
+          next.delete(foldKey);
         } else {
-          next.add(turnId);
+          next.add(foldKey);
         }
         return next;
       });
@@ -509,7 +504,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     if (latestTurn.turnId === previous.turnId) {
       if (previous.state === "running" && latestTurn.state === "interrupted") {
-        setExpandedTurnIds((existing) => {
+        setExpandedFoldKeys((existing) => {
           const next = new Set(existing);
           next.add(latestTurn.turnId);
           return next;
@@ -517,7 +512,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
       return;
     }
-    setExpandedTurnIds((existing) => {
+    setExpandedFoldKeys((existing) => {
       if (!existing.has(previous.turnId)) {
         return existing;
       }
@@ -539,7 +534,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         timelineEntries,
         latestTurn,
         runningTurnId,
-        expandedTurnIds,
+        expandedFoldKeys,
         expandedWorkGroupIds,
         isWorking,
         activeTurnStartedAt,
@@ -559,7 +554,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     timelineEntries,
     latestTurn,
     runningTurnId,
-    expandedTurnIds,
+    expandedFoldKeys,
     expandedWorkGroupIds,
     isWorking,
     activeTurnStartedAt,
@@ -567,6 +562,20 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     revertTurnCountByUserMessageId,
   ]);
   const rows = useStableRows(rawRows);
+  // A citation names only its turn; expanding every fold of that turn mounts
+  // the cited message whichever side of a steer it sits on.
+  const expandCitedTurn = useCallback(
+    (turnId: TurnId) => {
+      const foldKeys = rows.flatMap((row) =>
+        row.kind === "turn-fold" && row.turnId === turnId && !row.expanded ? [row.expandKey] : [],
+      );
+      if (foldKeys.length === 0) {
+        return;
+      }
+      setExpandedFoldKeys((current) => new Set([...current, ...foldKeys]));
+    },
+    [rows],
+  );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const [timelineViewportElement, setTimelineViewportElement] = useState<HTMLDivElement | null>(
     null,
@@ -1548,7 +1557,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
         type="button"
         aria-expanded={row.expanded}
         data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleTurnFold(row.turnId, row.id)}
+        onClick={() => ctx.onToggleTurnFold(row.expandKey, row.id)}
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>

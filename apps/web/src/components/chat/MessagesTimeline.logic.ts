@@ -317,6 +317,7 @@ export type MessagesTimelineRow =
       kind: "turn-fold";
       id: string;
       createdAt: string;
+      expandKey: string;
       turnId: TurnId;
       label: string;
       expanded: boolean;
@@ -458,6 +459,13 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
 }
 
 interface TurnFold {
+  /**
+   * What the expanded-folds set holds for this fold. Normally the anchor
+   * entry id, so each side of a steer expands on its own; the fold that an
+   * interrupt cut short keys by its turn id, which is all the interrupt knows.
+   */
+  expandKey: string;
+  /** Last turn in the fold's segment; a citation into that turn expands the fold. */
   turnId: TurnId;
   anchorEntryId: string;
   createdAt: string;
@@ -562,7 +570,7 @@ function deriveTurnFolds(input: {
   unsettledTurnId: TurnId | null;
 }): ReadonlyMap<string, TurnFold> {
   interface Segment {
-    /** Last turn id in the segment; folds expand per turn id. */
+    /** Last turn id in the segment. */
     turnId: TurnId | null;
     entries: Array<TimelineEntry>;
     /**
@@ -682,6 +690,7 @@ function deriveTurnFolds(input: {
           ? `Worked for ${duration}`
           : "Worked";
     foldsByAnchorEntryId.set(firstHiddenEntry.id, {
+      expandKey: turn?.state === "interrupted" ? turnId : firstHiddenEntry.id,
       turnId,
       anchorEntryId: firstHiddenEntry.id,
       createdAt: firstHiddenEntry.createdAt,
@@ -781,7 +790,7 @@ export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
-  expandedTurnIds?: ReadonlySet<TurnId>;
+  expandedFoldKeys?: ReadonlySet<string>;
   expandedWorkGroupIds?: ReadonlySet<string>;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
@@ -817,7 +826,7 @@ export function deriveMessagesTimelineRows(input: {
         foldSeparatorEntryIds.add(fold.terminalEntryId);
       }
     }
-    if (!input.expandedTurnIds?.has(fold.turnId)) {
+    if (!input.expandedFoldKeys?.has(fold.expandKey)) {
       for (const entryId of fold.hiddenEntryIds) {
         collapsedEntryIds.add(entryId);
       }
@@ -941,9 +950,10 @@ export function deriveMessagesTimelineRows(input: {
         kind: "turn-fold",
         id: `turn-fold:${anchoredTurnFold.anchorEntryId}`,
         createdAt: anchoredTurnFold.createdAt,
+        expandKey: anchoredTurnFold.expandKey,
         turnId: anchoredTurnFold.turnId,
         label: anchoredTurnFold.label,
-        expanded: input.expandedTurnIds?.has(anchoredTurnFold.turnId) ?? false,
+        expanded: input.expandedFoldKeys?.has(anchoredTurnFold.expandKey) ?? false,
       });
     }
 
@@ -1262,6 +1272,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
     case "turn-fold": {
       const bf = b as typeof a;
       return (
+        a.expandKey === bf.expandKey &&
         a.turnId === bf.turnId &&
         a.createdAt === bf.createdAt &&
         a.label === bf.label &&
