@@ -1559,13 +1559,14 @@ describe("deriveMessagesTimelineRows", () => {
     return { ...base, entry: { ...base.entry, agentSpawn: { workflowId, agentTaskIds } } };
   };
 
-  it("merges direct-spawn CTA rows across a synthetic continuation into the segment's first one", () => {
+  it("keeps every spawn CTA row visible when the fold collapses", () => {
+    // deriveTimelineEntries already batched the segment's direct spawns into
+    // one row, so the fold only has to leave the spawn rows where they are.
     const timelineEntries = [
       userEntry("user-1", "2026-01-01T00:00:00Z"),
       workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-      spawnEntry("spawn-1", "2026-01-01T00:00:06Z", "turn-1", ["agent-a"]),
+      spawnEntry("spawn-1", "2026-01-01T00:00:06Z", "turn-1", ["agent-a", "agent-b"]),
       workEntry("work-2", "2026-01-01T00:00:15Z", "turn-2"),
-      spawnEntry("spawn-2", "2026-01-01T00:00:16Z", "turn-2", ["agent-b"]),
       // A workflow CTA keeps its own row: the workflow outlives the turn.
       spawnEntry("spawn-wf", "2026-01-01T00:00:17Z", "turn-2", ["wf-1", "agent-c"], "wf-1"),
       assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-2"),
@@ -1585,25 +1586,21 @@ describe("deriveMessagesTimelineRows", () => {
       "spawn-wf-entry",
       "assistant-final-entry",
     ]);
-    const mergedRow = rows.find((row) => row.id === "spawn-1-entry");
-    expect(mergedRow?.kind === "work" && mergedRow.groupedEntries[0]?.agentSpawn).toEqual({
+    const spawnRow = rows.find((row) => row.id === "spawn-1-entry");
+    expect(spawnRow?.kind === "work" && spawnRow.groupedEntries[0]?.agentSpawn).toEqual({
       workflowId: null,
       agentTaskIds: ["agent-a", "agent-b"],
     });
 
-    // Expanding the fold shows every CTA as it was recorded.
+    // Expanding the fold brings the work rows it hid back.
     const expandedRows = deriveMessagesTimelineRows({
       ...baseFoldInput,
       timelineEntries,
       latestTurn,
       expandedTurnIds: new Set(["turn-2" as never]),
     });
-    expect(expandedRows.map((row) => row.id)).toContain("spawn-2-entry");
-    const originalRow = expandedRows.find((row) => row.id === "spawn-1-entry");
-    expect(originalRow?.kind === "work" && originalRow.groupedEntries[0]?.agentSpawn).toEqual({
-      workflowId: null,
-      agentTaskIds: ["agent-a"],
-    });
+    expect(expandedRows.map((row) => row.id)).toContain("work-toggle:work-1-entry");
+    expect(expandedRows.map((row) => row.id)).toContain("spawn-1-entry");
   });
 
   it("keeps the response and its spawn row in the post-steer segment only", () => {
