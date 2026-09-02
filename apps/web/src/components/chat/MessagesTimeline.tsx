@@ -169,7 +169,7 @@ interface TimelineRowSharedState {
   onFileOpen: (attachment: ChatFileAttachment) => void;
   openingVideoAttachmentId: string | null;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  onToggleTurnFold: (turnId: TurnId) => void;
+  onToggleTurnFold: (turnId: TurnId, anchorKey: string) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   agentPanelModel: AgentPanelModel;
   onOpenAgents: () => void;
@@ -378,8 +378,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const onToggleTurnFold = useCallback(
-    (turnId: TurnId) => {
-      suspendEndScrollMaintenanceForDisclosure(`turn-fold:${turnId}`);
+    (turnId: TurnId, anchorKey: string) => {
+      suspendEndScrollMaintenanceForDisclosure(anchorKey);
       setExpandedTurnIds((existing) => {
         const next = new Set(existing);
         if (next.has(turnId)) {
@@ -998,6 +998,10 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                 ? "pb-2"
                 : "pb-4",
         row.kind === "message" && row.message.role === "assistant" ? "group/assistant" : null,
+        // The separator belongs to the fold above, below any spawn row it kept.
+        row.kind === "message" && row.showsTurnFoldSeparator
+          ? "border-t border-border/60 pt-2"
+          : null,
       )}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
@@ -1240,12 +1244,12 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
   const Icon = row.expanded ? ChevronDownIcon : ChevronRightIcon;
 
   return (
-    <div className="border-b border-border/60 pb-2 pt-1">
+    <div className="pt-1">
       <button
         type="button"
         aria-expanded={row.expanded}
         data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleTurnFold(row.turnId)}
+        onClick={() => ctx.onToggleTurnFold(row.turnId, row.id)}
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>
