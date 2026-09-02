@@ -120,6 +120,19 @@ describe("ChatMarkdown math", () => {
     for (const math of ["x^2", "w_0", "y+1", "z-2"]) expect(html).toContain(math);
   });
 
+  it("renders double-dollar and bracket math as display even mid-paragraph", () => {
+    const html = renderToStaticMarkup(
+      <ChatMarkdown
+        cwd="/tmp/project"
+        text={"Inline $x^2$ and \\(y+1\\), display $$w_0$$ and \\[z-2\\] here."}
+      />,
+    );
+
+    expect(html.match(/class="katex"/g)).toHaveLength(4);
+    expect(html.match(/katex-display/g)).toHaveLength(2);
+    expect(html).toContain("here.");
+  });
+
   it("renders display math whose brackets sit on their own lines", () => {
     const html = renderToStaticMarkup(<ChatMarkdown cwd="/tmp/project" text={"\\[\na+b\n\\]"} />);
 
