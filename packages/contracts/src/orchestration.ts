@@ -1056,6 +1056,8 @@ const ThreadMessageAssistantDeltaCommand = Schema.Struct({
   delta: Schema.String,
   turnId: Schema.optional(TurnId),
   createdAt: IsoDateTime,
+  // When the first piece of this message arrived; becomes the message's createdAt.
+  startedAt: Schema.optional(IsoDateTime),
 });
 
 const ThreadMessageAssistantCompleteCommand = Schema.Struct({

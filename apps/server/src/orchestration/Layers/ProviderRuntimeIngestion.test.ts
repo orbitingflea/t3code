@@ -1980,6 +1980,81 @@ describe("ProviderRuntimeIngestion", () => {
     expect(message?.streaming).toBe(false);
   });
 
+  it("stamps a buffered assistant message's createdAt with the time its first delta arrived", async () => {
+    const harness = await createHarness();
+    const startedAt = "2026-01-01T00:00:00.000Z";
+    const secondDeltaAt = "2026-01-01T00:00:01.000Z";
+    const completedAt = "2026-01-01T00:00:02.000Z";
+
+    harness.emit({
+      type: "turn.started",
+      eventId: asEventId("evt-turn-started-buffered-timing"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: startedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-buffered-timing"),
+    });
+    await waitForThread(
+      harness.readModel,
+      (thread) =>
+        thread.session?.status === "running" &&
+        thread.session?.activeTurnId === "turn-buffered-timing",
+    );
+
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-message-delta-buffered-timing-1"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: startedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-buffered-timing"),
+      itemId: asItemId("item-buffered-timing"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "first ",
+      },
+    });
+    harness.emit({
+      type: "content.delta",
+      eventId: asEventId("evt-message-delta-buffered-timing-2"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: secondDeltaAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-buffered-timing"),
+      itemId: asItemId("item-buffered-timing"),
+      payload: {
+        streamKind: "assistant_text",
+        delta: "second",
+      },
+    });
+    harness.emit({
+      type: "item.completed",
+      eventId: asEventId("evt-message-completed-buffered-timing"),
+      provider: ProviderDriverKind.make("codex"),
+      createdAt: completedAt,
+      threadId: asThreadId("thread-1"),
+      turnId: asTurnId("turn-buffered-timing"),
+      itemId: asItemId("item-buffered-timing"),
+      payload: {
+        itemType: "assistant_message",
+        status: "completed",
+      },
+    });
+
+    const thread = await waitForThread(harness.readModel, (entry) =>
+      entry.messages.some(
+        (message: ProviderRuntimeTestMessage) =>
+          message.id === "assistant:item-buffered-timing" && !message.streaming,
+      ),
+    );
+    const message = thread.messages.find(
+      (entry: ProviderRuntimeTestMessage) => entry.id === "assistant:item-buffered-timing",
+    );
+    expect(message?.text).toBe("first second");
+    expect(message?.createdAt).toBe(startedAt);
+    expect((message?.updatedAt ?? "") >= completedAt).toBe(true);
+  });
+
   it("flushes and completes buffered assistant text when an approval request opens", async () => {
     const harness = await createHarness();
     const now = "2026-01-01T00:00:00.000Z";
