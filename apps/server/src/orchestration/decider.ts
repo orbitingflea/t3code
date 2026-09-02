@@ -1940,7 +1940,9 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           text: command.delta,
           turnId: command.turnId ?? null,
           streaming: true,
-          createdAt: command.createdAt,
+          createdAt:
+            (command.type === "thread.message.assistant.delta" ? command.startedAt : undefined) ??
+            command.createdAt,
           updatedAt: command.createdAt,
         },
       };

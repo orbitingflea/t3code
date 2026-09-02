@@ -1069,6 +1069,12 @@ const make = Effect.gen(function* () {
     lookup: () => Effect.succeed(-1),
   });
 
+  const bufferedAssistantStartedAtByMessageId = yield* Cache.make<MessageId, string>({
+    capacity: BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_CACHE_CAPACITY,
+    timeToLive: BUFFERED_MESSAGE_TEXT_BY_MESSAGE_ID_TTL,
+    lookup: () => Effect.succeed(""),
+  });
+
   const assistantSegmentStateByTurnKey = yield* Cache.make<string, AssistantSegmentState>({
     capacity: TURN_MESSAGE_IDS_BY_TURN_CACHE_CAPACITY,
     timeToLive: TURN_MESSAGE_IDS_BY_TURN_TTL,
@@ -1382,6 +1388,11 @@ const make = Effect.gen(function* () {
       Effect.andThen(Cache.invalidate(lastAssistantDeliveryAtByMessageId, messageId)),
     );
 
+  const bufferedAssistantStartedAt = (messageId: MessageId) =>
+    Effect.map(Cache.getOption(bufferedAssistantStartedAtByMessageId, messageId), (startedAt) =>
+      Option.isSome(startedAt) ? { startedAt: startedAt.value } : {},
+    );
+
   const appendBufferedProposedPlan = (planId: string, delta: string, createdAt: string) =>
     Cache.getOption(bufferedProposedPlanById, planId).pipe(
       Effect.flatMap((existingEntry) => {
@@ -1401,6 +1412,7 @@ const make = Effect.gen(function* () {
     clearBufferedAssistantText(messageId).pipe(
       Effect.andThen(Cache.invalidate(reasoningPartIndexByMessageId, messageId)),
       Effect.andThen(Cache.invalidate(reasoningStartedAtByMessageId, messageId)),
+      Effect.andThen(Cache.invalidate(bufferedAssistantStartedAtByMessageId, messageId)),
     );
 
   const reasoningStartedAt = (messageId: MessageId, fallback: string) =>
@@ -1433,6 +1445,7 @@ const make = Effect.gen(function* () {
         createdAt: isReasoning
           ? yield* reasoningStartedAt(input.messageId, input.createdAt)
           : input.createdAt,
+        ...(isReasoning ? {} : yield* bufferedAssistantStartedAt(input.messageId)),
       });
       return true;
     });
@@ -1504,6 +1517,7 @@ const make = Effect.gen(function* () {
           createdAt: isReasoning
             ? yield* reasoningStartedAt(input.messageId, input.createdAt)
             : input.createdAt,
+          ...(isReasoning ? {} : yield* bufferedAssistantStartedAt(input.messageId)),
         });
       }
 
@@ -2041,6 +2055,9 @@ const make = Effect.gen(function* () {
 
         const streamingMode = yield* resolveResponseStreamingMode(thread.projectId);
         if (streamingMode !== "token") {
+          if (!(yield* Cache.has(bufferedAssistantStartedAtByMessageId, assistantMessageId))) {
+            yield* Cache.set(bufferedAssistantStartedAtByMessageId, assistantMessageId, now);
+          }
           // Pace on the server clock. OpenCode stamps every delta of a part
           // with the part's start time, so the event time cannot measure gaps.
           const spillChunk = yield* appendBufferedAssistantText(
@@ -2058,6 +2075,7 @@ const make = Effect.gen(function* () {
               delta: spillChunk,
               ...(turnId ? { turnId } : {}),
               createdAt: now,
+              ...(yield* bufferedAssistantStartedAt(assistantMessageId)),
             });
           }
         } else {
