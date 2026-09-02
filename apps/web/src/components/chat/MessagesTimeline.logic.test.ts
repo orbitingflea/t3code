@@ -6,6 +6,7 @@ import {
   deriveMessagesTimelineRows,
   normalizeCompactToolLabel,
   resolveAssistantMessageCopyState,
+  type TimelineLatestTurn,
   shouldPreserveAssistantLineBreaks,
 } from "./MessagesTimeline.logic";
 
@@ -337,7 +338,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedTurnIds: new Set(["turn-1" as never]),
+      expandedFoldKeys: new Set(["assistant-thought-entry"]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),
@@ -540,7 +541,7 @@ describe("deriveMessagesTimelineRows", () => {
       (row): row is Extract<(typeof collapsedRows)[number], { kind: "turn-fold" }> =>
         row.kind === "turn-fold",
     );
-    expect(foldRow?.turnId).toBe("turn-1");
+    expect(foldRow?.expandKey).toBe("assistant-first-entry");
     expect(foldRow?.expanded).toBe(false);
     // User message boundary (00:00:00) → terminal message updatedAt (00:00:22).
     expect(foldRow?.label).toBe("Worked for 22s");
@@ -552,7 +553,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     const expandedRows = deriveMessagesTimelineRows({
       timelineEntries,
-      expandedTurnIds: new Set(["turn-1" as never]),
+      expandedFoldKeys: new Set(["assistant-first-entry"]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),
@@ -724,7 +725,7 @@ describe("deriveMessagesTimelineRows", () => {
         row.kind === "turn-fold",
     );
     // User message (00:00:00) → trailing work entry (00:00:12).
-    expect(foldRow?.turnId).toBe("turn-1");
+    expect(foldRow?.expandKey).toBe("assistant-commentary-entry");
     expect(foldRow?.label).toBe("Worked for 12s");
   });
 
@@ -759,7 +760,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows).toEqual([
       expect.objectContaining({
         kind: "turn-fold",
-        turnId: "turn-1",
+        expandKey: "turn-1",
         label: "You stopped after 47s",
         expanded: false,
       }),
@@ -1309,8 +1310,8 @@ describe("deriveMessagesTimelineRows", () => {
       revertTurnCountByUserMessageId: new Map(),
     });
 
-    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.turnId)).toEqual([
-      "turn-1",
+    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.expandKey)).toEqual([
+      "previous-work-entry",
     ]);
     expect(rows.map((row) => row.id)).toContain("live-activity-row");
   });
@@ -1477,6 +1478,28 @@ describe("deriveMessagesTimelineRows", () => {
         row.kind === "message" && row.showsTurnFoldSeparator ? [row.id] : [],
       ),
     ).toEqual(["assistant-final-entry"]);
+
+    // Each side of the steer expands on its own.
+    const expandedSide = (keys: ReadonlyArray<string>, latestTurn?: TimelineLatestTurn) =>
+      deriveMessagesTimelineRows({
+        ...baseFoldInput,
+        timelineEntries,
+        ...(latestTurn ? { latestTurn } : {}),
+        expandedFoldKeys: new Set(keys),
+      })
+        .filter((row) => row.kind === "turn-fold")
+        .map((row) => row.kind === "turn-fold" && row.expanded);
+    expect(expandedSide(["work-1-entry"])).toEqual([true, false]);
+    expect(expandedSide(["work-2-entry"])).toEqual([false, true]);
+    // An interrupt knows only the turn id; that expands the side it cut short.
+    expect(
+      expandedSide(["turn-1"], {
+        turnId: "turn-1" as never,
+        state: "interrupted",
+        startedAt: "2026-01-01T00:00:00Z",
+        completedAt: "2026-01-01T00:00:30Z",
+      }),
+    ).toEqual([false, true]);
   });
 
   it("keys the fold after a user message by the new turn even when old-turn residue lands first", () => {
@@ -1510,9 +1533,9 @@ describe("deriveMessagesTimelineRows", () => {
       "turn-fold:work-late-entry",
       "assistant-two-entry",
     ]);
-    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.turnId)).toEqual([
-      "turn-1",
-      "turn-2",
+    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.expandKey)).toEqual([
+      "work-1-entry",
+      "work-late-entry",
     ]);
   });
 
@@ -1606,7 +1629,7 @@ describe("deriveMessagesTimelineRows", () => {
       ...baseFoldInput,
       timelineEntries,
       latestTurn,
-      expandedTurnIds: new Set(["turn-2" as never]),
+      expandedFoldKeys: new Set(["work-1-entry"]),
     });
     expect(expandedRows.map((row) => row.id)).toContain("work-toggle:work-1-entry");
     expect(expandedRows.map((row) => row.id)).toContain("spawn-1-entry");
@@ -1670,7 +1693,7 @@ describe("deriveMessagesTimelineRows", () => {
     // The segment's own entries end at 00:00:10, but this segment holds the
     // latest turn's entries, so the end is latestTurn.completedAt (00:00:47).
     expect(rows.filter((row) => row.kind === "turn-fold")).toEqual([
-      expect.objectContaining({ turnId: "turn-2", label: "You stopped after 47s" }),
+      expect.objectContaining({ expandKey: "turn-2", label: "You stopped after 47s" }),
     ]);
   });
 
@@ -1754,7 +1777,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedTurnIds: new Set(["turn-1" as never]),
+      expandedFoldKeys: new Set(["assistant-thought-entry"]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaryByAssistantMessageId: new Map(),
