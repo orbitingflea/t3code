@@ -954,24 +954,28 @@ describe("deriveWorkLogEntries", () => {
     ]);
   });
 
-  it("omits tool started entries and keeps completed entries", () => {
+  it("stamps a tool row at its start so a tool still running when a steer lands sorts before it", () => {
     const activities: OrchestrationThreadActivity[] = [
       makeActivity({
         id: "tool-complete",
         createdAt: "2026-02-23T00:00:03.000Z",
         summary: "Tool call complete",
         kind: "tool.completed",
+        payload: { toolCallId: "call-1" },
       }),
       makeActivity({
         id: "tool-start",
         createdAt: "2026-02-23T00:00:02.000Z",
         summary: "Tool call",
         kind: "tool.started",
+        payload: { toolCallId: "call-1" },
       }),
     ];
 
     const entries = deriveWorkLogEntries(activities);
-    expect(entries.map((entry) => entry.id)).toEqual(["tool-complete"]);
+    expect(entries.map((entry) => [entry.id, entry.createdAt])).toEqual([
+      ["tool-complete", "2026-02-23T00:00:02.000Z"],
+    ]);
   });
 
   it("omits routine setup updates before work starts and after later turn activity", () => {

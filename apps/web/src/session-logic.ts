@@ -783,9 +783,16 @@ export function deriveWorkLogEntries(
 ): WorkLogEntry[] {
   const ordered = [...activities].toSorted(compareActivitiesByOrder);
   const entries: DerivedWorkLogEntry[] = [];
+  // A tool row sits where the agent issued the call, not where the call
+  // finished, so a tool still running when a steer lands sorts before it.
+  const startedAtByToolCallId = new Map<string, string>();
   for (const activity of ordered) {
     if (activity.tone !== "error" && isWorktreeSetupActivity(activity.kind)) continue;
-    if (activity.kind === "tool.started") continue;
+    if (activity.kind === "tool.started") {
+      const toolCallId = extractToolCallId(asRecord(activity.payload));
+      if (toolCallId) startedAtByToolCallId.set(toolCallId, activity.createdAt);
+      continue;
+    }
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -799,7 +806,9 @@ export function deriveWorkLogEntries(
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     if (isAgentInternalActivity(activity)) continue;
-    entries.push(toDerivedWorkLogEntry(activity));
+    const entry = toDerivedWorkLogEntry(activity);
+    const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
+    entries.push(startedAt ? { ...entry, createdAt: startedAt } : entry);
   }
   return collapseDerivedWorkLogEntries(entries);
 }
