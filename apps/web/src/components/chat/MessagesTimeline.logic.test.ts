@@ -1330,11 +1330,18 @@ describe("deriveMessagesTimelineRows", () => {
       streaming: false,
     },
   });
-  const workEntry = (id: string, createdAt: string, turnId: string) => ({
+  const workEntry = (id: string, createdAt: string, turnId: string, completedAt?: string) => ({
     id: `${id}-entry`,
     kind: "work" as const,
     createdAt,
-    entry: { id, createdAt, turnId: turnId as never, label: "Ran command", tone: "tool" as const },
+    entry: {
+      id,
+      createdAt,
+      ...(completedAt ? { completedAt } : {}),
+      turnId: turnId as never,
+      label: "Ran command",
+      tone: "tool" as const,
+    },
   });
   const assistantEntry = (id: string, createdAt: string, turnId: string, streaming = false) => ({
     id: `${id}-entry`,
@@ -1415,9 +1422,11 @@ describe("deriveMessagesTimelineRows", () => {
   });
 
   it("folds a same-turn steer as one segment per side of the steer", () => {
+    // work-1 was still running when the steer landed: it sorts by its start
+    // but the fold it closes lasts until it finished.
     const timelineEntries = [
       userEntry("user-1", "2026-01-01T00:00:00Z"),
-      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
+      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1", "2026-01-01T00:00:12Z"),
       userEntry("user-steer", "2026-01-01T00:00:10Z"),
       workEntry("work-2", "2026-01-01T00:00:15Z", "turn-1"),
       assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-1"),
@@ -1438,7 +1447,7 @@ describe("deriveMessagesTimelineRows", () => {
     // sent; the post-steer segment is the live one and stays unfolded.
     const runningFoldRows = runningRows.filter((row) => row.kind === "turn-fold");
     expect(runningFoldRows.map((row) => row.id)).toEqual(["turn-fold:work-1-entry"]);
-    expect(runningFoldRows[0]?.label).toBe("Worked for 5.0s");
+    expect(runningFoldRows[0]?.label).toBe("Worked for 12s");
     expect(runningRows.map((row) => row.id)).toContain("work-toggle:work-2-entry");
 
     const settledRows = deriveMessagesTimelineRows({
@@ -1462,7 +1471,7 @@ describe("deriveMessagesTimelineRows", () => {
       settledRows
         .filter((row) => row.kind === "turn-fold")
         .map((row) => row.kind === "turn-fold" && row.label),
-    ).toEqual(["Worked for 5.0s", "Worked for 20s"]);
+    ).toEqual(["Worked for 12s", "Worked for 20s"]);
     expect(
       settledRows.flatMap((row) =>
         row.kind === "message" && row.showsTurnFoldSeparator ? [row.id] : [],

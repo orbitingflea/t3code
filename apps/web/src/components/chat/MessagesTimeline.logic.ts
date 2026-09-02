@@ -488,7 +488,11 @@ function deriveTurnFolds(input: {
 
     const turn = segment === latestTurnSegment ? input.latestTurn : null;
     const lastEntryEnd =
-      lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
+      lastEntry.kind === "message"
+        ? lastEntry.message.updatedAt
+        : lastEntry.kind === "work"
+          ? (lastEntry.entry.completedAt ?? lastEntry.createdAt)
+          : lastEntry.createdAt;
     const elapsedMs = computeElapsedMs(
       segment.startBoundary ?? turn?.startedAt ?? segment.entries[0]!.createdAt,
       maxIsoTimestamp(lastEntryEnd, turn?.completedAt ?? null) ?? lastEntryEnd,

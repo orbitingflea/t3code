@@ -433,6 +433,55 @@ describe("buildThreadFeed", () => {
     ]);
   });
 
+  it("stamps a tool row at its start so a tool still running when a steer lands sorts before it", () => {
+    const thread = makeThread({
+      id: ThreadId.make("thread-2"),
+      projectId: ProjectId.make("project-1"),
+      title: "Started tools",
+      latestTurn: {
+        turnId: TurnId.make("turn-1"),
+        state: "completed",
+        requestedAt: "2026-04-01T00:00:00.000Z",
+        startedAt: "2026-04-01T00:00:01.000Z",
+        completedAt: "2026-04-01T00:00:03.000Z",
+        assistantMessageId: null,
+      },
+      activities: [
+        makeActivity({
+          id: EventId.make("tool-started"),
+          kind: "tool.started",
+          tone: "tool",
+          summary: "Run tests started",
+          createdAt: "2026-04-01T00:00:01.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { title: "Run tests", itemType: "command_execution", toolCallId: "call-1" },
+        }),
+        makeActivity({
+          id: EventId.make("tool-completed"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Run tests completed",
+          createdAt: "2026-04-01T00:00:03.000Z",
+          turnId: TurnId.make("turn-1"),
+          payload: { title: "Run tests", itemType: "command_execution", toolCallId: "call-1" },
+        }),
+      ],
+    });
+
+    expect(buildThreadFeed(thread)).toMatchObject([
+      {
+        type: "activity-group",
+        activities: [
+          {
+            id: "tool-completed",
+            createdAt: "2026-04-01T00:00:01.000Z",
+            workEntry: { completedAt: "2026-04-01T00:00:03.000Z" },
+          },
+        ],
+      },
+    ]);
+  });
+
   it("collapses matching tool lifecycle rows like desktop", () => {
     const thread = makeThread({
       id: ThreadId.make("thread-2"),
