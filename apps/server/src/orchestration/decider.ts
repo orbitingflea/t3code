@@ -1212,7 +1212,7 @@ export const decideOrchestrationCommand = Effect.fn("decideOrchestrationCommand"
           text: command.delta,
           turnId: command.turnId ?? null,
           streaming: true,
-          createdAt: command.createdAt,
+          createdAt: command.startedAt ?? command.createdAt,
           updatedAt: command.createdAt,
         },
       };
