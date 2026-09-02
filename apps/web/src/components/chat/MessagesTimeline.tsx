@@ -3072,7 +3072,7 @@ function workEntryIconName(workEntry: TimelineWorkEntry): WorkEntryIconName {
 const stopRowToggle = (e: { stopPropagation: () => void }) => e.stopPropagation();
 
 /**
- * A1 spawn CTA: one anchored row per workflow run (or per-turn direct-spawn
+ * A1 spawn CTA: one anchored row per workflow run (or per-segment direct-spawn
  * batch). Live status is derived from the shared agent panel model at render
  * time — the row itself never re-renders a roster; the Agents panel is the
  * only roster. Freezes to past tense when every member settles. Static dot,

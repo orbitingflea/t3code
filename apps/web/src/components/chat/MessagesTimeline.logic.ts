@@ -463,8 +463,6 @@ interface TurnFold {
   createdAt: string;
   hiddenEntryIds: ReadonlySet<string>;
   label: string;
-  /** The segment's direct-spawn CTA, carrying every direct spawn the fold absorbed. */
-  spawnRow: { entryId: string; entry: WorkLogEntry } | null;
   /** The assistant message that closes the segment, when one does. */
   terminalEntryId: string | null;
   /** Whether that message sits below the fold row, so it draws the fold's separator. */
@@ -612,7 +610,6 @@ function deriveTurnFolds(input: {
         ? segment.entries[terminalEntryIndex]
         : null;
     const hiddenEntryIds = new Set<string>();
-    let spawnRow: TurnFold["spawnRow"] = null;
     for (const [index, entry] of segment.entries.entries()) {
       if (entry === terminalEntry) {
         continue;
@@ -631,30 +628,13 @@ function deriveTurnFolds(input: {
           continue;
         }
       }
+      // Agent-spawn CTA rows never fold: workflows outlive their launching
+      // turn (dynamic spawns, background execution), and folding the CTA
+      // when the turn settles makes a still-running fleet invisible. Direct
+      // spawns are already one row per segment (deriveTimelineEntries), so
+      // keeping every spawn row visible leaves the segment one CTA.
       if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
-        // Workflow batches (Crew) are visible history; a direct-spawn CTA
-        // survives the fold, so the segment's direct spawns merge into the
-        // first one's row.
-        if (entry.entry.agentSpawn.workflowId !== null) {
-          continue;
-        }
-        if (spawnRow === null) {
-          spawnRow = { entryId: entry.id, entry: entry.entry };
-          continue;
-        }
-        spawnRow = {
-          entryId: spawnRow.entryId,
-          entry: {
-            ...spawnRow.entry,
-            agentSpawn: {
-              ...spawnRow.entry.agentSpawn!,
-              agentTaskIds: [
-                ...spawnRow.entry.agentSpawn!.agentTaskIds,
-                ...entry.entry.agentSpawn.agentTaskIds,
-              ],
-            },
-          },
-        };
+        continue;
       }
       hiddenEntryIds.add(entry.id);
     }
@@ -707,7 +687,6 @@ function deriveTurnFolds(input: {
       createdAt: firstHiddenEntry.createdAt,
       hiddenEntryIds,
       label,
-      spawnRow,
       terminalEntryId: terminalEntry?.id ?? null,
       terminalFollowsFold: terminalEntry !== null && terminalEntryIndex > firstHiddenIndex,
     });
@@ -829,7 +808,6 @@ export function deriveMessagesTimelineRows(input: {
     unsettledTurnId,
   });
   const collapsedEntryIds = new Set<string>();
-  const mergedSpawnEntries = new Map<string, WorkLogEntry>();
   const foldTerminalEntryIds = new Set<string>();
   const foldSeparatorEntryIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {
@@ -842,9 +820,6 @@ export function deriveMessagesTimelineRows(input: {
     if (!input.expandedTurnIds?.has(fold.turnId)) {
       for (const entryId of fold.hiddenEntryIds) {
         collapsedEntryIds.add(entryId);
-      }
-      if (fold.spawnRow) {
-        mergedSpawnEntries.set(fold.spawnRow.entryId, fold.spawnRow.entry);
       }
     }
   }
@@ -999,7 +974,7 @@ export function deriveMessagesTimelineRows(input: {
           kind: "work",
           id: timelineEntry.id,
           createdAt: timelineEntry.createdAt,
-          groupedEntries: [mergedSpawnEntries.get(timelineEntry.id) ?? timelineEntry.entry],
+          groupedEntries: [timelineEntry.entry],
           isExpandedToolGroup: false,
         });
         continue;

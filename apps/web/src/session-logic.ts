@@ -75,8 +75,8 @@ export interface WorkLogEntry {
   /** Agent role (subagent_type) for labeled timeline rows. */
   agentRole?: string;
   /**
-   * Present on agent-spawn CTA rows: one per workflow run or per-turn batch
-   * of direct spawns. The row renders as a call-to-action ("Kicked off N
+   * Present on agent-spawn CTA rows: one per workflow run or per-segment
+   * batch of direct spawns. The row renders as a call-to-action ("Kicked off N
    * subagents") whose live status is derived from the agent panel model at
    * render time; clicking opens the Agents panel.
    */
@@ -166,6 +166,8 @@ export interface TimelineEntriesProjection {
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly proposedPlans: ReadonlyArray<ProposedPlan>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
+  /** Transcript order before direct spawns batch per segment; the incremental paths extend this. */
+  readonly sortedEntries: TimelineEntry[];
   readonly entries: TimelineEntry[];
 }
 
@@ -997,7 +999,9 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
 
 /**
  * Spawn-group key for a subagent lifecycle row. Workflow members and their
- * coordinator share the coordinator's group; direct spawns batch per turn.
+ * coordinator share the coordinator's group; a direct spawn is its own group,
+ * so its progress and completion rows collapse into its own row. Direct
+ * spawns batch one step later, per timeline segment, in deriveTimelineEntries.
  * One CTA row per group (A1 design): "Kicked off N subagents".
  */
 function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
@@ -1012,13 +1016,7 @@ function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
   if (entry.isWorkflowCoordinator) {
     return `wf:${taskId}`;
   }
-  // No turn id means no batch signal at all: fall back to one group per
-  // task. Unrelated turn-less spawns (separate fleets whose rows lost their
-  // turn) must not collapse into one immortal "direct:no-turn" CTA
-  // accumulating every agent the thread ever ran (review finding). Adapters
-  // stamp spawn turns (Codex spawnTurnId; Claude rows ride real turns), so
-  // this path is defensive.
-  return entry.turnId ? `direct:${entry.turnId}` : `direct:task:${taskId}`;
+  return `direct:task:${taskId}`;
 }
 
 function toolLifecycleCollapseMapKey(entry: DerivedWorkLogEntry): string | undefined {
@@ -1036,16 +1034,14 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   // Subagent rows collapse by spawn group, not adjacency: a workflow run (or
-  // a turn's batch of direct spawns) is ONE narrative event in the chat — a
-  // CTA row that opens the Agents panel — no matter how many agents it
-  // contains or how their progress rows interleave (quiet-timeline
-  // guarantee).
+  // a single direct spawn) is ONE narrative event in the chat — a CTA row
+  // that opens the Agents panel — no matter how many progress rows it emits
+  // or how they interleave (quiet-timeline guarantee).
   const spawnRowIndex = new Map<string, number>();
-  // Batch membership is decided once, at the FIRST row seen for a taskId.
-  // Claude background subagents settle between turns, so their completion
-  // rows carry fresh synthetic turn ids (or none) — keying each row by its
-  // own turn splintered one batch into a stream of "Kicked off N subagents"
-  // rows (live-test finding, thread 7ac7ef05).
+  // Group membership is decided once, at the FIRST row seen for a taskId: a
+  // later row can lose the fields the key reads (a workflow coordinator's
+  // completion payload may drop its workflow name) and must stay in the
+  // group its spawn joined.
   const groupKeyByTaskId = new Map<string, string>();
   const toolLifecycleRowIndex = new Map<string, number>();
   for (const entry of entries) {
@@ -1956,8 +1952,8 @@ function replaceStreamingTimelineMessages(
     if (!isStreamingMessageTextUpdate(previousMessage, message)) return null;
     replacements.set(previousMessage, message);
   }
-  if (replacements.size === 0) return previous.entries;
-  return previous.entries.map((entry) => {
+  if (replacements.size === 0) return previous.sortedEntries;
+  return previous.sortedEntries.map((entry) => {
     const replacement = entry.kind === "message" ? replacements.get(entry.message) : undefined;
     return replacement ? timelineEntryFromMessage(replacement) : entry;
   });
@@ -1977,8 +1973,19 @@ export function deriveTimelineEntriesWithState(
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
     hasExactArrayPrefix(previous.workEntries, workEntries)
   ) {
-    const entries = replaceStreamingTimelineMessages(messages, previous);
-    if (entries !== null) return { messages, proposedPlans, workEntries, entries };
+    const sortedEntries = replaceStreamingTimelineMessages(messages, previous);
+    if (sortedEntries !== null) {
+      return {
+        messages,
+        proposedPlans,
+        workEntries,
+        sortedEntries,
+        entries:
+          sortedEntries === previous.sortedEntries
+            ? previous.entries
+            : batchDirectSpawnsPerSegment(sortedEntries),
+      };
+    }
   }
   const canAppend =
     previous !== null &&
@@ -1995,24 +2002,28 @@ export function deriveTimelineEntriesWithState(
     const suffix = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     );
+    const sortedEntries = mergeTimelineEntrySuffix(previous.sortedEntries, suffix);
     return {
       messages,
       proposedPlans,
       workEntries,
-      entries: mergeTimelineEntrySuffix(previous.entries, suffix),
+      sortedEntries,
+      entries: batchDirectSpawnsPerSegment(sortedEntries),
     };
   }
 
   const messageRows = messages.map(timelineEntryFromMessage);
   const proposedPlanRows = proposedPlans.map(timelineEntryFromProposedPlan);
   const workRows = workEntries.map(timelineEntryFromWork);
+  const sortedEntries = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
+    compareTimelineEntriesByCreatedAt,
+  );
   return {
     messages,
     proposedPlans,
     workEntries,
-    entries: [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
-      compareTimelineEntriesByCreatedAt,
-    ),
+    sortedEntries,
+    entries: batchDirectSpawnsPerSegment(sortedEntries),
   };
 }
 
@@ -2022,6 +2033,48 @@ export function deriveTimelineEntries(
   workEntries: ReadonlyArray<WorkLogEntry>,
 ): TimelineEntry[] {
   return deriveTimelineEntriesWithState(messages, proposedPlans, workEntries).entries;
+}
+
+/**
+ * User messages cut the timeline into segments, and the direct spawns a
+ * segment holds are one launch: later ones merge into the segment's first
+ * spawn row, which keeps its id, time and turn so the CTA renders where the
+ * fleet started. A steer opens a new segment, so the agents kicked off before
+ * it and the ones it caused each get their own CTA row.
+ */
+function batchDirectSpawnsPerSegment(entries: TimelineEntry[]): TimelineEntry[] {
+  let anchorIndex = -1;
+  let batched: Array<TimelineEntry | null> | null = null;
+  for (const [index, entry] of entries.entries()) {
+    if (entry.kind === "message" && entry.message.role === "user") {
+      anchorIndex = -1;
+      continue;
+    }
+    if (entry.kind !== "work" || entry.entry.agentSpawn?.workflowId !== null) {
+      continue;
+    }
+    if (anchorIndex === -1) {
+      anchorIndex = index;
+      continue;
+    }
+    batched ??= [...entries];
+    const anchor = batched[anchorIndex];
+    if (anchor?.kind !== "work" || anchor.entry.agentSpawn === undefined) {
+      continue;
+    }
+    const agentTaskIds = new Set([
+      ...anchor.entry.agentSpawn.agentTaskIds,
+      ...entry.entry.agentSpawn.agentTaskIds,
+    ]);
+    batched[anchorIndex] = {
+      ...anchor,
+      entry: { ...anchor.entry, agentSpawn: { workflowId: null, agentTaskIds: [...agentTaskIds] } },
+    };
+    batched[index] = null;
+  }
+  // Most timelines have nothing to batch; hand back the same array so callers
+  // can tell nothing changed.
+  return batched === null ? entries : batched.filter((entry) => entry !== null);
 }
 
 export function inferCheckpointTurnCountByTurnId(
