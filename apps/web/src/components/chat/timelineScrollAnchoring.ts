@@ -113,7 +113,8 @@ export interface RememberedTimelinePosition {
   readonly scrollOffset: number;
   readonly atEnd: boolean;
   readonly disclosures?: {
-    readonly turns: ReadonlySet<TurnId>;
+    /** Expand keys of open turn folds (see MessagesTimelineRow turn-fold). */
+    readonly folds: ReadonlySet<string>;
     readonly workGroups: ReadonlySet<string>;
     readonly spawnEntries: ReadonlySet<string>;
     readonly reasoningMessages: ReadonlySet<string>;
