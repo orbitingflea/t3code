@@ -526,6 +526,27 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("loads a session-local plugin configured by the hosting T3 instance", () => {
+    const harness = makeHarness({
+      environment: { T3CODE_CLAUDE_PLUGIN_ROOT: " /opt/whiteboard " },
+    });
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "approval-required",
+      });
+
+      assert.deepEqual(harness.getLastCreateQueryInput()?.options.plugins, [
+        { type: "local", path: "/opt/whiteboard" },
+      ]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
   it.effect("uses bypass permissions for full-access claude sessions", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {

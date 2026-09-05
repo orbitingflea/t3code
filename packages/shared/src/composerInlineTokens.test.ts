@@ -62,6 +62,20 @@ describe("collectComposerInlineTokens", () => {
     expect(collectComposerInlineTokens("Limit is $1e6 here")).toEqual([]);
   });
 
+  it("preserves a named board reference as an atomic mention", () => {
+    const source = "[Area 7](board://r/1,2,3,4)";
+
+    expect(collectComposerInlineTokens(`${source} `)).toEqual([
+      {
+        type: "mention",
+        value: source,
+        source,
+        start: 0,
+        end: source.length,
+      },
+    ]);
+  });
+
   it("does not convert incomplete trailing tokens", () => {
     expect(collectComposerInlineTokens("Use $ui")).toEqual([]);
     expect(collectComposerInlineTokens("Inspect @AGENTS.md")).toEqual([]);

@@ -58,6 +58,7 @@ import {
 import { collectInlineContextIds } from "~/lib/composerContextReferences";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
+import { postWhiteboardHover } from "../markdown-whiteboard";
 import {
   COMPOSER_INLINE_CHIP_DECORATOR_CLASS_NAME,
   COMPOSER_INLINE_CHIP_ICON_CLASS_NAME,
@@ -215,22 +216,28 @@ const ComposerMentionExtension = Node.create({
 
 function ComposerMentionNodeView({ node }: NodeViewProps) {
   const actions = use(ComposerContextActionsContext);
-  const path = (node.attrs.path as string) ?? "";
+  const mentionPath = (node.attrs.path as string) ?? "";
+  // A whiteboard mention is stored as `[label](board://...)`; the chip shows
+  // the label and reports hover to the board so it can highlight the item.
+  const boardMatch = /^\[([^\]]+)\]\((board:\/\/[^)]+)\)$/.exec(mentionPath);
+  const boardRef = boardMatch?.[2];
+  const path = boardRef ?? mentionPath;
+  const label = boardMatch?.[1] ?? basenameOfPath(mentionPath);
   const chip = (
     <Button
       variant="chip"
-      onClick={() => actions.openMention(path)}
+      onClick={() => actions.openMention(mentionPath)}
       aria-label={`Preview ${path}`}
       className={`${FILE_TAG_CHIP_CLASS_NAME} cursor-pointer focus-visible:outline-2`}
       contentEditable={false}
       spellCheck={false}
       data-composer-mention-chip="true"
+      onMouseEnter={
+        boardRef ? (event) => postWhiteboardHover(boardRef, event.currentTarget) : undefined
+      }
+      onMouseLeave={boardRef ? () => postWhiteboardHover(null) : undefined}
     >
-      <FileTagChipContent
-        path={path}
-        label={basenameOfPath(path)}
-        theme={resolvedThemeFromDocument()}
-      />
+      <FileTagChipContent path={path} label={label} theme={resolvedThemeFromDocument()} />
     </Button>
   );
   return (

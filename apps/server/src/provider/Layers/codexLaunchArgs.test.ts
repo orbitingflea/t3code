@@ -6,6 +6,7 @@ import {
   codexAppServerArgs,
   codexExecLaunchArgs,
   resolveCodexLaunchArgs,
+  resolveCodexSkillRoot,
 } from "./codexLaunchArgs.ts";
 
 describe("resolveCodexLaunchArgs", () => {
@@ -25,6 +26,19 @@ describe("resolveCodexLaunchArgs", () => {
 
   it("ignores whitespace-only environment values", () => {
     NodeAssert.equal(resolveCodexLaunchArgs("", { T3CODE_CODEX_LAUNCH_ARGS: "   " }), "");
+  });
+});
+
+describe("resolveCodexSkillRoot", () => {
+  it("returns the configured skill root without surrounding whitespace", () => {
+    NodeAssert.equal(
+      resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: " /opt/whiteboard/skills " }),
+      "/opt/whiteboard/skills",
+    );
+  });
+
+  it("ignores an empty skill root", () => {
+    NodeAssert.equal(resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: "   " }), undefined);
   });
 });
 
