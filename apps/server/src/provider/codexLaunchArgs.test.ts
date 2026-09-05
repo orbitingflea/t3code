@@ -2,7 +2,24 @@ import * as NodeAssert from "node:assert/strict";
 
 import { describe, it } from "vite-plus/test";
 
-import { codexAppServerArgs, codexExecLaunchArgs } from "./codexLaunchArgs.ts";
+import {
+  codexAppServerArgs,
+  codexExecLaunchArgs,
+  resolveCodexSkillRoot,
+} from "./codexLaunchArgs.ts";
+
+describe("resolveCodexSkillRoot", () => {
+  it("returns the configured skill root without surrounding whitespace", () => {
+    NodeAssert.equal(
+      resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: " /opt/whiteboard/skills " }),
+      "/opt/whiteboard/skills",
+    );
+  });
+
+  it("ignores an empty skill root", () => {
+    NodeAssert.equal(resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: "   " }), undefined);
+  });
+});
 
 describe("codexAppServerArgs", () => {
   it("preserves escaped TOML quotes in config values", () => {
