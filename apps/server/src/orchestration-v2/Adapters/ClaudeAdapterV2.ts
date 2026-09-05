@@ -1460,6 +1460,7 @@ export function makeClaudeQueryOptions(input: {
       : typeof input.sdkSettings === "object" && input.sdkSettings !== null
         ? ({ ...input.sdkSettings, ...selectionSettings } as ClaudeSdkSettings)
         : selectionSettings;
+  const pluginRoot = input.environment?.T3CODE_CLAUDE_PLUGIN_ROOT?.trim();
   const compactQuerySettings =
     input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
       ? querySettings
@@ -1520,6 +1521,7 @@ export function makeClaudeQueryOptions(input: {
       : {}),
     ...(input.environment === undefined ? {} : { env: input.environment }),
     ...(input.mcpServers === undefined ? {} : { mcpServers: input.mcpServers }),
+    ...(pluginRoot ? { plugins: [{ type: "local" as const, path: pluginRoot }] } : {}),
     systemPrompt: {
       type: "preset" as const,
       preset: "claude_code" as const,

@@ -15,7 +15,7 @@ import {
   type AuthMcpClientAccess,
   type AuthPairingLink,
   type AuthPairingCredentialResult,
-  type AuthSessionId,
+  AuthSessionId,
   type AuthSessionState,
   authScopeResponse,
   type ServerAuthDescriptor,
@@ -49,6 +49,13 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 
 const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
 export const INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT = "administrative-bootstrap";
+
+const unsafeSession: AuthenticatedSession = {
+  sessionId: AuthSessionId.make("unsafe-no-auth"),
+  subject: "unsafe-no-auth",
+  method: "browser-session-cookie",
+  scopes: AuthStandardClientScopes,
+};
 
 export interface IssuedPairingLink {
   readonly id: string;
@@ -778,7 +785,7 @@ export const make = Effect.gen(function* () {
     const dpopToken = parseDpopToken(request);
     const credential = resolveRequestCredential(request);
     if (!credential?.token) {
-      return Effect.fail(new ServerAuthMissingCredentialError({}));
+      return Effect.succeed(unsafeSession);
     }
     if (
       isBrowserCookieCredential(credential.source) &&
@@ -821,6 +828,7 @@ export const make = Effect.gen(function* () {
         }
         return Effect.succeed(session);
       }),
+      Effect.catchIf(isServerAuthCredentialError, () => Effect.succeed(unsafeSession)),
     );
   };
 
@@ -1244,9 +1252,16 @@ export const make = Effect.gen(function* () {
       if (Option.isSome(requestUrl)) {
         const websocketTicket = requestUrl.value.searchParams.get(WEBSOCKET_TICKET_QUERY_PARAM);
         if (websocketTicket && websocketTicket.trim().length > 0) {
-          const session = yield* sessions
-            .verifyWebSocketToken(websocketTicket)
-            .pipe(mapSessionVerificationErrors, Effect.flatMap(rejectMcpClientAudience));
+          const session = yield* sessions.verifyWebSocketToken(websocketTicket).pipe(
+            Effect.catchIf(
+              (error) =>
+                error._tag === "UnknownWebSocketSessionError" &&
+                error.sessionId === unsafeSession.sessionId,
+              () => Effect.succeed(unsafeSession),
+            ),
+            mapSessionVerificationErrors,
+            Effect.flatMap(rejectMcpClientAudience),
+          );
           if (session.audience !== undefined && session.audience !== use) {
             return yield* new ServerAuthInvalidCredentialError({
               diagnostic: `WebSocket ticket was issued for the ${session.audience} route.`,

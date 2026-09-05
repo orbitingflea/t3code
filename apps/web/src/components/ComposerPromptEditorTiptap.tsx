@@ -107,6 +107,7 @@ import { resolveDiffThemeName } from "~/lib/diffRendering";
 import { cn, isMacPlatform } from "~/lib/utils";
 import { basenameOfPath } from "~/pierre-icons";
 import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
+import { postWhiteboardHover } from "../markdown-whiteboard";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipPopover, skillPopoverDescription } from "./chat/SkillInlineText";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
@@ -259,7 +260,9 @@ const ComposerMentionExtension = Node.create({
 
 function ComposerMentionNodeView({ node }: NodeViewProps) {
   const actions = use(ComposerContextActionsContext);
-  const path = (node.attrs.path as string) ?? "";
+  const mentionPath = (node.attrs.path as string) ?? "";
+  const boardMatch = /^\[([^\]]+)\]\((board:\/\/[^)]+)\)$/.exec(mentionPath);
+  const path = boardMatch?.[2] ?? mentionPath;
   const accent = documentIconColorForFileName(path);
   const chip = (
     <ContextChip
@@ -267,17 +270,21 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
       style={accent ? ({ "--context-chip-accent": accent } as CSSProperties) : undefined}
       dir="ltr"
       render={<button type="button" />}
-      onClick={() => actions.openMention(path)}
+      onClick={() => actions.openMention(mentionPath)}
       aria-label={`Preview ${path}`}
       contentEditable={false}
       spellCheck={false}
       data-composer-mention-chip="true"
+      onMouseEnter={
+        boardMatch ? (event) => postWhiteboardHover(path, event.currentTarget) : undefined
+      }
+      onMouseLeave={boardMatch ? () => postWhiteboardHover(null) : undefined}
     >
       <FileTagChipContent
         path={path}
         environmentId={actions.environmentId}
         cwd={actions.cwd}
-        label={basenameOfPath(path)}
+        label={boardMatch?.[1] ?? basenameOfPath(path)}
         theme={resolvedThemeFromDocument()}
       />
     </ContextChip>
