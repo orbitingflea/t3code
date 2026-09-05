@@ -6,6 +6,8 @@ export function getRouter(history: RouterHistory) {
   return createRouter({
     routeTree,
     history,
+    // The whiteboard serves this app behind its own `/chat/` prefix.
+    basepath: "/chat",
     context: {},
     // Route components are split chunks (autoCodeSplitting in vite.config);
     // fetching them on hover/focus intent hides the load from the first

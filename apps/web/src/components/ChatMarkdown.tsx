@@ -100,6 +100,7 @@ import type {
 import ReactMarkdown from "react-markdown";
 import { toHtml } from "hast-util-to-html";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
+import { postWhiteboardHover, remarkWhiteboardLinks } from "../markdown-whiteboard";
 import { defaultUrlTransform } from "react-markdown";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
@@ -2463,6 +2464,7 @@ function useChatMarkdownState({
     if (parseComposerContextHref(href)) return href;
     if (parseThreadLinkHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
+    if (href.startsWith("board://")) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
   // Re-emit highlighted content as markdown so copying out of the rendered
@@ -2970,6 +2972,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           })
         : null;
       const isSameDocumentLink = href?.startsWith("#") ?? false;
+      const isWhiteboardLink = href?.startsWith("board://") ?? false;
       const onClick = props.onClick;
       const canOpenInPreview =
         canOperatePreview && Boolean(threadRef && isPreviewAvailableFor(threadRef.environmentId));
@@ -2982,8 +2985,19 @@ const CHAT_MARKDOWN_COMPONENTS = {
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
+          onMouseEnter={(event) => {
+            if (isWhiteboardLink && href) postWhiteboardHover(href, event.currentTarget);
+          }}
+          onMouseLeave={() => {
+            if (isWhiteboardLink) postWhiteboardHover(null);
+          }}
           onClick={(event) => {
             onClick?.(event);
+            if (isWhiteboardLink && href) {
+              event.preventDefault();
+              window.parent.postMessage({ type: "wb-highlight", ref: href }, "*");
+              return;
+            }
             if (isSameDocumentLink && href) {
               handleMarkdownFragmentClick(event, href);
               return;
@@ -3406,6 +3420,7 @@ function ChatMarkdown({
   const remarkPlugins = useMemo(
     () => [
       ...(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS),
+      remarkWhiteboardLinks,
       ...extraRemarkPlugins,
       ...(incrementalParsing ? [createIncrementalMarkdownPlugin()] : []),
     ],

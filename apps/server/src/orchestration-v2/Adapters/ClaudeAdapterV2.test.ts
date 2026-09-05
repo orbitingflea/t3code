@@ -216,6 +216,17 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.isUndefined(options.extraArgs?.["dangerously-skip-permissions"]);
   });
 
+  it("loads a session-local plugin configured by the hosting T3 instance", () => {
+    const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+      modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+      nativeThreadId: "native-thread-plugin",
+      resume: false,
+      cwd: "/workspace",
+      environment: { T3CODE_CLAUDE_PLUGIN_ROOT: " /opt/whiteboard " },
+    });
+    assert.deepEqual(options.plugins, [{ type: "local", path: "/opt/whiteboard" }]);
+  });
+
   it("passes automatic compaction and resume-dialog controls to the SDK", () => {
     const onUserDialog = async () => ({
       behavior: "completed" as const,
