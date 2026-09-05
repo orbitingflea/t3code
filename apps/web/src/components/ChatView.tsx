@@ -2704,6 +2704,13 @@ export default function ChatView(props: ChatViewProps) {
     runProjectCloneActionStable,
   ]);
   const activeProjectDefaultModelSelection = activeProjectSettings.settings.defaultModelSelection;
+  // The board binds its room to the project directory this chat is working in,
+  // so it has to hear which one that is whenever the active thread moves.
+  useEffect(() => {
+    const path = activeProject?.workspaceRoot;
+    if (path)
+      window.parent.postMessage({ type: "wb-project", path, session: activeThreadKey }, "*");
+  }, [activeProject?.workspaceRoot, activeThreadKey]);
   const handleNewThreadInActiveProject = () => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   };
