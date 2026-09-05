@@ -37,7 +37,7 @@ import * as CodexRpc from "effect-codex-app-server/rpc";
 import * as EffectCodexSchema from "effect-codex-app-server/schema";
 
 import { buildCodexInitializeParams } from "./CodexProvider.ts";
-import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
+import { codexSessionAppServerArgs, resolveCodexSkillRoot } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import {
   buildCodexDeveloperInstructions,
@@ -2433,6 +2433,10 @@ export const makeCodexSessionRuntime = (
       yield* emitSessionEvent("session/connecting", "Starting Codex App Server session.");
       yield* client.request("initialize", buildCodexInitializeParams());
       yield* client.notify("initialized", undefined);
+      const skillRoot = resolveCodexSkillRoot(options.environment);
+      if (skillRoot) {
+        yield* client.request("skills/extraRoots/set", { extraRoots: [skillRoot] });
+      }
 
       const requestedModel = normalizeCodexModelSlug(options.model);
 

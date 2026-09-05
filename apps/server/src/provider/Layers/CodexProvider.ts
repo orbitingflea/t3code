@@ -31,7 +31,11 @@ import {
   readCustomModelEntries,
 } from "@t3tools/shared/model";
 import { resolveSpawnCommand } from "@t3tools/shared/shell";
-import { codexAppServerArgs, resolveCodexLaunchArgs } from "./codexLaunchArgs.ts";
+import {
+  codexAppServerArgs,
+  resolveCodexLaunchArgs,
+  resolveCodexSkillRoot,
+} from "./codexLaunchArgs.ts";
 import {
   AUTH_PROBE_TIMEOUT_MS,
   buildServerProvider,
@@ -406,6 +410,10 @@ export const withCodexAppServerClient = Effect.fn("withCodexAppServerClient")(fu
   );
   const initialize = yield* client.request("initialize", buildCodexInitializeParams());
   yield* client.notify("initialized", undefined);
+  const skillRoot = resolveCodexSkillRoot(input.environment);
+  if (skillRoot) {
+    yield* client.request("skills/extraRoots/set", { extraRoots: [skillRoot] });
+  }
   return { client, initialize };
 });
 

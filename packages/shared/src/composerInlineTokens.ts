@@ -57,6 +57,13 @@ function collectMentionTokens(text: string): ComposerInlineToken[] {
     const prefix = match[1] ?? "";
     const label = (match[2] ?? "").replace(/\\(.)/g, "$1");
     const encodedPath = match[3] ?? "";
+    const start = (match.index ?? 0) + prefix.length;
+    const end = start + fullMatch.length - prefix.length;
+    if (encodedPath.startsWith("board://")) {
+      const source = text.slice(start, end);
+      matches.push({ type: "mention", value: source, source, start, end });
+      continue;
+    }
     let path = encodedPath;
     try {
       path = decodeURIComponent(encodedPath);
@@ -69,8 +76,6 @@ function collectMentionTokens(text: string): ComposerInlineToken[] {
     if (!path || hasExternalScheme || label !== basename) {
       continue;
     }
-    const start = (match.index ?? 0) + prefix.length;
-    const end = start + fullMatch.length - prefix.length;
     matches.push({
       type: "mention",
       value: path,

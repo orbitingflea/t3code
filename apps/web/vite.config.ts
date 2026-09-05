@@ -155,6 +155,8 @@ const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
 export default defineConfig(() => {
   return {
+    // The whiteboard serves this build behind its own `/chat/` prefix.
+    base: "/chat/",
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),

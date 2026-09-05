@@ -93,6 +93,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import "katex/dist/katex.min.css";
 import { remarkGithubAlerts } from "../markdown-github-alerts";
+import { postWhiteboardHover, remarkWhiteboardLinks } from "../markdown-whiteboard";
 import {
   artifactTemplateFromHastProperties,
   CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES,
@@ -489,13 +490,14 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   },
   protocols: {
     ...defaultSchema.protocols,
-    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context"],
+    href: [...(defaultSchema.protocols?.href ?? []), "file", "t3-citation", "t3-context", "board"],
     src: [...(defaultSchema.protocols?.src ?? []), "file", "t3-context"],
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
 
 const CHAT_MARKDOWN_REMARK_PLUGINS = [
   remarkGfm,
+  remarkWhiteboardLinks,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
@@ -508,6 +510,7 @@ const CHAT_MARKDOWN_REMARK_PLUGINS = [
 
 const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS = [
   remarkGfm,
+  remarkWhiteboardLinks,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
@@ -2466,6 +2469,7 @@ function useChatMarkdownState({
     if (parseAssistantCitationHref(href)) return href;
     if (parseComposerContextHref(href)) return href;
     if (isWindowsDrivePathHref(href)) return href;
+    if (href.startsWith("board://")) return href;
     return rewriteMarkdownFileUriHref(href) ?? defaultUrlTransform(href);
   }, []);
   // Re-emit highlighted content as markdown so copying out of the rendered
@@ -2954,6 +2958,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
           })
         : null;
       const isSameDocumentLink = href?.startsWith("#") ?? false;
+      const isWhiteboardLink = href?.startsWith("board://") ?? false;
       const onClick = props.onClick;
       const canOpenInPreview = Boolean(threadRef) && isPreviewSupportedInRuntime();
       const linkChildren = <MarkdownLinkContext value>{children}</MarkdownLinkContext>;
@@ -2965,8 +2970,19 @@ const CHAT_MARKDOWN_COMPONENTS = {
           href={href}
           target={isSameDocumentLink ? undefined : "_blank"}
           rel={isSameDocumentLink ? undefined : "noopener noreferrer"}
+          onMouseEnter={(event) => {
+            if (isWhiteboardLink && href) postWhiteboardHover(href, event.currentTarget);
+          }}
+          onMouseLeave={() => {
+            if (isWhiteboardLink) postWhiteboardHover(null);
+          }}
           onClick={(event) => {
             onClick?.(event);
+            if (isWhiteboardLink && href) {
+              event.preventDefault();
+              window.parent.postMessage({ type: "wb-highlight", ref: href }, "*");
+              return;
+            }
             if (isSameDocumentLink && href) {
               handleMarkdownFragmentClick(event, href);
               return;
