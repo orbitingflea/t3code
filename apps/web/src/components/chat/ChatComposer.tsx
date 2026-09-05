@@ -1007,7 +1007,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
-  const isMobileViewport = useMediaQuery("max-sm");
+  const isMobileViewport = false;
   const isSoftwareKeyboardOpen = useSoftwareKeyboardOpen();
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [composerSubmissionError, setComposerSubmissionError] = useState<string | null>(null);
@@ -1794,6 +1794,21 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return true;
   };
   const applyPromptReplacementStable = useStableCallback(applyPromptReplacement);
+
+  useEffect(() => {
+    const insertWhiteboardRef = (event: MessageEvent) => {
+      const { type, ref } = (event.data ?? {}) as { type?: string; ref?: string };
+      if (event.source !== window.parent || type !== "wb-insert-ref" || !ref) return;
+      const snapshot = composerEditorRef.current?.readSnapshot();
+      const cursor =
+        snapshot?.value === promptRef.current ? snapshot.expandedCursor : promptRef.current.length;
+      const spaced =
+        cursor > 0 && !/\s/.test(promptRef.current[cursor - 1] ?? "") ? ` ${ref}` : ref;
+      applyPromptReplacementStable(cursor, cursor, `${spaced} `);
+    };
+    window.addEventListener("message", insertWhiteboardRef);
+    return () => window.removeEventListener("message", insertWhiteboardRef);
+  }, [applyPromptReplacementStable, promptRef]);
 
   const readComposerSnapshot = (): {
     value: string;
