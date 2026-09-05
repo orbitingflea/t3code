@@ -254,6 +254,8 @@ const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
 export default defineConfig(() => {
   return {
+    // The whiteboard serves this build behind its own `/chat/` prefix.
+    base: "/chat/",
     run: {
       tasks: {
         // tsc (tsc-rs) rewrites the tsbuildinfo it reads, which keeps a task out of the cache.
