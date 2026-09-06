@@ -422,6 +422,11 @@ function deriveWorkLogEntries(
   const startedAtByToolCallId = new Map<string, string>();
   for (const activity of ordered) {
     if (activity.tone !== "error" && isWorktreeSetupActivity(activity.kind)) continue;
+    if (
+      activity.kind === "user-input.resolved" &&
+      asRecord(activity.payload)?.responseMode === "message"
+    )
+      continue;
     if (activity.kind === "tool.started") {
       const payload = asRecord(activity.payload);
       const toolCallId =

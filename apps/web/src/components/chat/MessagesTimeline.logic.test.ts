@@ -18,6 +18,7 @@ import {
 import {
   createMessageAttachmentPreviewProjector,
   deriveTimelineEntries,
+  deriveWorkLogEntries,
   deriveTimelineEntriesWithState,
   type WorkLogEntry,
 } from "../../session-logic";
@@ -2293,6 +2294,37 @@ describe("deriveMessagesTimelineRows", () => {
     turnDiffSummaryByAssistantMessageId: new Map(),
     revertTurnCountByUserMessageId: new Map(),
   };
+
+  it("keeps an async question answer visible when its segment collapses", () => {
+    const answer = userEntry("async-answer:request-1", "2026-01-01T00:00:10Z").message;
+    const timelineEntries = deriveTimelineEntries(
+      [answer, assistantEntry("final", "2026-01-01T00:00:30Z", "turn-1").message],
+      [],
+      deriveWorkLogEntries([
+        {
+          id: answer.id as never,
+          kind: "user-input.resolved",
+          summary: "User input submitted",
+          tone: "info",
+          turnId: "turn-1" as never,
+          createdAt: answer.createdAt,
+          payload: { requestId: "request-1", responseMode: "message", answers: { question: "go" } },
+        },
+      ]).concat(workEntry("work", "2026-01-01T00:00:15Z", "turn-1").entry),
+    );
+    for (const expandedFoldKeys of [new Set<string>(), new Set(["work"])]) {
+      const rows = deriveMessagesTimelineRows({
+        ...baseFoldInput,
+        timelineEntries,
+        expandedFoldKeys,
+      });
+      expect(rows.filter((row) => row.kind === "message").map((row) => row.id)).toEqual([
+        answer.id,
+        "final",
+      ]);
+      expect(new Set(rows.map((row) => row.id)).size).toBe(rows.length);
+    }
+  });
 
   it("folds a synthetic mid-response turn continuation into a single fold", () => {
     const rows = deriveMessagesTimelineRows({

@@ -1764,6 +1764,58 @@ describe("buildThreadFeed", () => {
     expect(serializedToolOutputs).toBe(1);
   });
 
+  it("keeps async question answers visible when work collapses", () => {
+    const turnId = TurnId.make("turn-1");
+    const id = "async-answer:request-1";
+    const createdAt = "2026-04-01T00:00:10.000Z";
+    const thread = makeThread({
+      id: ThreadId.make("async-answer-thread"),
+      projectId: ProjectId.make("project-1"),
+      title: "Async answer",
+      messages: [
+        {
+          id: MessageId.make(id),
+          role: "user",
+          text: "Question\nAnswer",
+          turnId: null,
+          streaming: false,
+          createdAt,
+          updatedAt: createdAt,
+        },
+      ],
+      activities: [
+        makeActivity({
+          id: EventId.make(id),
+          kind: "user-input.resolved",
+          tone: "info",
+          summary: "User input submitted",
+          turnId,
+          createdAt,
+          payload: {
+            requestId: "request-1",
+            responseMode: "message",
+            answers: { question: "Answer" },
+          },
+        }),
+        makeActivity({
+          id: EventId.make("work"),
+          kind: "tool.completed",
+          tone: "tool",
+          summary: "Ran command",
+          turnId,
+          createdAt: "2026-04-01T00:00:15.000Z",
+        }),
+      ],
+    });
+    for (const expanded of [new Set<TurnId>(), new Set([turnId])]) {
+      const rows = deriveThreadFeedPresentation(buildThreadFeed(thread), null, expanded);
+      expect(rows.filter((entry) => entry.type === "message").map((entry) => entry.id)).toEqual([
+        id,
+      ]);
+      expect(new Set(rows.map((entry) => entry.id)).size).toBe(rows.length);
+    }
+  });
+
   it("keeps the first and terminal assistant messages visible around settled work", () => {
     const turnId = TurnId.make("turn-1");
     const thread = makeThread({
