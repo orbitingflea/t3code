@@ -236,7 +236,8 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        defaultOpen={false}
+        // Inside the whiteboard iframe the board owns the width, so start collapsed; standalone keeps upstream's open default.
+        defaultOpen={window.self === window.top}
         style={sidebarProviderStyle}
       >
         <ProjectProjectionRetention />
