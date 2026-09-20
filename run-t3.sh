@@ -20,6 +20,7 @@ export BASH_ENV="$(dirname "$T3_DIR")/tools/agent-env.sh"
 # Web mode bootstraps a thread for the cwd project and every page load jumps
 # into it. The whiteboard wants the new-thread landing instead.
 export T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD=false
+export T3CODE_UNSAFE_NO_AUTH=1
 
 exec node "$T3_DIR/apps/server/src/bin.ts" start \
   --mode web \
