@@ -5,6 +5,7 @@ import {
   AuthStandardClientScopes,
 } from "@t3tools/contracts";
 import { expect, it } from "@effect/vitest";
+import { onTestFinished, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
@@ -142,10 +143,8 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
         EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
       >[0];
 
-      // The rejected cookie does not fall back to the dev cookie; it falls
-      // back to the credential-free session (whiteboard embedding).
-      const session = yield* serverAuth.authenticateHttpRequest(request);
-      expect(session.subject).toBe("unsafe-no-auth");
+      const error = yield* Effect.flip(serverAuth.authenticateHttpRequest(request));
+      expect(error._tag).toBe("ServerAuthInvalidCredentialError");
     }).pipe(
       Effect.provide(
         layerEnvironmentAuth({
@@ -169,9 +168,8 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
         } as unknown as Parameters<
           EnvironmentAuth.EnvironmentAuth["Service"]["authenticateHttpRequest"]
         >[0];
-        // Invalid Authorization resolves to the credential-free session, not the dev cookie.
-        const session = yield* serverAuth.authenticateHttpRequest(request);
-        expect(session.subject).toBe("unsafe-no-auth");
+        const error = yield* Effect.flip(serverAuth.authenticateHttpRequest(request));
+        expect(EnvironmentAuth.isServerAuthCredentialError(error)).toBe(true);
       }
     }).pipe(
       Effect.provide(
@@ -331,25 +329,26 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
     }),
   );
 
-  it.effect("authenticates requests without credentials through WebSocket setup", () =>
-    Effect.gen(function* () {
+  it.effect("authenticates requests without credentials through WebSocket setup", () => {
+    vi.stubEnv("T3CODE_UNSAFE_NO_AUTH", "1");
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    return Effect.gen(function* () {
       const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
-      const session = yield* serverAuth.authenticateHttpRequest({
-        cookies: {},
-        headers: {},
-      } as never);
+      const request = { cookies: {}, headers: {} };
+      const session = yield* serverAuth.authenticateHttpRequest(request as never);
       const ticket = yield* serverAuth.issueWebSocketTicket(session);
       const websocketSession = yield* serverAuth.authenticateWebSocketUpgrade({
-        cookies: {},
-        headers: {},
+        ...request,
         url: `/?wsTicket=${encodeURIComponent(ticket.ticket)}`,
       } as never);
 
       expect(session.subject).toBe("unsafe-no-auth");
       expect(session.scopes).toEqual(AuthAdministrativeScopes);
       expect(websocketSession).toEqual(session);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer())),
-  );
+    }).pipe(Effect.provide(makeEnvironmentAuthLayer()));
+  });
 
   it.effect("issues standard pairing credentials by default", () =>
     Effect.gen(function* () {
@@ -506,9 +505,9 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       );
 
       const active = yield* serverAuth.listSessions();
-      const firstAfterRotation = yield* serverAuth.authenticateHttpRequest(
-        makeBearerRequest(first.access_token),
-      );
+      const firstError = yield* serverAuth
+        .authenticateHttpRequest(makeBearerRequest(first.access_token))
+        .pipe(Effect.flip);
       const secondSession = yield* serverAuth.authenticateHttpRequest(
         makeBearerRequest(second.access_token),
       );
@@ -517,8 +516,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       expect(active.map((entry) => entry.sessionId)).toContain(browserSession.sessionId);
       expect(active.map((entry) => entry.sessionId)).toContain(secondSession.sessionId);
       expect(active.map((entry) => entry.sessionId)).not.toContain(firstSession.sessionId);
-      // The rotated-out token falls back to the credential-free session (whiteboard embedding).
-      expect(firstAfterRotation.subject).toBe("unsafe-no-auth");
+      expect(firstError._tag).toBe("ServerAuthInvalidCredentialError");
       for (const stale of staleSessions) {
         const error = yield* sessions.verify(stale.token).pipe(Effect.flip);
         expect(error._tag).toBe("SessionTokenRevokedError");
