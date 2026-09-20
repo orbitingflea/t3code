@@ -47,3 +47,15 @@ systemctl --user enable --now wb-t3
 ```
 
 Restart after a rebuild with `systemctl --user restart wb-t3`; read its log with `journalctl --user -u wb-t3 -f`.
+
+## Embedding changes to T3 Code
+
+This copy differs from upstream T3 Code in the points below. Keep this list current when porting the copy to a newer upstream.
+
+- No login. Requests without a credential, or with a rejected one, get a full-scope session (`unsafe-no-auth`) instead of a 401; websocket tickets issued to that session are accepted. Files: `apps/server/src/auth/EnvironmentAuth.ts` (with `EnvironmentAuth.test.ts`, `apps/server/src/server.test.ts` adjusted to match).
+- Whiteboard skills for agents. `T3CODE_CLAUDE_PLUGIN_ROOT` is loaded as a local Claude plugin; `T3CODE_CODEX_SKILL_ROOT` is registered with each Codex app-server through `skills/extraRoots/set`. Files: `apps/server/src/provider/Layers/ClaudeAdapter.ts`, `codexLaunchArgs.ts` (`resolveCodexSkillRoot`), `CodexProvider.ts`, `CodexSessionRuntime.ts`. `run-t3.sh` sets both variables, puts `tools/bin` on `PATH`, and sets `BASH_ENV` to `tools/agent-env.sh`.
+- Served under `/chat/`. Files: `apps/web/vite.config.ts` (`base: "/chat/"`), `apps/web/src/router.ts` (`basepath: "/chat"`).
+- Whiteboard links. `board://` links in assistant markdown are allowed, rendered with hover and click messages to the parent window (`wb-hover`, `wb-highlight`), and `[label](board://...)` mention chips in the composer show the label and report hover. Files: `apps/web/src/markdown-whiteboard.ts` (with test), `apps/web/src/components/ChatMarkdown.tsx`, `apps/web/src/components/ComposerPromptEditorTiptap.tsx`, `packages/shared/src/composerInlineTokens.ts` (board mention token).
+- Parent-window messages. The chat posts `wb-project` (workspace root and thread key) when the active thread changes, and inserts a reference into the composer on a `wb-insert-ref` message. The composer never switches to its mobile layout inside the iframe. Files: `apps/web/src/components/ChatView.tsx`, `apps/web/src/components/chat/ChatComposer.tsx`.
+- Iframe layout. The sidebar starts closed and the provider-update launch notification is not rendered. Files: `apps/web/src/components/AppSidebarLayout.tsx`, `apps/web/src/routes/__root.tsx`.
+- New-thread landing. `run-t3.sh` sets `T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD=false` so each page load opens the new-thread page rather than the oldest thread of the project.
