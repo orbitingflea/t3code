@@ -17,6 +17,9 @@ export PATH="$(dirname "$T3_DIR")/tools/bin:$PATH"
 export T3CODE_CLAUDE_PLUGIN_ROOT="$(dirname "$T3_DIR")"
 export T3CODE_CODEX_SKILL_ROOT="$(dirname "$T3_DIR")/skills"
 export BASH_ENV="$(dirname "$T3_DIR")/tools/agent-env.sh"
+# Web mode bootstraps a thread for the cwd project and every page load jumps
+# into it. The whiteboard wants the new-thread landing instead.
+export T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD=false
 
 exec node "$T3_DIR/apps/server/src/bin.ts" start \
   --mode web \
@@ -24,5 +27,4 @@ exec node "$T3_DIR/apps/server/src/bin.ts" start \
   --port "$T3_PORT" \
   --base-dir "$T3_DATA" \
   --no-browser \
-  --auto-bootstrap-project-from-cwd \
   "$T3_PROJECT"
