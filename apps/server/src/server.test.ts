@@ -55,7 +55,7 @@ import {
 import { RELAY_HEALTH_REQUEST_TYP, RELAY_MINT_REQUEST_TYP } from "@t3tools/shared/relayJwt";
 import * as RelayClient from "@t3tools/shared/relayClient";
 import { assert, it } from "@effect/vitest";
-import { assertFailure, assertTrue } from "@effect/vitest/utils";
+import { assertFailure, assertInclude, assertTrue } from "@effect/vitest/utils";
 import * as Clock from "effect/Clock";
 import * as Config from "effect/Config";
 import * as Deferred from "effect/Deferred";
@@ -2230,7 +2230,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("reports a full-scope session state without credentials", () =>
+  it.effect("reports unauthenticated session state without requiring auth", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -2238,8 +2238,6 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       const response = yield* fetchEffect(url);
       const body = yield* responseJsonEffect<{
         readonly authenticated: boolean;
-        readonly scopes?: ReadonlyArray<string>;
-        readonly sessionMethod?: string;
         readonly auth: {
           readonly policy: string;
           readonly bootstrapMethods: ReadonlyArray<string>;
@@ -2249,18 +2247,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       }>(response);
 
       assert.equal(response.status, 200);
-      assert.equal(body.authenticated, true);
-      assert.equal(body.sessionMethod, "browser-session-cookie");
-      assert.deepEqual(body.scopes, [
-        "orchestration:read",
-        "orchestration:operate",
-        "terminal:operate",
-        "review:write",
-        "relay:read",
-        "access:read",
-        "access:write",
-        "relay:write",
-      ]);
+      assert.equal(body.authenticated, false);
       assert.equal(body.auth.policy, "desktop-managed-local");
       assert.deepEqual(body.auth.bootstrapMethods, ["desktop-bootstrap"]);
       assert.deepEqual(body.auth.sessionMethods, [
@@ -2414,18 +2401,12 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(clients[0]?.current, true);
       assert.equal(clients[0]?.subject, "desktop-bootstrap");
 
-      // Replaced tokens no longer resolve to their bearer session; the
-      // credential-free session (whiteboard embedding) answers instead.
       for (const previous of [first, second]) {
         const response = yield* HttpClient.get("/api/auth/session", {
           headers: { authorization: `Bearer ${previous.body.access_token}` },
         });
-        const state = (yield* response.json) as {
-          readonly authenticated: boolean;
-          readonly sessionMethod?: string;
-        };
-        assert.equal(state.authenticated, true);
-        assert.equal(state.sessionMethod, "browser-session-cookie");
+        const state = (yield* response.json) as { readonly authenticated: boolean };
+        assert.equal(state.authenticated, false);
       }
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
@@ -2538,14 +2519,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         const bearerResponse = yield* fetchEffect(sessionUrl, {
           headers: { authorization: `Bearer ${token.access_token}` },
         });
-        const bearerState = yield* responseJsonEffect<{
-          readonly authenticated: boolean;
-          readonly sessionMethod?: string;
-        }>(bearerResponse);
-        // The DPoP token is not accepted as a bearer token; the request falls
-        // back to the credential-free session (whiteboard embedding).
-        assert.equal(bearerState.authenticated, true);
-        assert.equal(bearerState.sessionMethod, "browser-session-cookie");
+        const bearerState = yield* responseJsonEffect<{ readonly authenticated: boolean }>(
+          bearerResponse,
+        );
+        assert.equal(bearerState.authenticated, false);
 
         const sessionProof = makeDpopProof({
           method: "GET",
@@ -4388,7 +4365,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     );
   }
 
-  it.effect("includes CORS headers on credential-free websocket tickets", () =>
+  it.effect("includes CORS headers on remote websocket-ticket auth failures", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
@@ -4399,11 +4376,19 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           origin: crossOriginClientOrigin,
         },
       });
-      const body = yield* responseJsonEffect<{ readonly ticket?: string }>(response);
+      const body = yield* responseJsonEffect<{
+        readonly _tag?: string;
+        readonly code?: string;
+        readonly reason?: string;
+        readonly traceId?: string;
+      }>(response);
 
-      assert.equal(response.status, 200);
+      assert.equal(response.status, 401);
       assertBrowserApiCorsResponseHeaders(response.headers);
-      assert.equal(typeof body.ticket, "string");
+      assert.equal(body._tag, "EnvironmentAuthInvalidError");
+      assert.equal(body.code, "auth_invalid");
+      assert.equal(body.reason, "missing_credential");
+      assert.equal(typeof body.traceId, "string");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -4478,17 +4463,14 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("issues pairing credentials to unauthenticated requests", () =>
+  it.effect("rejects unauthenticated pairing credential requests", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest();
 
-      // Credential-free requests carry the full-scope session (whiteboard embedding).
       const response = yield* HttpClient.post("/api/auth/pairing-token", {
         body: yield* HttpBody.json({}),
       });
-      const body = (yield* response.json) as { readonly credential?: string };
-      assert.equal(response.status, 200);
-      assert.equal(typeof body.credential, "string");
+      assert.equal(response.status, 401);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -4781,7 +4763,10 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
         body: yield* HttpBody.json({}),
       });
       const pairedClientPairingBody = (yield* pairedClientPairingResponse.json) as {
-        readonly credential?: string;
+        readonly _tag: string;
+        readonly code: string;
+        readonly reason: string;
+        readonly traceId: string;
       };
 
       assert.equal(listBeforeResponse.status, 200);
@@ -4801,10 +4786,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       assert.equal(listAfterResponse.status, 200);
       assert.lengthOf(clientsAfter, 1);
       assert.equal(clientsAfter[0]?.current, true);
-      // The revoked cookie is rejected, so the request falls back to the
-      // credential-free session (whiteboard embedding) and still succeeds.
-      assert.equal(pairedClientPairingResponse.status, 200);
-      assert.equal(typeof pairedClientPairingBody.credential, "string");
+      assert.equal(pairedClientPairingResponse.status, 401);
+      assert.equal(pairedClientPairingBody._tag, "EnvironmentAuthInvalidError");
+      assert.equal(pairedClientPairingBody.code, "auth_invalid");
+      assert.equal(pairedClientPairingBody.reason, "invalid_credential");
+      assert.equal(typeof pairedClientPairingBody.traceId, "string");
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -4916,8 +4902,7 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
       });
 
       assert.equal(revokeResponse.status, 200);
-      // Revoked cookie falls back to the credential-free session (whiteboard embedding).
-      assert.equal(pairedClientPairingResponse.status, 200);
+      assert.equal(pairedClientPairingResponse.status, 401);
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5024,23 +5009,22 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   );
 
   it.effect(
-    "accepts websocket rpc handshake when a session token is only provided via query string",
+    "rejects websocket rpc handshake when a session token is only provided via query string",
     () =>
       Effect.gen(function* () {
         yield* buildAppUnderTest();
 
-        // The query-string token is ignored; the handshake proceeds on the
-        // credential-free session (whiteboard embedding).
         const { cookie } = yield* bootstrapBrowserSession();
         assert.isDefined(cookie);
         const sessionToken = extractSessionTokenFromSetCookie(cookie ?? "");
         const wsUrl = `${yield* getWsServerUrl("/ws", { authenticated: false })}?token=${encodeURIComponent(sessionToken)}`;
 
-        const response = yield* Effect.scoped(
-          withWsRpcClient(wsUrl, (client) => client[WS_METHODS.serverGetConfig]({})),
+        const error = yield* Effect.flip(
+          Effect.scoped(withWsRpcClient(wsUrl, (client) => client[WS_METHODS.serverGetConfig]({}))),
         );
 
-        assert.equal(response.environment.environmentId, testEnvironmentDescriptor.environmentId);
+        assert.equal(error._tag, "RpcClientError");
+        assertInclude(String(error), "SocketOpenError");
       }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
@@ -5951,11 +5935,11 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
     ).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 
-  it.effect("accepts websocket rpc handshake without session authentication", () =>
+  it.effect("rejects websocket rpc handshake when session authentication is missing", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-no-auth-" });
+      const workspaceDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-ws-auth-required-" });
       yield* fs.writeFileString(
         path.join(workspaceDir, "needle-file.ts"),
         "export const needle = 1;",
@@ -5971,10 +5955,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
             query: "needle",
             limit: 10,
           }),
-        ),
+        ).pipe(Effect.result),
       );
 
-      assert.deepEqual(result.entries, [{ path: "needle-file.ts", kind: "file" }]);
+      assertTrue(result._tag === "Failure");
+      const failureMessage = String(result.failure);
+      assertTrue(
+        failureMessage.includes("SocketOpenError") || failureMessage.includes("SocketCloseError"),
+      );
+      assertTrue(
+        failureMessage.includes("Unauthorized") ||
+          failureMessage.includes("An error occurred during Open"),
+      );
     }).pipe(Effect.provide(NodeHttpServer.layerTest)),
   );
 

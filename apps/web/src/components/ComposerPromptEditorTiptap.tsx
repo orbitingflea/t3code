@@ -217,12 +217,8 @@ const ComposerMentionExtension = Node.create({
 function ComposerMentionNodeView({ node }: NodeViewProps) {
   const actions = use(ComposerContextActionsContext);
   const mentionPath = (node.attrs.path as string) ?? "";
-  // A whiteboard mention is stored as `[label](board://...)`; the chip shows
-  // the label and reports hover to the board so it can highlight the item.
   const boardMatch = /^\[([^\]]+)\]\((board:\/\/[^)]+)\)$/.exec(mentionPath);
-  const boardRef = boardMatch?.[2];
-  const path = boardRef ?? mentionPath;
-  const label = boardMatch?.[1] ?? basenameOfPath(mentionPath);
+  const path = boardMatch?.[2] ?? mentionPath;
   const chip = (
     <Button
       variant="chip"
@@ -233,11 +229,15 @@ function ComposerMentionNodeView({ node }: NodeViewProps) {
       spellCheck={false}
       data-composer-mention-chip="true"
       onMouseEnter={
-        boardRef ? (event) => postWhiteboardHover(boardRef, event.currentTarget) : undefined
+        boardMatch ? (event) => postWhiteboardHover(path, event.currentTarget) : undefined
       }
-      onMouseLeave={boardRef ? () => postWhiteboardHover(null) : undefined}
+      onMouseLeave={boardMatch ? () => postWhiteboardHover(null) : undefined}
     >
-      <FileTagChipContent path={path} label={label} theme={resolvedThemeFromDocument()} />
+      <FileTagChipContent
+        path={path}
+        label={boardMatch?.[1] ?? basenameOfPath(path)}
+        theme={resolvedThemeFromDocument()}
+      />
     </Button>
   );
   return (
