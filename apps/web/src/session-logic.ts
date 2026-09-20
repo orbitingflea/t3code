@@ -732,8 +732,7 @@ function collapseDerivedWorkLogEntries(
   // Subagent rows collapse by spawn group, not adjacency: a workflow run (or
   // a single direct spawn) is ONE narrative event in the chat — a spawn row
   // in the timeline — no matter how many progress rows it emits or how
-  // they interleave (quiet-timeline guarantee). Direct spawns batch one
-  // step later, per timeline segment, in deriveTimelineEntries.
+  // they interleave (quiet-timeline guarantee).
   const spawnRowIndex = new Map<string, number>();
   // Group membership is decided once, at the FIRST row seen for a taskId: a
   // later row can lose the fields the key reads (a workflow coordinator's

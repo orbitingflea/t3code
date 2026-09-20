@@ -665,10 +665,6 @@ function deriveTurnFolds(input: {
       segments.push({ turnId: null, entries: [], startBoundary: entry.message.createdAt });
       continue;
     }
-    // Thinking is work, so it folds with the rest of it. A provider that
-    // interleaves a block with every tool call would otherwise leave dozens of
-    // "Thought" rows standing beside the "Worked for ..." summary.
-    // Nothing folds while the turn is live, which is when traces are watched.
     const segment = segments.at(-1)!;
     segment.turnId = timelineEntryTurnId(entry) ?? segment.turnId;
     segment.entries.push(entry);
@@ -713,14 +709,11 @@ function deriveTurnFolds(input: {
     // follow the answer, and it must not stop that lone tool call from folding
     // the way it did before traces existed. Loop-invariant, so it is counted
     // once: a long turn re-derives these rows on every work-log change.
-    const trailingEntryCount =
-      terminalEntry === null
-        ? 0
-        : segment.entries.filter(
-            (candidate, candidateIndex) =>
-              candidateIndex > terminalEntryIndex &&
-              !(candidate.kind === "message" && candidate.message.role === "reasoning"),
-          ).length;
+    const trailingEntryCount = segment.entries.filter(
+      (candidate, candidateIndex) =>
+        candidateIndex > terminalEntryIndex &&
+        !(candidate.kind === "message" && candidate.message.role === "reasoning"),
+    ).length;
     for (const [index, entry] of segment.entries.entries()) {
       if (entry === terminalEntry) {
         continue;
@@ -742,16 +735,11 @@ function deriveTurnFolds(input: {
           continue;
         }
       }
-      // User input stays visible after its segment settles.
-      if (entry.kind === "work" && entry.entry.questionAnswer !== undefined) {
-        continue;
-      }
-      // Agent-spawn rows never fold: workflows outlive their launching turn
-      // (dynamic spawns, background execution), and folding the row when the
-      // turn settles makes a still-running fleet invisible. Direct spawns are
-      // already one row per segment (deriveTimelineEntries), so keeping every
-      // spawn row visible leaves the segment one row.
-      if (entry.kind === "work" && entry.entry.agentSpawn !== undefined) {
+      // User input and subagent batches stay visible after their segment settles.
+      if (
+        entry.kind === "work" &&
+        (entry.entry.questionAnswer !== undefined || entry.entry.agentSpawn !== undefined)
+      ) {
         continue;
       }
       hiddenEntryIds.add(entry.id);
