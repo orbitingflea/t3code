@@ -56,6 +56,10 @@ const unsafeSession: AuthenticatedSession = {
   scopes: AuthStandardClientScopes,
 };
 
+/** The no-auth session has no stored row, so nothing can revoke it. */
+export const isUnsafeNoAuthSession = (sessionId: AuthSessionId) =>
+  sessionId === unsafeSession.sessionId;
+
 export interface IssuedPairingLink {
   readonly id: string;
   readonly credential: string;
@@ -734,6 +738,7 @@ export const make = Effect.gen(function* () {
   const descriptor = yield* policy.getDescriptor();
   const config = yield* ServerConfig.ServerConfig;
   const devAuth = resolveReusableDevAuth(config);
+  const unsafeNoAuth = process.env.T3CODE_UNSAFE_NO_AUTH === "1";
 
   const authenticateToken = (
     token: string,
@@ -794,7 +799,9 @@ export const make = Effect.gen(function* () {
     const dpopToken = parseDpopToken(request);
     const credential = resolveRequestCredential(request);
     if (!credential?.token) {
-      return Effect.succeed(unsafeSession);
+      return unsafeNoAuth
+        ? Effect.succeed(unsafeSession)
+        : Effect.fail(new ServerAuthMissingCredentialError({}));
     }
     if (
       isBrowserCookieCredential(credential.source) &&
@@ -837,7 +844,10 @@ export const make = Effect.gen(function* () {
         }
         return Effect.succeed(session);
       }),
-      Effect.catchIf(isServerAuthCredentialError, () => Effect.succeed(unsafeSession)),
+      Effect.catchIf(
+        (error) => unsafeNoAuth && isServerAuthCredentialError(error),
+        () => Effect.succeed(unsafeSession),
+      ),
     );
   };
 
@@ -1251,6 +1261,7 @@ export const make = Effect.gen(function* () {
           return yield* sessions.verifyWebSocketToken(websocketTicket).pipe(
             Effect.catchIf(
               (error) =>
+                unsafeNoAuth &&
                 error._tag === "UnknownWebSocketSessionError" &&
                 error.sessionId === unsafeSession.sessionId,
               () => Effect.succeed(unsafeSession),
