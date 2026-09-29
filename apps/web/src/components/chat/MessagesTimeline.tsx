@@ -289,7 +289,7 @@ interface TimelineRowSharedState {
   onFileDownload: (attachment: ChatFileAttachment) => void;
   openPullRequest: (event: MouseEvent<HTMLElement>, url: string) => void;
   onOpenTurnDiff: (turnId: TurnId, filePath?: string) => void;
-  onToggleTurnFold: (foldKey: string, anchorKey: string) => void;
+  onToggleTurnFold: (turnId: TurnId) => void;
   onToggleWorkGroup: (groupId: string, anchorKey: string) => void;
   onToggleWorkEntry: (anchorKey: string, collapsed: boolean) => void;
   onToggleSpawnRow: (entryId: string, expanded: boolean) => void;
@@ -533,8 +533,8 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     () => readTimelinePosition(listIdentityKey),
     [listIdentityKey],
   );
-  const [expandedFoldKeys, setExpandedFoldKeys] = useState<ReadonlySet<string>>(
-    () => rememberedPosition?.disclosures?.folds ?? new Set(),
+  const [expandedTurnIds, setExpandedTurnIds] = useState<ReadonlySet<TurnId>>(
+    () => rememberedPosition?.disclosures?.turns ?? new Set(),
   );
   const [expandedWorkGroupIds, setExpandedWorkGroupIds] = useState<ReadonlySet<string>>(
     () => rememberedPosition?.disclosures?.workGroups ?? new Set(),
@@ -555,7 +555,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // The list stays mounted across thread switches. Its first end pins on the
   // new thread must snap, not glide, even if that thread is mid-turn.
   const [settlingListIdentity, setSettlingListIdentity] = useState<string | null>(null);
-  let paintedExpandedFoldKeys = expandedFoldKeys;
+  let paintedExpandedTurnIds = expandedTurnIds;
   let paintedExpandedWorkGroupIds = expandedWorkGroupIds;
   let paintedExpandedSpawnEntryIds = expandedSpawnEntryIds;
   let paintedExpandedReasoningMessageIds = expandedReasoningMessageIds;
@@ -564,12 +564,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     setPositionedThreadKey(null);
     previousLatestTurnRef.current = latestTurn;
     setSettlingListIdentity(listIdentityKey);
-    paintedExpandedFoldKeys = rememberedPosition?.disclosures?.folds ?? new Set();
+    paintedExpandedTurnIds = rememberedPosition?.disclosures?.turns ?? new Set();
     paintedExpandedWorkGroupIds = rememberedPosition?.disclosures?.workGroups ?? new Set();
     paintedExpandedSpawnEntryIds = rememberedPosition?.disclosures?.spawnEntries ?? new Set();
     paintedExpandedReasoningMessageIds =
       rememberedPosition?.disclosures?.reasoningMessages ?? new Set();
-    setExpandedFoldKeys(paintedExpandedFoldKeys);
+    setExpandedTurnIds(paintedExpandedTurnIds);
     setExpandedWorkGroupIds(paintedExpandedWorkGroupIds);
     setExpandedSpawnEntryIds(paintedExpandedSpawnEntryIds);
     setExpandedReasoningMessageIds(paintedExpandedReasoningMessageIds);
@@ -585,6 +585,11 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   }, []);
   const citationThreadRef = useMemo(() => parseScopedThreadKey(routeThreadKey), [routeThreadKey]);
   const openPullRequest = useOpenPrLink(citationThreadRef ?? undefined);
+  const expandCitedTurn = useCallback((turnId: TurnId) => {
+    setExpandedTurnIds((current) =>
+      current.has(turnId) ? current : new Set([...current, turnId]),
+    );
+  }, []);
   // Nested tool state shares the bounded thread-position cache.
   const workGroupViewState = useMemo<WorkGroupViewState>(
     () =>
@@ -667,14 +672,14 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   );
 
   const onToggleTurnFold = useCallback(
-    (foldKey: string, anchorKey: string) => {
-      suspendEndScrollMaintenanceForDisclosure(anchorKey);
-      setExpandedFoldKeys((existing) => {
+    (turnId: TurnId) => {
+      suspendEndScrollMaintenanceForDisclosure(`turn-fold:${turnId}`);
+      setExpandedTurnIds((existing) => {
         const next = new Set(existing);
-        if (next.has(foldKey)) {
-          next.delete(foldKey);
+        if (next.has(turnId)) {
+          next.delete(turnId);
         } else {
-          next.add(foldKey);
+          next.add(turnId);
         }
         return next;
       });
@@ -720,7 +725,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     }
     if (latestTurn.turnId === previous.turnId) {
       if (previous.state === "running" && latestTurn.state === "interrupted") {
-        setExpandedFoldKeys((existing) => {
+        setExpandedTurnIds((existing) => {
           const next = new Set(existing);
           next.add(latestTurn.turnId);
           return next;
@@ -728,7 +733,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       }
       return;
     }
-    setExpandedFoldKeys((existing) => {
+    setExpandedTurnIds((existing) => {
       if (!existing.has(previous.turnId)) {
         return existing;
       }
@@ -773,7 +778,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
         timelineEntries,
         latestTurn,
         runningTurnId,
-        expandedFoldKeys: paintedExpandedFoldKeys,
+        expandedTurnIds: paintedExpandedTurnIds,
         expandedWorkGroupIds: paintedExpandedWorkGroupIds,
         isWorking,
         activeTurnStartedAt,
@@ -796,7 +801,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     timelineEntries,
     latestTurn,
     runningTurnId,
-    paintedExpandedFoldKeys,
+    paintedExpandedTurnIds,
     paintedExpandedWorkGroupIds,
     isWorking,
     activeTurnStartedAt,
@@ -807,20 +812,6 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     queuedMessages,
   ]);
   const rows = useStableRows(rawRows, listIdentityKey);
-  // A citation names only its turn; expanding every fold of that turn mounts
-  // the cited message whichever side of a steer it sits on.
-  const expandCitedTurn = useCallback(
-    (turnId: TurnId) => {
-      const foldKeys = rows.flatMap((row) =>
-        row.kind === "turn-fold" && row.turnId === turnId && !row.expanded ? [row.expandKey] : [],
-      );
-      if (foldKeys.length === 0) {
-        return;
-      }
-      setExpandedFoldKeys((current) => new Set([...current, ...foldKeys]));
-    },
-    [rows],
-  );
   const minimapItems = useMemo(() => deriveTimelineMinimapItems(rows), [rows]);
   const restoreRowIndex =
     restoringThreadPosition && rememberedPosition?.atEnd === false
@@ -1044,7 +1035,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
           scrollOffset: element.scrollTop,
           atEnd: isAtEnd,
           disclosures: {
-            folds: paintedExpandedFoldKeys,
+            turns: paintedExpandedTurnIds,
             workGroups: paintedExpandedWorkGroupIds,
             spawnEntries: paintedExpandedSpawnEntryIds,
             reasoningMessages: paintedExpandedReasoningMessageIds,
@@ -1093,7 +1084,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
     );
   }, [
     citationPositioning,
-    paintedExpandedFoldKeys,
+    paintedExpandedTurnIds,
     paintedExpandedWorkGroupIds,
     paintedExpandedSpawnEntryIds,
     paintedExpandedReasoningMessageIds,
@@ -1700,10 +1691,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         (row.kind === "message" && row.message.role === "assistant") ||
           row.kind === "assistant-meta"
           ? "group/assistant"
-          : null,
-        // The separator belongs to the fold above, below any spawn row it kept.
-        row.kind === "message" && row.showsTurnFoldSeparator
-          ? "border-t border-border/60 pt-2"
           : null,
       )}
       data-timeline-row-id={row.id}
@@ -2348,12 +2335,12 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
   const Icon = row.expanded ? ChevronDownIcon : ChevronRightIcon;
 
   return (
-    <div className="group/timeline-row relative flex items-center gap-1 pe-0.5 pt-1">
+    <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
       <button
         type="button"
         aria-expanded={row.expanded}
         data-scroll-anchor-ignore
-        onClick={() => ctx.onToggleTurnFold(row.expandKey, row.id)}
+        onClick={() => ctx.onToggleTurnFold(row.turnId)}
         className="flex cursor-pointer select-none items-center gap-1 rounded-md px-1 text-sm leading-relaxed text-muted-foreground tabular-nums transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
       >
         <span>{row.label}</span>

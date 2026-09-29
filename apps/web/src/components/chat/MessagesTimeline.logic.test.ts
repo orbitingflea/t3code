@@ -29,7 +29,6 @@ import {
   resolveAssistantMessageCopyState,
   resolveWorkGroupScrollIndex,
   shouldFollowWorkGroupAppend,
-  type TimelineLatestTurn,
   shouldPreserveAssistantLineBreaks,
   type MessagesTimelineRow,
   type MessagesTimelineRowsProjection,
@@ -290,7 +289,7 @@ describe("streaming row projection", () => {
       ...initial.input,
       turnDiffSummaries: [summary],
       supportsConversationRollback: true,
-      expandedFoldKeys: new Set<string>(),
+      expandedTurnIds: new Set([initial.historyTurnId]),
       expandedWorkGroupIds: new Set<string>(),
     };
     const previous = deriveMessagesTimelineRowsWithState(input);
@@ -306,7 +305,7 @@ describe("streaming row projection", () => {
       timelineEntries: timeline.entries,
       turnDiffSummaries: [...input.turnDiffSummaries],
       latestTurn: { ...input.latestTurn },
-      expandedFoldKeys: new Set(input.expandedFoldKeys),
+      expandedTurnIds: new Set(input.expandedTurnIds),
       expandedWorkGroupIds: new Set(input.expandedWorkGroupIds),
     };
     checkpointLookupReads = 0;
@@ -618,11 +617,7 @@ describe("streaming row projection", () => {
         completedAt: initial.time(12),
       },
     });
-    check({
-      expandedFoldKeys: new Set(
-        projection.rows.flatMap((row) => (row.kind === "turn-fold" ? [row.expandKey] : [])),
-      ),
-    });
+    check({ expandedTurnIds: new Set([initial.historyTurnId, initial.turnId]) });
     const group = projection.rows.find((row) => row.kind === "work-toggle");
     check({ expandedWorkGroupIds: new Set(group ? [group.id] : []) });
     messages = [
@@ -1401,7 +1396,7 @@ describe("deriveMessagesTimelineRows", () => {
     const derive = (
       timelineEntries: typeof direct,
       liveAgentTaskIds: ReadonlySet<string> | undefined,
-      expandedFoldKeys?: ReadonlySet<string>,
+      expandedTurnIds?: ReadonlySet<TurnId>,
     ) =>
       deriveMessagesTimelineRows({
         timelineEntries,
@@ -1410,9 +1405,9 @@ describe("deriveMessagesTimelineRows", () => {
         turnDiffSummaries: [],
         supportsConversationRollback: false,
         liveAgentTaskIds,
-        ...(expandedFoldKeys ? { expandedFoldKeys } : {}),
+        ...(expandedTurnIds ? { expandedTurnIds } : {}),
       }).map((row) => row.id);
-    const unfolded = ["turn-fold:assistant-first-entry", "spawn-entry", "assistant-final-entry"];
+    const unfolded = ["turn-fold:turn-1", "spawn-entry", "assistant-final-entry"];
 
     const activeRows = (
       timelineEntries: typeof direct,
@@ -1482,8 +1477,8 @@ describe("deriveMessagesTimelineRows", () => {
     // No live set is known.
     expect(derive(direct, undefined)).toEqual(unfolded);
     // Expanding the turn reveals the other work without duplicating the batch.
-    expect(derive(direct, new Set(), new Set(["assistant-first-entry"]))).toEqual([
-      "turn-fold:assistant-first-entry",
+    expect(derive(direct, new Set(), new Set(["turn-1" as TurnId]))).toEqual([
+      "turn-fold:turn-1",
       "assistant-first-entry",
       "spawn-entry",
       "assistant-final-entry",
@@ -1536,7 +1531,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedFoldKeys: new Set(["assistant-thought-entry"]),
+      expandedTurnIds: new Set(["turn-1" as never]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaries: [],
@@ -1737,19 +1732,19 @@ describe("deriveMessagesTimelineRows", () => {
       (row): row is Extract<(typeof collapsedRows)[number], { kind: "turn-fold" }> =>
         row.kind === "turn-fold",
     );
-    expect(foldRow?.expandKey).toBe("assistant-first-entry");
+    expect(foldRow?.turnId).toBe("turn-1");
     expect(foldRow?.expanded).toBe(false);
     // User message boundary (00:00:00) → terminal message updatedAt (00:00:22).
     expect(foldRow?.label).toBe("Worked for 22s");
     expect(collapsedRows.map((row) => row.id)).toEqual([
       "user-entry",
-      "turn-fold:assistant-first-entry",
+      "turn-fold:turn-1",
       "assistant-final-entry",
     ]);
 
     const expandedRows = deriveMessagesTimelineRows({
       timelineEntries,
-      expandedFoldKeys: new Set(["assistant-first-entry"]),
+      expandedTurnIds: new Set(["turn-1" as never]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaries: [],
@@ -1758,7 +1753,7 @@ describe("deriveMessagesTimelineRows", () => {
 
     expect(expandedRows.map((row) => row.id)).toEqual([
       "user-entry",
-      "turn-fold:assistant-first-entry",
+      "turn-fold:turn-1",
       "assistant-first-entry",
       "work-entry-1",
       "assistant-final-entry",
@@ -1828,7 +1823,7 @@ describe("deriveMessagesTimelineRows", () => {
     const rows = deriveMessagesTimelineRows({ ...input, timelineEntries });
 
     expect(rows.map((row) => row.id)).toEqual([
-      "turn-fold:work-entry-before-text",
+      "turn-fold:turn-1",
       "assistant-final-entry",
       "work-toggle:work-entry-after-text-0",
       "assistant-meta:assistant-final",
@@ -1852,7 +1847,7 @@ describe("deriveMessagesTimelineRows", () => {
       deriveMessagesTimelineRows({ ...input, timelineEntries: timelineEntries.slice(0, 3) }).map(
         (row) => row.id,
       ),
-    ).toEqual(["turn-fold:work-entry-before-text", "assistant-final-entry"]);
+    ).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
   });
 
   it("folds all assistant messages before the terminal message", () => {
@@ -1909,10 +1904,7 @@ describe("deriveMessagesTimelineRows", () => {
       supportsConversationRollback: false,
     });
 
-    expect(rows.map((row) => row.id)).toEqual([
-      "turn-fold:assistant-first-entry",
-      "assistant-final-entry",
-    ]);
+    expect(rows.map((row) => row.id)).toEqual(["turn-fold:turn-1", "assistant-final-entry"]);
   });
 
   const reasoningEntry = (id: string, at: string, turnId: string | null) => ({
@@ -2084,8 +2076,7 @@ describe("deriveMessagesTimelineRows", () => {
               ];
       const rows = deriveMessagesTimelineRows({
         timelineEntries: [first, ...middle, last],
-        // A fold keys by the first entry it hides; only the error case folds.
-        expandedFoldKeys: new Set(["reasoning-first"]),
+        expandedTurnIds: new Set([TurnId.make("turn-1"), TurnId.make("turn-2")]),
         isWorking: false,
         activeTurnStartedAt: null,
         turnDiffSummaries: [],
@@ -2239,16 +2230,16 @@ describe("deriveMessagesTimelineRows", () => {
     } satisfies Parameters<typeof deriveMessagesTimelineRows>[0];
     const rows = deriveMessagesTimelineRows(input);
     expect(rows.map((row) => row.kind)).toEqual(["turn-fold", "message"]);
-    const foldKeys = new Set(
-      rows.flatMap((row) => (row.kind === "turn-fold" ? [row.expandKey] : [])),
-    );
-    const expanded = deriveMessagesTimelineRows({ ...input, expandedFoldKeys: foldKeys });
+    const expanded = deriveMessagesTimelineRows({
+      ...input,
+      expandedTurnIds: new Set([TurnId.make("turn-1")]),
+    });
     expect(expanded.filter((row) => row.kind === "activity-group")).toMatchObject([
       { entries, expanded: false, active: false },
     ]);
     const details = deriveMessagesTimelineRows({
       ...input,
-      expandedFoldKeys: foldKeys,
+      expandedTurnIds: new Set([TurnId.make("turn-1")]),
       expandedWorkGroupIds: new Set(["activity-group:reasoning-entry"]),
     });
     expect(details.find((row) => row.kind === "activity-group")).toMatchObject({
@@ -2398,9 +2389,8 @@ describe("deriveMessagesTimelineRows", () => {
       (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
         row.kind === "turn-fold",
     );
-    // User message (00:00:00) → trailing work entry (00:00:12), keyed by the
-    // first entry the fold hides.
-    expect(foldRow?.expandKey).toBe("work-entry-before-message");
+    // User message (00:00:00) → trailing work entry (00:00:12).
+    expect(foldRow?.turnId).toBe("turn-1");
     expect(foldRow?.label).toBe("Worked for 12s");
   });
 
@@ -2435,7 +2425,7 @@ describe("deriveMessagesTimelineRows", () => {
     expect(rows).toEqual([
       expect.objectContaining({
         kind: "turn-fold",
-        expandKey: "turn-1",
+        turnId: "turn-1",
         label: "You stopped after 47s",
         expanded: false,
       }),
@@ -2501,7 +2491,7 @@ describe("deriveMessagesTimelineRows", () => {
     });
 
     expect(rows.map((row) => row.id)).toEqual([
-      "turn-fold:work-entry-1",
+      "turn-fold:turn-1",
       "assistant-final-entry",
       "user-followup-entry",
       "working-indicator-row",
@@ -2846,7 +2836,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedFoldKeys: new Set(["command-started-entry"]),
+      expandedTurnIds: new Set([turnId]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaries: [],
@@ -3201,441 +3191,10 @@ describe("deriveMessagesTimelineRows", () => {
       supportsConversationRollback: false,
     });
 
-    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.expandKey)).toEqual([
-      "previous-work-entry",
+    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.turnId)).toEqual([
+      "turn-1",
     ]);
     expect(rows.map((row) => row.id)).toContain("live-activity-row");
-  });
-
-  // Compact builders for the synthetic-continuation fold scenarios below.
-  const userEntry = (id: string, createdAt: string) => ({
-    id: `${id}-entry`,
-    kind: "message" as const,
-    createdAt,
-    message: {
-      id: id as never,
-      role: "user" as const,
-      text: "go",
-      turnId: null,
-      createdAt,
-      updatedAt: createdAt,
-      streaming: false,
-    },
-  });
-  const workEntry = (id: string, createdAt: string, turnId: string, completedAt?: string) => ({
-    id: `${id}-entry`,
-    kind: "work" as const,
-    createdAt,
-    entry: {
-      id,
-      createdAt,
-      ...(completedAt ? { completedAt } : {}),
-      turnId: turnId as never,
-      label: "Ran command",
-      tone: "tool" as const,
-    },
-  });
-  const assistantEntry = (id: string, createdAt: string, turnId: string, streaming = false) => ({
-    id: `${id}-entry`,
-    kind: "message" as const,
-    createdAt,
-    message: {
-      id: id as never,
-      role: "assistant" as const,
-      text: "Done",
-      turnId: turnId as never,
-      createdAt,
-      updatedAt: createdAt,
-      streaming,
-    },
-  });
-  const baseFoldInput = {
-    isWorking: false,
-    activeTurnStartedAt: null,
-    turnDiffSummaries: [],
-    supportsConversationRollback: false,
-  };
-
-  it("folds a synthetic mid-response turn continuation into a single fold", () => {
-    const rows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries: [
-        userEntry("user-1", "2026-01-01T00:00:00Z"),
-        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-        // No user message between the turn-1 and turn-2 rows: turn-2 is a
-        // synthetic wake-up continuation of the same response.
-        workEntry("work-2", "2026-01-01T00:00:10Z", "turn-2"),
-        assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-2"),
-      ],
-      // Realistic continuation timing: turn-2 starts mid-response, so its own
-      // turn span (22s) undercounts the response. The fold must not use it.
-      latestTurn: {
-        turnId: "turn-2" as never,
-        state: "completed",
-        startedAt: "2026-01-01T00:00:08Z",
-        completedAt: "2026-01-01T00:00:30Z",
-      },
-    });
-
-    // One fold, one label, covering the work from both turn ids, keyed by the
-    // turn id that opened the response.
-    expect(rows.map((row) => row.id)).toEqual([
-      "user-1-entry",
-      "turn-fold:work-1-entry",
-      "assistant-final-entry",
-    ]);
-    const foldRow = rows.find(
-      (row): row is Extract<(typeof rows)[number], { kind: "turn-fold" }> =>
-        row.kind === "turn-fold",
-    );
-    expect(foldRow?.label).toBe("Worked for 30s");
-  });
-
-  it("does not fold any part of a response while its synthetic continuation is unsettled", () => {
-    const rows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries: [
-        userEntry("user-1", "2026-01-01T00:00:00Z"),
-        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-        workEntry("work-2", "2026-01-01T00:00:10Z", "turn-2"),
-      ],
-      latestTurn: {
-        turnId: "turn-2" as never,
-        state: "running",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: null,
-      },
-      isWorking: true,
-      activeTurnStartedAt: "2026-01-01T00:00:00Z",
-    });
-
-    // turn-1 belongs to the same response, so it must stay unfolded too.
-    expect(rows.some((row) => row.kind === "turn-fold")).toBe(false);
-  });
-
-  it("folds a same-turn steer as one segment per side of the steer", () => {
-    // work-1 was still running when the steer landed: it sorts by its start
-    // but the fold it closes lasts until it finished.
-    const timelineEntries = [
-      userEntry("user-1", "2026-01-01T00:00:00Z"),
-      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1", "2026-01-01T00:00:12Z"),
-      userEntry("user-steer", "2026-01-01T00:00:10Z"),
-      workEntry("work-2", "2026-01-01T00:00:15Z", "turn-1"),
-      assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-1"),
-    ];
-    const runningRows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries,
-      latestTurn: {
-        turnId: "turn-1" as never,
-        state: "running",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: null,
-      },
-      isWorking: true,
-      activeTurnStartedAt: "2026-01-01T00:00:00Z",
-    });
-    // The pre-steer segment is settled and folds as soon as the steer is
-    // sent; the post-steer segment is the live one and stays unfolded.
-    const runningFoldRows = runningRows.filter((row) => row.kind === "turn-fold");
-    expect(runningFoldRows.map((row) => row.id)).toEqual(["turn-fold:work-1-entry"]);
-    expect(runningFoldRows[0]?.label).toBe("Worked for 12s");
-    expect(runningRows.map((row) => row.id)).toContain("work-2-entry");
-
-    const settledRows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries,
-      latestTurn: {
-        turnId: "turn-1" as never,
-        state: "completed",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: "2026-01-01T00:00:30Z",
-      },
-    });
-    expect(settledRows.map((row) => row.id)).toEqual([
-      "user-1-entry",
-      "turn-fold:work-1-entry",
-      "user-steer-entry",
-      "turn-fold:work-2-entry",
-      "assistant-final-entry",
-    ]);
-    expect(
-      settledRows
-        .filter((row) => row.kind === "turn-fold")
-        .map((row) => row.kind === "turn-fold" && row.label),
-    ).toEqual(["Worked for 12s", "Worked for 20s"]);
-    expect(
-      settledRows.flatMap((row) =>
-        row.kind === "message" && row.showsTurnFoldSeparator ? [row.id] : [],
-      ),
-    ).toEqual(["assistant-final-entry"]);
-
-    // Each side of the steer expands on its own.
-    const expandedSide = (keys: ReadonlyArray<string>, latestTurn?: TimelineLatestTurn) =>
-      deriveMessagesTimelineRows({
-        ...baseFoldInput,
-        timelineEntries,
-        ...(latestTurn ? { latestTurn } : {}),
-        expandedFoldKeys: new Set(keys),
-      })
-        .filter((row) => row.kind === "turn-fold")
-        .map((row) => row.kind === "turn-fold" && row.expanded);
-    expect(expandedSide(["work-1-entry"])).toEqual([true, false]);
-    expect(expandedSide(["work-2-entry"])).toEqual([false, true]);
-    // An interrupt knows only the turn id; that expands the side it cut short.
-    expect(
-      expandedSide(["turn-1"], {
-        turnId: "turn-1" as never,
-        state: "interrupted",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: "2026-01-01T00:00:30Z",
-      }),
-    ).toEqual([false, true]);
-  });
-
-  it("keys the fold after a user message by the new turn even when old-turn residue lands first", () => {
-    const rows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries: [
-        userEntry("user-1", "2026-01-01T00:00:00Z"),
-        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-        assistantEntry("assistant-one", "2026-01-01T00:00:10Z", "turn-1"),
-        userEntry("user-2", "2026-01-01T00:00:20Z"),
-        // Background turn-1 row landing after the next user message, before
-        // turn-2's own rows: the segment's turnId must still key off the new
-        // turn, not the straddling residue that happens to come first.
-        workEntry("work-late", "2026-01-01T00:00:22Z", "turn-1"),
-        workEntry("work-2", "2026-01-01T00:00:24Z", "turn-2"),
-        assistantEntry("assistant-two", "2026-01-01T00:00:40Z", "turn-2"),
-      ],
-      latestTurn: {
-        turnId: "turn-2" as never,
-        state: "completed",
-        startedAt: "2026-01-01T00:00:21Z",
-        completedAt: "2026-01-01T00:00:40Z",
-      },
-    });
-
-    expect(rows.map((row) => row.id)).toEqual([
-      "user-1-entry",
-      "turn-fold:work-1-entry",
-      "assistant-one-entry",
-      "user-2-entry",
-      "turn-fold:work-late-entry",
-      "assistant-two-entry",
-    ]);
-    expect(rows.filter((row) => row.kind === "turn-fold").map((row) => row.expandKey)).toEqual([
-      "work-1-entry",
-      "work-late-entry",
-    ]);
-  });
-
-  it("folds turn-less background rows into the segment they land in", () => {
-    // Background subagent activity carries no turn id at all.
-    const turnlessEntry = (id: string, createdAt: string) => ({
-      id: `${id}-entry`,
-      kind: "work" as const,
-      createdAt,
-      entry: { id, createdAt, label: "Ran command", tone: "tool" as const },
-    });
-    const rows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries: [
-        userEntry("user-1", "2026-01-01T00:00:00Z"),
-        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-        turnlessEntry("bg-1", "2026-01-01T00:00:10Z"),
-        assistantEntry("assistant-one", "2026-01-01T00:00:15Z", "turn-1"),
-        userEntry("user-2", "2026-01-01T00:00:20Z"),
-        // Residue of the first response landing after the next user message
-        // opens the second segment, so it anchors that segment's fold.
-        turnlessEntry("bg-2", "2026-01-01T00:00:21Z"),
-        workEntry("work-2", "2026-01-01T00:00:25Z", "turn-2"),
-        turnlessEntry("bg-3", "2026-01-01T00:00:26Z"),
-        assistantEntry("assistant-two", "2026-01-01T00:00:40Z", "turn-2"),
-      ],
-      latestTurn: {
-        turnId: "turn-2" as never,
-        state: "completed",
-        startedAt: "2026-01-01T00:00:24Z",
-        completedAt: "2026-01-01T00:00:40Z",
-      },
-    });
-
-    expect(rows.map((row) => row.id)).toEqual([
-      "user-1-entry",
-      "turn-fold:work-1-entry",
-      "assistant-one-entry",
-      "user-2-entry",
-      "turn-fold:bg-2-entry",
-      "assistant-two-entry",
-    ]);
-  });
-
-  const spawnEntry = (
-    id: string,
-    createdAt: string,
-    turnId: string,
-    agentTaskIds: ReadonlyArray<string>,
-    workflowId: string | null = null,
-  ) => {
-    const base = workEntry(id, createdAt, turnId);
-    return { ...base, entry: { ...base.entry, agentSpawn: { workflowId, agentTaskIds } } };
-  };
-
-  it("keeps every spawn CTA row visible when the fold collapses", () => {
-    // deriveTimelineEntries already batched the segment's direct spawns into
-    // one row, so the fold only has to leave the spawn rows where they are.
-    const timelineEntries = [
-      userEntry("user-1", "2026-01-01T00:00:00Z"),
-      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-      spawnEntry("spawn-1", "2026-01-01T00:00:06Z", "turn-1", ["agent-a", "agent-b"]),
-      workEntry("work-2", "2026-01-01T00:00:15Z", "turn-2"),
-      // A workflow CTA keeps its own row: the workflow outlives the turn.
-      spawnEntry("spawn-wf", "2026-01-01T00:00:17Z", "turn-2", ["wf-1", "agent-c"], "wf-1"),
-      assistantEntry("assistant-final", "2026-01-01T00:00:30Z", "turn-2"),
-    ];
-    const latestTurn = {
-      turnId: "turn-2" as never,
-      state: "completed" as const,
-      startedAt: "2026-01-01T00:00:14Z",
-      completedAt: "2026-01-01T00:00:30Z",
-    };
-
-    const rows = deriveMessagesTimelineRows({ ...baseFoldInput, timelineEntries, latestTurn });
-    expect(rows.map((row) => row.id)).toEqual([
-      "user-1-entry",
-      "turn-fold:work-1-entry",
-      "spawn-1-entry",
-      "spawn-wf-entry",
-      "assistant-final-entry",
-    ]);
-    const spawnRow = rows.find((row) => row.id === "spawn-1-entry");
-    expect(spawnRow?.kind === "work" && spawnRow.groupedEntries[0]?.agentSpawn).toEqual({
-      workflowId: null,
-      agentTaskIds: ["agent-a", "agent-b"],
-    });
-
-    // Expanding the fold brings the work rows it hid back.
-    const expandedRows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries,
-      latestTurn,
-      expandedFoldKeys: new Set(["work-1-entry"]),
-    });
-    expect(expandedRows.map((row) => row.id)).toContain("work-1-entry");
-    expect(expandedRows.map((row) => row.id)).toContain("spawn-1-entry");
-  });
-
-  it("keeps the response and its spawn row in the post-steer segment only", () => {
-    const rows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries: [
-        userEntry("user-1", "2026-01-01T00:00:00Z"),
-        assistantEntry("assistant-plan", "2026-01-01T00:00:04Z", "turn-1"),
-        workEntry("work-1", "2026-01-01T00:00:06Z", "turn-1"),
-        userEntry("user-steer", "2026-01-01T00:00:12Z"),
-        workEntry("work-2", "2026-01-01T00:00:18Z", "turn-1"),
-        spawnEntry("spawn-1", "2026-01-01T00:00:20Z", "turn-1", ["agent-a"]),
-        assistantEntry("assistant-final", "2026-01-01T00:00:40Z", "turn-1"),
-      ],
-      latestTurn: {
-        turnId: "turn-1" as never,
-        state: "completed",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: "2026-01-01T00:00:45Z",
-      },
-    });
-
-    // The pre-steer commentary closes its segment; the single tool row that
-    // trailed it folds on its own, and the steer's response never joins it.
-    expect(rows.map((row) => row.id)).toEqual([
-      "user-1-entry",
-      "assistant-plan-entry",
-      "turn-fold:work-1-entry",
-      "user-steer-entry",
-      "turn-fold:work-2-entry",
-      "spawn-1-entry",
-      "assistant-final-entry",
-    ]);
-    expect(
-      rows
-        .filter((row) => row.kind === "turn-fold")
-        .map((row) => row.kind === "turn-fold" && row.label),
-    ).toEqual(["Worked for 6.0s", "Worked for 33s"]);
-    expect(
-      rows.flatMap((row) => (row.kind === "message" && row.showsTurnFoldSeparator ? [row.id] : [])),
-    ).toEqual(["assistant-final-entry"]);
-  });
-
-  it("uses the stopped label when the interrupted turn is a grouped synthetic continuation", () => {
-    const rows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries: [
-        userEntry("user-1", "2026-01-01T00:00:00Z"),
-        workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-        workEntry("work-2", "2026-01-01T00:00:10Z", "turn-2"),
-      ],
-      latestTurn: {
-        turnId: "turn-2" as never,
-        state: "interrupted",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: "2026-01-01T00:00:47Z",
-      },
-    });
-
-    // The segment's own entries end at 00:00:10, but this segment holds the
-    // latest turn's entries, so the end is latestTurn.completedAt (00:00:47).
-    expect(rows.filter((row) => row.kind === "turn-fold")).toEqual([
-      expect.objectContaining({ expandKey: "turn-2", label: "You stopped after 47s" }),
-    ]);
-  });
-
-  it("shows assistant metadata on a fold's terminal message once its turn settles", () => {
-    const timelineEntries = [
-      userEntry("user-1", "2026-01-01T00:00:00Z"),
-      workEntry("work-1", "2026-01-01T00:00:05Z", "turn-1"),
-      assistantEntry("assistant-plan", "2026-01-01T00:00:10Z", "turn-1"),
-      userEntry("user-steer", "2026-01-01T00:00:20Z"),
-      workEntry("work-2", "2026-01-01T00:00:25Z", "turn-1"),
-      assistantEntry("assistant-final", "2026-01-01T00:00:40Z", "turn-1"),
-    ];
-
-    const runningRows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries,
-      latestTurn: {
-        turnId: "turn-1" as never,
-        state: "running",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: null,
-      },
-      isWorking: true,
-      activeTurnStartedAt: "2026-01-01T00:00:00Z",
-    });
-    // The pre-steer fold is settled, but turn-1 itself is still running, so
-    // its terminal message still withholds metadata.
-    const runningPlanRow = runningRows.find((row) => row.id === "assistant-plan-entry");
-    expect(runningPlanRow?.kind === "message" && runningPlanRow.showAssistantMeta).toBe(false);
-
-    const settledRows = deriveMessagesTimelineRows({
-      ...baseFoldInput,
-      timelineEntries,
-      latestTurn: {
-        turnId: "turn-1" as never,
-        state: "completed",
-        startedAt: "2026-01-01T00:00:00Z",
-        completedAt: "2026-01-01T00:00:40Z",
-      },
-    });
-    expect(settledRows.filter((row) => row.kind === "turn-fold").map((row) => row.id)).toEqual([
-      "turn-fold:work-1-entry",
-      "turn-fold:work-2-entry",
-    ]);
-    for (const id of ["assistant-plan-entry", "assistant-final-entry"]) {
-      const row = settledRows.find((r) => r.id === id);
-      expect(row?.kind === "message" && row.showAssistantMeta).toBe(true);
-      expect(row?.kind === "message" && row.showsTurnFoldSeparator).toBe(true);
-    }
   });
 
   it("only shows assistant metadata on the terminal assistant message", () => {
@@ -3670,7 +3229,7 @@ describe("deriveMessagesTimelineRows", () => {
           },
         },
       ],
-      expandedFoldKeys: new Set(["assistant-thought-entry"]),
+      expandedTurnIds: new Set(["turn-1" as never]),
       isWorking: false,
       activeTurnStartedAt: null,
       turnDiffSummaries: [],
@@ -3844,10 +3403,7 @@ describe("deriveMessagesTimelineRows", () => {
     } satisfies Parameters<typeof deriveMessagesTimelineRows>[0];
     const collapsed = deriveMessagesTimelineRows(input);
     expect(collapsed.map((row) => row.kind)).toEqual(["turn-fold", "work"]);
-    const foldKeys = new Set(
-      collapsed.flatMap((row) => (row.kind === "turn-fold" ? [row.expandKey] : [])),
-    );
-    const expanded = deriveMessagesTimelineRows({ ...input, expandedFoldKeys: foldKeys });
+    const expanded = deriveMessagesTimelineRows({ ...input, expandedTurnIds: new Set([turnId]) });
     expect(expanded.map((row) => row.kind)).toEqual([
       "turn-fold",
       "work-toggle",
@@ -3856,7 +3412,7 @@ describe("deriveMessagesTimelineRows", () => {
     ]);
     const expandedGroups = deriveMessagesTimelineRows({
       ...input,
-      expandedFoldKeys: foldKeys,
+      expandedTurnIds: new Set([turnId]),
       expandedWorkGroupIds: new Set(
         expanded.flatMap((row) => (row.kind === "work-toggle" ? [row.groupId] : [])),
       ),
@@ -3989,7 +3545,7 @@ describe("deriveMessagesTimelineRows", () => {
       const input = {
         timelineEntries,
         isWorking,
-        expandedFoldKeys: new Set(["tool-entry-0"]),
+        expandedTurnIds: new Set([turnId]),
         runningTurnId: isWorking ? turnId : null,
         activeTurnStartedAt: isWorking ? createdAt : null,
         turnDiffSummaries: [],

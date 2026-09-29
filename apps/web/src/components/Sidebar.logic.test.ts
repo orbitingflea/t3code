@@ -1901,62 +1901,44 @@ describe("resolveWorkingStartedAt", () => {
     updatedAt: "2026-03-09T10:02:00.000Z",
   };
 
-  it("counts from the user message, not the running turn's start time", () => {
+  it("uses the running turn's start time", () => {
     expect(
       resolveWorkingStartedAt({
-        latestUserMessageAt: "2026-03-09T09:55:00.000Z",
         latestTurn: makeLatestTurn({ completedAt: null }),
         session,
       }),
-    ).toBe("2026-03-09T09:55:00.000Z");
+    ).toBe("2026-03-09T10:00:00.000Z");
   });
 
-  it("uses the request time while a turn awaits adoption without a user message", () => {
+  it("uses the request time while a turn awaits adoption", () => {
     expect(
       resolveWorkingStartedAt({
-        latestUserMessageAt: null,
         latestTurn: makeLatestTurn({ startedAt: null, completedAt: null }),
         session,
       }),
     ).toBe("2026-03-09T10:00:00.000Z");
   });
 
-  // A synthetic turn can complete mid-response; the timer must not restart
-  // from the session transition while the user's message still stands.
-  it("keeps the user message when the latest synthetic turn already completed", () => {
-    expect(
-      resolveWorkingStartedAt({
-        latestUserMessageAt: "2026-03-09T09:55:00.000Z",
-        latestTurn: makeLatestTurn(),
-        session,
-      }),
-    ).toBe("2026-03-09T09:55:00.000Z");
-  });
-
   it("falls back to the session transition when the latest turn already completed", () => {
     expect(
       resolveWorkingStartedAt({
-        latestUserMessageAt: null,
         latestTurn: makeLatestTurn(),
         session,
       }),
     ).toBe("2026-03-09T10:02:00.000Z");
   });
 
-  it("skips malformed timestamps instead of returning them", () => {
+  it("skips a malformed startedAt instead of returning it", () => {
     expect(
       resolveWorkingStartedAt({
-        latestUserMessageAt: "not-a-date",
-        latestTurn: makeLatestTurn({ startedAt: "also-not-a-date", completedAt: null }),
+        latestTurn: makeLatestTurn({ startedAt: "not-a-date", completedAt: null }),
         session,
       }),
     ).toBe("2026-03-09T10:00:00.000Z");
   });
 
-  it("returns null with neither a user message, a running turn, nor a session", () => {
-    expect(
-      resolveWorkingStartedAt({ latestUserMessageAt: null, latestTurn: null, session: null }),
-    ).toBeNull();
+  it("returns null with neither a running turn nor a session", () => {
+    expect(resolveWorkingStartedAt({ latestTurn: null, session: null })).toBeNull();
   });
 });
 

@@ -60,8 +60,6 @@ export interface WorkLogEntry {
   turnId?: TurnId | null;
   /** Stable provider identity across in-progress and completed lifecycle updates. */
   toolCallId?: string;
-  /** Latest lifecycle event, so completion once the tool settles; `createdAt` is when the agent issued the call. */
-  completedAt?: string;
   label: string;
   detail?: string;
   viewedImagePath?: string;
@@ -85,7 +83,7 @@ export interface WorkLogEntry {
   /** Agent role (subagent_type) for labeled timeline rows. */
   agentRole?: string;
   /**
-   * Present on agent-spawn rows: one per workflow run or per-segment batch of
+   * Present on agent-spawn rows: one per workflow run or per-turn batch of
    * direct spawns. The row ("Kicked off N subagents") derives its live
    * status and member list from the agent panel model at render time.
    */
@@ -157,8 +155,6 @@ export interface TimelineEntriesProjection {
   readonly messages: ReadonlyArray<ChatMessage>;
   readonly proposedPlans: ReadonlyArray<ProposedPlan>;
   readonly workEntries: ReadonlyArray<WorkLogEntry>;
-  /** Transcript order before direct spawns batch per segment; the incremental paths extend this. */
-  readonly sortedEntries: TimelineEntry[];
   readonly entries: TimelineEntry[];
 }
 
@@ -471,9 +467,6 @@ export function deriveWorkLogEntries(
     }
   }
   const entries: DerivedWorkLogEntry[] = [];
-  // A tool row sits where the agent issued the call, not where the call
-  // finished, so a tool still running when a steer lands sorts before it.
-  const startedAtByToolCallId = new Map<string, string>();
   for (const activity of foldUserInputActivities(ordered)) {
     if (
       isWorktreeSetupActivity(activity.kind) &&
@@ -481,11 +474,7 @@ export function deriveWorkLogEntries(
     ) {
       continue;
     }
-    if (activity.kind === "tool.started") {
-      const toolCallId = extractToolCallId(asRecord(activity.payload));
-      if (toolCallId) startedAtByToolCallId.set(toolCallId, activity.createdAt);
-      continue;
-    }
+    if (activity.kind === "tool.started") continue;
     // Agent task.started rows are CTA seeds: they carry the true spawn turn,
     // which is the batch key (completions of background subagents arrive
     // under later synthetic turns and must not start new batches). They
@@ -520,10 +509,7 @@ export function deriveWorkLogEntries(
     ) {
       continue;
     }
-    const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
-    entries.push(
-      startedAt ? { ...entry, createdAt: startedAt, completedAt: entry.createdAt } : entry,
-    );
+    entries.push(entry);
   }
   return collapseDerivedWorkLogEntries(entries);
 }
@@ -695,9 +681,7 @@ function toDerivedWorkLogEntry(activity: OrchestrationThreadActivity): DerivedWo
 
 /**
  * Spawn-group key for a subagent lifecycle row. Workflow members and their
- * coordinator share the coordinator's group; a direct spawn is its own group,
- * so its progress and completion rows collapse into its own row. Direct
- * spawns batch one step later, per timeline segment, in deriveTimelineEntries.
+ * coordinator share the coordinator's group; direct spawns batch per turn.
  * One CTA row per group (A1 design): "Kicked off N subagents".
  */
 function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
@@ -712,7 +696,13 @@ function agentSpawnGroupKey(entry: DerivedWorkLogEntry): string {
   if (entry.isWorkflowCoordinator) {
     return `wf:${taskId}`;
   }
-  return `direct:task:${taskId}`;
+  // No turn id means no batch signal at all: fall back to one group per
+  // task. Unrelated turn-less spawns (separate fleets whose rows lost their
+  // turn) must not collapse into one immortal "direct:no-turn" CTA
+  // accumulating every agent the thread ever ran (review finding). Adapters
+  // stamp spawn turns (Codex spawnTurnId; Claude rows ride real turns), so
+  // this path is defensive.
+  return entry.turnId ? `direct:${entry.turnId}` : `direct:task:${taskId}`;
 }
 
 function toolLifecycleCollapseMapKey(entry: DerivedWorkLogEntry): string | undefined {
@@ -730,14 +720,16 @@ function collapseDerivedWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const collapsed: DerivedWorkLogEntry[] = [];
   // Subagent rows collapse by spawn group, not adjacency: a workflow run (or
-  // a single direct spawn) is ONE narrative event in the chat — a spawn row
-  // in the timeline — no matter how many progress rows it emits or how
-  // they interleave (quiet-timeline guarantee).
+  // a turn's batch of direct spawns) is ONE narrative event in the chat — a
+  // spawn row in the timeline — no matter how many agents it
+  // contains or how their progress rows interleave (quiet-timeline
+  // guarantee).
   const spawnRowIndex = new Map<string, number>();
-  // Group membership is decided once, at the FIRST row seen for a taskId: a
-  // later row can lose the fields the key reads (a workflow coordinator's
-  // completion payload may drop its workflow name) and must stay in the
-  // group its spawn joined.
+  // Batch membership is decided once, at the FIRST row seen for a taskId.
+  // Claude background subagents settle between turns, so their completion
+  // rows carry fresh synthetic turn ids (or none) — keying each row by its
+  // own turn splintered one batch into a stream of "Kicked off N subagents"
+  // rows (live-test finding, thread 7ac7ef05).
   const groupKeyByTaskId = new Map<string, string>();
   const toolLifecycleRowIndex = new Map<string, number>();
   for (const entry of entries) {
@@ -1651,8 +1643,8 @@ function replaceStreamingTimelineMessages(
     if (!isStreamingMessageTextUpdate(previousMessage, message)) return null;
     replacements.set(previousMessage, message);
   }
-  if (replacements.size === 0) return previous.sortedEntries;
-  return previous.sortedEntries.map((entry) => {
+  if (replacements.size === 0) return previous.entries;
+  return previous.entries.map((entry) => {
     const replacement = entry.kind === "message" ? replacements.get(entry.message) : undefined;
     return replacement ? timelineEntryFromMessage(replacement) : entry;
   });
@@ -1672,19 +1664,8 @@ export function deriveTimelineEntriesWithState(
     hasExactArrayPrefix(previous.proposedPlans, proposedPlans) &&
     hasExactArrayPrefix(previous.workEntries, workEntries)
   ) {
-    const sortedEntries = replaceStreamingTimelineMessages(messages, previous);
-    if (sortedEntries !== null) {
-      return {
-        messages,
-        proposedPlans,
-        workEntries,
-        sortedEntries,
-        entries:
-          sortedEntries === previous.sortedEntries
-            ? previous.entries
-            : batchDirectSpawnsPerSegment(sortedEntries),
-      };
-    }
+    const entries = replaceStreamingTimelineMessages(messages, previous);
+    if (entries !== null) return { messages, proposedPlans, workEntries, entries };
   }
   const foldedAnswerMessageIds = new Set(
     workEntries.flatMap((entry) =>
@@ -1712,28 +1693,24 @@ export function deriveTimelineEntriesWithState(
     const suffix = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
       compareTimelineEntriesByCreatedAt,
     );
-    const sortedEntries = mergeTimelineEntrySuffix(previous.sortedEntries, suffix);
     return {
       messages,
       proposedPlans,
       workEntries,
-      sortedEntries,
-      entries: batchDirectSpawnsPerSegment(sortedEntries),
+      entries: mergeTimelineEntrySuffix(previous.entries, suffix),
     };
   }
 
   const messageRows = messages.filter(showMessage).map(timelineEntryFromMessage);
   const proposedPlanRows = proposedPlans.map(timelineEntryFromProposedPlan);
   const workRows = workEntries.map(timelineEntryFromWork);
-  const sortedEntries = [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
-    compareTimelineEntriesByCreatedAt,
-  );
   return {
     messages,
     proposedPlans,
     workEntries,
-    sortedEntries,
-    entries: batchDirectSpawnsPerSegment(sortedEntries),
+    entries: [...messageRows, ...proposedPlanRows, ...workRows].toSorted(
+      compareTimelineEntriesByCreatedAt,
+    ),
   };
 }
 
@@ -1743,48 +1720,6 @@ export function deriveTimelineEntries(
   workEntries: ReadonlyArray<WorkLogEntry>,
 ): TimelineEntry[] {
   return deriveTimelineEntriesWithState(messages, proposedPlans, workEntries).entries;
-}
-
-/**
- * User messages cut the timeline into segments, and the direct spawns a
- * segment holds are one launch: later ones merge into the segment's first
- * spawn row, which keeps its id, time and turn so the CTA renders where the
- * fleet started. A steer opens a new segment, so the agents kicked off before
- * it and the ones it caused each get their own CTA row.
- */
-function batchDirectSpawnsPerSegment(entries: TimelineEntry[]): TimelineEntry[] {
-  let anchorIndex = -1;
-  let batched: Array<TimelineEntry | null> | null = null;
-  for (const [index, entry] of entries.entries()) {
-    if (entry.kind === "message" && entry.message.role === "user") {
-      anchorIndex = -1;
-      continue;
-    }
-    if (entry.kind !== "work" || entry.entry.agentSpawn?.workflowId !== null) {
-      continue;
-    }
-    if (anchorIndex === -1) {
-      anchorIndex = index;
-      continue;
-    }
-    batched ??= [...entries];
-    const anchor = batched[anchorIndex];
-    if (anchor?.kind !== "work" || anchor.entry.agentSpawn === undefined) {
-      continue;
-    }
-    const agentTaskIds = new Set([
-      ...anchor.entry.agentSpawn.agentTaskIds,
-      ...entry.entry.agentSpawn.agentTaskIds,
-    ]);
-    batched[anchorIndex] = {
-      ...anchor,
-      entry: { ...anchor.entry, agentSpawn: { workflowId: null, agentTaskIds: [...agentTaskIds] } },
-    };
-    batched[index] = null;
-  }
-  // Most timelines have nothing to batch; hand back the same array so callers
-  // can tell nothing changed.
-  return batched === null ? entries : batched.filter((entry) => entry !== null);
 }
 
 export function inferCheckpointTurnCountByTurnId(

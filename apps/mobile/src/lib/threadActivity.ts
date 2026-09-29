@@ -86,8 +86,6 @@ export interface WorkLogEntry {
   id: string;
   createdAt: string;
   turnId: TurnId | null;
-  /** Latest lifecycle event, so completion once the tool settles; `createdAt` is when the agent issued the call. */
-  completedAt?: string;
   label: string;
   detail?: string;
   viewedImagePath?: string;
@@ -427,9 +425,6 @@ function deriveWorkLogEntries(
 ): DerivedWorkLogEntry[] {
   const ordered = Arr.sort(activities, activityOrder);
   const entries: DerivedWorkLogEntry[] = [];
-  // A tool row sits where the agent issued the call, not where the call
-  // finished, so a tool still running when a steer lands sorts before it.
-  const startedAtByToolCallId = new Map<string, string>();
   for (const activity of foldUserInputActivities(ordered)) {
     // The setup card owns its snapshot, including failed and cancelled outcomes.
     if (
@@ -437,14 +432,7 @@ function deriveWorkLogEntries(
       (activity.tone !== "error" || activity.kind === "worktree-setup")
     )
       continue;
-    if (activity.kind === "tool.started") {
-      const payload = asRecord(activity.payload);
-      const toolCallId =
-        asTrimmedString(payload?.toolCallId) ??
-        asTrimmedString(asRecord(payload?.data)?.toolCallId);
-      if (toolCallId) startedAtByToolCallId.set(toolCallId, activity.createdAt);
-      continue;
-    }
+    if (activity.kind === "tool.started") continue;
     // Like web: an agent's task.started row anchors its batch. It has a fixed
     // id and timestamp, unlike progress ticks, whose stable per-task id is
     // rewritten with a new createdAt on every update (and would otherwise
@@ -457,11 +445,7 @@ function deriveWorkLogEntries(
     if (isNoContentRuntimeWarning(activity)) continue;
     if (isPlanBoundaryToolActivity(activity)) continue;
     if (isAgentInternalActivity(activity)) continue;
-    const entry = toDerivedWorkLogEntry(activity);
-    const startedAt = entry.toolCallId ? startedAtByToolCallId.get(entry.toolCallId) : undefined;
-    entries.push(
-      startedAt ? { ...entry, createdAt: startedAt, completedAt: entry.createdAt } : entry,
-    );
+    entries.push(toDerivedWorkLogEntry(activity));
   }
   return collapseDerivedWorkLogEntries(entries);
 }
@@ -1759,11 +1743,7 @@ function deriveThreadFeedTurnFolds(
       : null;
     const latestTurnMatches = latestTurn?.turnId === turnId;
     const lastEntryEnd =
-      lastEntry.type === "message"
-        ? lastEntry.message.updatedAt
-        : lastEntry.type === "activity-group"
-          ? (lastEntry.activities.at(-1)?.workEntry.completedAt ?? lastEntry.createdAt)
-          : lastEntry.createdAt;
+      lastEntry.type === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
     const elapsedMs =
       latestTurnMatches && latestTurn.startedAt && latestTurn.completedAt
         ? computeElapsedMs(latestTurn.startedAt, latestTurn.completedAt)

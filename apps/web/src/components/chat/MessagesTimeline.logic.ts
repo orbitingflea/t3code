@@ -374,7 +374,6 @@ export type MessagesTimelineRow =
       kind: "turn-fold";
       id: string;
       createdAt: string;
-      expandKey: string;
       turnId: TurnId;
       label: string;
       expanded: boolean;
@@ -392,8 +391,6 @@ export type MessagesTimelineRow =
       message: ChatMessage;
       durationStart: string;
       showAssistantMeta: boolean;
-      /** Draws the separator of the fold this message closes. */
-      showsTurnFoldSeparator: boolean;
       showAssistantCopyButton: boolean;
       assistantCopyStreaming: boolean;
       assistantTurnDiffSummary?: TurnDiffSummary | undefined;
@@ -536,22 +533,11 @@ function deriveTerminalAssistantMessageIds(timelineEntries: ReadonlyArray<Timeli
 }
 
 interface TurnFold {
-  /**
-   * What the expanded-folds set holds for this fold. Normally the anchor
-   * entry id, so each side of a steer expands on its own; the fold that an
-   * interrupt cut short keys by its turn id, which is all the interrupt knows.
-   */
-  expandKey: string;
-  /** Last turn in the fold's segment; a citation into that turn expands the fold. */
   turnId: TurnId;
   anchorEntryId: string;
   createdAt: string;
   hiddenEntryIds: ReadonlySet<string>;
   label: string;
-  /** The assistant message that closes the segment, when one does. */
-  terminalEntryId: string | null;
-  /** Whether that message sits below the fold row, so it draws the fold's separator. */
-  terminalFollowsFold: boolean;
 }
 
 /**
@@ -634,108 +620,121 @@ export function workEntryIsActiveTurnActivity(entry: WorkLogEntry): boolean {
 }
 
 /**
- * User messages cut the timeline into segments, and every settled segment
- * folds behind one "Worked for ..." row anchored at its first hidden entry.
- * A segment keeps its direct-spawn CTA row and the assistant message that
- * closes it; a single ordinary activity after that message joins the fold,
- * while larger groups and failures stay visible as a trailing summary.
- * Because the timeline is in transcript order, a steer (a user message sent
- * mid-turn) simply starts a new segment: the work it interrupted folds above
- * it and the work it caused folds below.
+ * Settled turns fold activity before their terminal assistant message behind
+ * a "Worked for ..." row. A single ordinary activity after that message joins
+ * the fold, while larger groups and failures stay visible as a trailing summary.
  */
 function deriveTurnFolds(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
+  terminalAssistantMessageIds: ReadonlySet<string>;
   latestTurn: TimelineLatestTurn | null;
-  unsettledTurnId: TurnId | null;
+  unfoldedTurnIds: ReadonlySet<TurnId>;
 }): ReadonlyMap<string, TurnFold> {
-  interface Segment {
-    /** Last turn id in the segment. */
-    turnId: TurnId | null;
+  interface TurnGroup {
     entries: Array<TimelineEntry>;
+    terminalEntry: Extract<TimelineEntry, { kind: "message" }> | null;
+    hasStreamingMessage: boolean;
     /**
-     * The user message that opened the segment. Entry timestamps alone
-     * undercount the duration: the first entry appears only once the
-     * provider starts producing output.
+     * The user message that kicked the turn off. Entry timestamps alone
+     * undercount the duration (the first entry appears only once the
+     * provider starts producing output), and a turn cut short by a steer may
+     * hold a single instantaneous commentary message.
      */
     startBoundary: string | null;
   }
-  const segments: Array<Segment> = [{ turnId: null, entries: [], startBoundary: null }];
+  const groupsByTurnId = new Map<TurnId, TurnGroup>();
+
+  let pendingUserBoundary: string | null = null;
   for (const entry of input.timelineEntries) {
     if (entry.kind === "message" && entry.message.role === "user") {
-      segments.push({ turnId: null, entries: [], startBoundary: entry.message.createdAt });
+      pendingUserBoundary = entry.message.createdAt;
       continue;
     }
-    const segment = segments.at(-1)!;
-    segment.turnId = timelineEntryTurnId(entry) ?? segment.turnId;
-    segment.entries.push(entry);
+    // Thinking is work, so it folds with the rest of it. A provider that
+    // interleaves a block with every tool call would otherwise leave dozens of
+    // "Thought" rows standing beside the "Worked for ..." summary.
+    // Nothing folds while the turn is live, which is when traces are watched.
+    const turnId =
+      entry.kind === "message" &&
+      (entry.message.role === "assistant" || entry.message.role === "reasoning")
+        ? (entry.message.turnId ?? null)
+        : entry.kind === "work"
+          ? (entry.entry.turnId ?? null)
+          : null;
+    if (!turnId) {
+      continue;
+    }
+    let group = groupsByTurnId.get(turnId);
+    if (!group) {
+      group = {
+        entries: [],
+        terminalEntry: null,
+        hasStreamingMessage: false,
+        // Each user boundary starts at most one turn; a second turn after the
+        // same user message (e.g. a steer-superseded continuation) falls back
+        // to its own first entry.
+        startBoundary: pendingUserBoundary,
+      };
+      pendingUserBoundary = null;
+      groupsByTurnId.set(turnId, group);
+    }
+    group.entries.push(entry);
+    if (entry.kind === "message") {
+      if (input.terminalAssistantMessageIds.has(entry.message.id)) {
+        group.terminalEntry = entry;
+      }
+      // A live turn is already excluded above, so only an answer still being
+      // written may hold a fold open. A thinking block stranded by a crashed
+      // provider keeps its streaming flag forever and must not.
+      if (entry.message.streaming && entry.message.role !== "reasoning") {
+        group.hasStreamingMessage = true;
+      }
+    }
   }
-  // Entries only ever append, so while a turn is unsettled the last segment is
-  // the live one and everything above it is finished. A promptless provider
-  // restart lands its fresh turn id in the same segment, so it stays one
-  // visual response.
-  const liveSegment = input.unsettledTurnId === null ? null : segments.at(-1);
-  const latestTurnSegment = segments.findLast((segment) =>
-    segment.entries.some((entry) => timelineEntryTurnId(entry) === input.latestTurn?.turnId),
-  );
 
   const foldsByAnchorEntryId = new Map<string, TurnFold>();
-  for (const segment of segments) {
-    const { turnId } = segment;
-    if (turnId === null || segment === liveSegment) {
+  for (const [turnId, group] of groupsByTurnId) {
+    if (input.unfoldedTurnIds.has(turnId)) {
       continue;
     }
-    // A live segment is already excluded above, so only an answer still being
-    // written may hold a fold open. A thinking block stranded by a crashed
-    // provider keeps its streaming flag forever and must not.
-    if (
-      segment.entries.some(
-        (entry) =>
-          entry.kind === "message" && entry.message.streaming && entry.message.role !== "reasoning",
-      )
-    ) {
+    if (group.hasStreamingMessage) {
       continue;
     }
-    // The last assistant message closes the segment. A segment a steer cut
-    // short may have none, in which case everything in it folds.
-    const terminalEntryIndex = segment.entries.findLastIndex(
-      (entry) => entry.kind === "message" && entry.message.role === "assistant",
-    );
-    const terminalEntry =
-      terminalEntryIndex >= 0 && segment.entries[terminalEntryIndex]?.kind === "message"
-        ? segment.entries[terminalEntryIndex]
-        : null;
     const hiddenEntryIds = new Set<string>();
+    const terminalEntryIndex = group.terminalEntry
+      ? group.entries.findIndex((entry) => entry.id === group.terminalEntry?.id)
+      : group.entries.length;
     // Thinking blocks do not count toward "one trailing activity": a block can
     // follow the answer, and it must not stop that lone tool call from folding
     // the way it did before traces existed. Loop-invariant, so it is counted
     // once: a long turn re-derives these rows on every work-log change.
-    const trailingEntryCount = segment.entries.filter(
+    const trailingEntryCount = group.entries.filter(
       (candidate, candidateIndex) =>
         candidateIndex > terminalEntryIndex &&
         !(candidate.kind === "message" && candidate.message.role === "reasoning"),
     ).length;
-    for (const [index, entry] of segment.entries.entries()) {
-      if (entry === terminalEntry) {
+    for (const [index, entry] of group.entries.entries()) {
+      if (entry.id === group.terminalEntry?.id) {
         continue;
       }
-      if (terminalEntry !== null && index > terminalEntryIndex) {
-        // Activity after the closing message: compaction, thinking, and a
-        // single ordinary activity join the fold; larger groups and failures
-        // stay visible as a trailing summary. A thinking block after the
-        // answer folds with its segment rather than trailing under it, which
-        // is what mobile already does.
-        const isCompaction =
-          entry.kind === "work" && entry.entry.sourceActivityKind === "context-compaction";
-        const isReasoning = entry.kind === "message" && entry.message.role === "reasoning";
-        const isSingleTrailingActivity =
-          trailingEntryCount === 1 &&
-          entry.kind === "work" &&
-          !workEntryDisplayIndicatesToolFailure(entry.entry);
-        if (!isCompaction && !isReasoning && !isSingleTrailingActivity) {
-          continue;
-        }
+      const isCompaction =
+        entry.kind === "work" && entry.entry.sourceActivityKind === "context-compaction";
+      const isSingleTrailingActivity =
+        trailingEntryCount === 1 &&
+        entry.kind === "work" &&
+        !workEntryDisplayIndicatesToolFailure(entry.entry);
+      // A thinking block after the answer folds with its turn rather than
+      // trailing under it, which is what mobile already does.
+      const isReasoning = entry.kind === "message" && entry.message.role === "reasoning";
+      if (
+        !isCompaction &&
+        !isReasoning &&
+        index > terminalEntryIndex &&
+        !isSingleTrailingActivity
+      ) {
+        continue;
       }
-      // User input and subagent batches stay visible after their segment settles.
+      // User input and subagent batches stay visible after their turn settles.
       if (
         entry.kind === "work" &&
         (entry.entry.questionAnswer !== undefined || entry.entry.agentSpawn !== undefined)
@@ -744,11 +743,14 @@ function deriveTurnFolds(input: {
       }
       hiddenEntryIds.add(entry.id);
     }
+    if (hiddenEntryIds.size === 0) {
+      continue;
+    }
     // A lone compaction row stays visible on its own; it only folds away as
-    // part of a segment that already folds other work. Thinking is the same: a
+    // part of a turn that already folds other work. Thinking is the same: a
     // question answered by thought alone keeps its "Thought" row
     // rather than collapsing behind a "Worked for ..." that hides nothing else.
-    const hidesFoldableWork = segment.entries.some(
+    const hidesFoldableWork = group.entries.some(
       (entry) =>
         hiddenEntryIds.has(entry.id) &&
         !(entry.kind === "work" && entry.entry.sourceActivityKind === "context-compaction") &&
@@ -757,48 +759,45 @@ function deriveTurnFolds(input: {
     if (!hidesFoldableWork) {
       continue;
     }
-    const firstHiddenIndex = segment.entries.findIndex((entry) => hiddenEntryIds.has(entry.id));
-    const firstHiddenEntry = segment.entries[firstHiddenIndex];
-    const lastEntry = segment.entries.at(-1);
-    if (!firstHiddenEntry || !lastEntry) {
+
+    const firstEntry = group.entries[0];
+    const firstHiddenEntry = group.entries.find((entry) => hiddenEntryIds.has(entry.id));
+    const lastEntry = group.entries.at(-1);
+    if (!firstEntry || !firstHiddenEntry || !lastEntry) {
       continue;
     }
-    // The latest turn's own timings extend the segment that contains it, so a
-    // stopped turn reports how long it ran. Any other segment measures from
-    // the user message that started it to its last entry.
-    const turn = segment === latestTurnSegment ? input.latestTurn : null;
+
+    const isLatestInterruptedTurn =
+      input.latestTurn?.turnId === turnId && input.latestTurn.state === "interrupted";
+    // A turn cut short by a steer leaves trailing work entries behind its
+    // terminal message — take whichever ended last.
     const lastEntryEnd =
-      lastEntry.kind === "message"
-        ? lastEntry.message.updatedAt
-        : lastEntry.kind === "work"
-          ? (lastEntry.entry.completedAt ?? lastEntry.createdAt)
-          : lastEntry.createdAt;
-    const segmentEnd =
-      maxIsoTimestamp(
-        maxIsoTimestamp(lastEntryEnd, terminalEntry?.message.updatedAt ?? null),
-        turn?.completedAt ?? null,
-      ) ?? lastEntryEnd;
-    const segmentStart =
-      segment.startBoundary ?? turn?.startedAt ?? segment.entries[0]?.createdAt ?? lastEntryEnd;
-    const elapsedMs = computeElapsedMs(segmentStart, segmentEnd);
+      lastEntry.kind === "message" ? lastEntry.message.updatedAt : lastEntry.createdAt;
+    const elapsedMs =
+      input.latestTurn?.turnId === turnId &&
+      input.latestTurn.startedAt &&
+      input.latestTurn.completedAt
+        ? computeElapsedMs(input.latestTurn.startedAt, input.latestTurn.completedAt)
+        : computeElapsedMs(
+            group.startBoundary ?? firstEntry.createdAt,
+            maxIsoTimestamp(group.terminalEntry?.message.updatedAt ?? null, lastEntryEnd) ??
+              lastEntryEnd,
+          );
     const duration = elapsedMs !== null ? formatDuration(elapsedMs) : null;
-    const label =
-      turn?.state === "interrupted"
-        ? duration
-          ? `You stopped after ${duration}`
-          : "You stopped this response"
-        : duration
-          ? `Worked for ${duration}`
-          : "Worked";
+    const label = isLatestInterruptedTurn
+      ? duration
+        ? `You stopped after ${duration}`
+        : "You stopped this response"
+      : duration
+        ? `Worked for ${duration}`
+        : "Worked";
+
     foldsByAnchorEntryId.set(firstHiddenEntry.id, {
-      expandKey: turn?.state === "interrupted" ? turnId : firstHiddenEntry.id,
       turnId,
       anchorEntryId: firstHiddenEntry.id,
       createdAt: firstHiddenEntry.createdAt,
       hiddenEntryIds,
       label,
-      terminalEntryId: terminalEntry?.id ?? null,
-      terminalFollowsFold: terminalEntry !== null && terminalEntryIndex > firstHiddenIndex,
     });
   }
   return foldsByAnchorEntryId;
@@ -943,7 +942,7 @@ export function deriveMessagesTimelineRows(input: {
   timelineEntries: ReadonlyArray<TimelineEntry>;
   latestTurn?: TimelineLatestTurn | null;
   runningTurnId?: TurnId | null;
-  expandedFoldKeys?: ReadonlySet<string>;
+  expandedTurnIds?: ReadonlySet<TurnId>;
   expandedWorkGroupIds?: ReadonlySet<string>;
   isWorking: boolean;
   activeTurnStartedAt: string | null;
@@ -986,20 +985,13 @@ export function deriveMessagesTimelineRows(input: {
   });
   const foldsByAnchorEntryId = deriveTurnFolds({
     timelineEntries: input.timelineEntries,
+    terminalAssistantMessageIds,
     latestTurn: input.latestTurn ?? null,
-    unsettledTurnId,
+    unfoldedTurnIds: activeVisualResponseTurnIds,
   });
   const collapsedEntryIds = new Set<string>();
-  const foldTerminalEntryIds = new Set<string>();
-  const foldSeparatorEntryIds = new Set<string>();
   for (const fold of foldsByAnchorEntryId.values()) {
-    if (fold.terminalEntryId !== null) {
-      foldTerminalEntryIds.add(fold.terminalEntryId);
-      if (fold.terminalFollowsFold) {
-        foldSeparatorEntryIds.add(fold.terminalEntryId);
-      }
-    }
-    if (!input.expandedFoldKeys?.has(fold.expandKey)) {
+    if (!input.expandedTurnIds?.has(fold.turnId)) {
       for (const entryId of fold.hiddenEntryIds) {
         collapsedEntryIds.add(entryId);
       }
@@ -1131,12 +1123,11 @@ export function deriveMessagesTimelineRows(input: {
     if (anchoredTurnFold) {
       nextRows.push({
         kind: "turn-fold",
-        id: `turn-fold:${anchoredTurnFold.anchorEntryId}`,
+        id: `turn-fold:${anchoredTurnFold.turnId}`,
         createdAt: anchoredTurnFold.createdAt,
-        expandKey: anchoredTurnFold.expandKey,
         turnId: anchoredTurnFold.turnId,
         label: anchoredTurnFold.label,
-        expanded: input.expandedFoldKeys?.has(anchoredTurnFold.expandKey) ?? false,
+        expanded: input.expandedTurnIds?.has(anchoredTurnFold.turnId) ?? false,
       });
     }
 
@@ -1376,8 +1367,7 @@ export function deriveMessagesTimelineRows(input: {
     // settles so commentary doesn't flash timestamps mid-work.
     const showAssistantMeta =
       timelineEntry.message.role === "assistant" &&
-      (terminalAssistantMessageIds.has(timelineEntry.message.id) ||
-        foldTerminalEntryIds.has(timelineEntry.id)) &&
+      terminalAssistantMessageIds.has(timelineEntry.message.id) &&
       !assistantResponseStillInProgress;
 
     nextRows.push({
@@ -1387,7 +1377,6 @@ export function deriveMessagesTimelineRows(input: {
       message: timelineEntry.message,
       durationStart,
       showAssistantMeta,
-      showsTurnFoldSeparator: foldSeparatorEntryIds.has(timelineEntry.id),
       showAssistantCopyButton: showAssistantMeta,
       assistantCopyStreaming: timelineEntry.message.streaming || assistantResponseStillInProgress,
       assistantTurnDiffSummary:
@@ -1493,7 +1482,7 @@ function replaceStreamingMessageRows(
     timelineEntries: previousEntries,
     turnDiffSummaries: previousSummaries,
     latestTurn: previousLatestTurn,
-    expandedFoldKeys: previousExpandedFolds,
+    expandedTurnIds: previousExpandedTurns,
     expandedWorkGroupIds: previousExpandedGroups,
     ...previousContext
   } = previous.input;
@@ -1501,7 +1490,7 @@ function replaceStreamingMessageRows(
     timelineEntries,
     turnDiffSummaries,
     latestTurn,
-    expandedFoldKeys,
+    expandedTurnIds,
     expandedWorkGroupIds,
     ...context
   } = input;
@@ -1510,7 +1499,7 @@ function replaceStreamingMessageRows(
     !shallow(previousContext, context) ||
     !shallow(previousSummaries, turnDiffSummaries) ||
     !shallow(previousLatestTurn, latestTurn) ||
-    !shallow(previousExpandedFolds, expandedFoldKeys) ||
+    !shallow(previousExpandedTurns, expandedTurnIds) ||
     !shallow(previousExpandedGroups, expandedWorkGroupIds)
   ) {
     return null;
@@ -1617,13 +1606,7 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
 
     case "turn-fold": {
       const bf = b as typeof a;
-      return (
-        a.expandKey === bf.expandKey &&
-        a.turnId === bf.turnId &&
-        a.createdAt === bf.createdAt &&
-        a.label === bf.label &&
-        a.expanded === bf.expanded
-      );
+      return a.createdAt === bf.createdAt && a.label === bf.label && a.expanded === bf.expanded;
     }
 
     case "context-compaction": {
@@ -1682,7 +1665,6 @@ function isRowUnchanged(a: MessagesTimelineRow, b: MessagesTimelineRow): boolean
         a.message === bm.message &&
         a.durationStart === bm.durationStart &&
         a.showAssistantMeta === bm.showAssistantMeta &&
-        a.showsTurnFoldSeparator === bm.showsTurnFoldSeparator &&
         a.showAssistantCopyButton === bm.showAssistantCopyButton &&
         a.assistantCopyStreaming === bm.assistantCopyStreaming &&
         a.assistantTurnDiffSummary === bm.assistantTurnDiffSummary &&

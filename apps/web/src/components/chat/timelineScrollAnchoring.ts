@@ -113,7 +113,7 @@ export interface RememberedTimelinePosition {
   readonly scrollOffset: number;
   readonly atEnd: boolean;
   readonly disclosures?: {
-    readonly folds: ReadonlySet<string>;
+    readonly turns: ReadonlySet<TurnId>;
     readonly workGroups: ReadonlySet<string>;
     readonly spawnEntries: ReadonlySet<string>;
     readonly reasoningMessages: ReadonlySet<string>;
