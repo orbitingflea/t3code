@@ -340,7 +340,7 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       expect(session.subject).toBe("unsafe-no-auth");
       expect(session.scopes).toEqual(AuthStandardClientScopes);
       expect(websocketSession).toEqual(session);
-    }).pipe(Effect.provide(makeEnvironmentAuthLayer()));
+    }).pipe(Effect.provide(layerEnvironmentAuth()));
   });
 
   it.effect("issues standard pairing credentials by default", () =>
