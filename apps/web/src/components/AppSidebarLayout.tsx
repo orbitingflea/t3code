@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+import { PresentationIcon } from "lucide-react";
 
 import { isElectron } from "../env";
 import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
@@ -55,6 +56,7 @@ import {
   useSidebar,
   useSidebarVisibility,
 } from "./ui/sidebar";
+import { Button } from "./ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
@@ -80,7 +82,25 @@ function readInitialThreadSidebarWidth(): number {
   }
 }
 
-function SidebarControl() {
+// The whiteboard parent page reports whether its board panel is collapsed; asking on mount
+// covers the report it sent before this listener existed.
+function useWhiteboardBoardHidden() {
+  const [boardHidden, setBoardHidden] = useState(false);
+  useEffect(() => {
+    if (window.parent === window) return;
+    const receive = (event: MessageEvent) => {
+      if (event.source === window.parent && event.data?.type === "wb-layout") {
+        setBoardHidden(event.data.boardHidden === true);
+      }
+    };
+    window.addEventListener("message", receive);
+    window.parent.postMessage({ type: "wb-layout-get" }, "*");
+    return () => window.removeEventListener("message", receive);
+  }, []);
+  return boardHidden;
+}
+
+function SidebarControl({ boardHidden }: { boardHidden: boolean }) {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
   const { toggleSidebar } = useSidebar();
@@ -142,6 +162,17 @@ function SidebarControl() {
       className="pointer-events-none fixed left-[var(--workspace-controls-left)] top-[var(--workspace-controls-top)] z-50 ml-px flex h-[var(--workspace-topbar-height)] items-center"
       data-sidebar-control=""
     >
+      {boardHidden && (
+        <Button
+          className="pointer-events-auto mr-2 w-18"
+          size="sm"
+          variant="ghost"
+          onClick={() => window.parent.postMessage({ type: "wb-show-board" }, "*")}
+        >
+          <PresentationIcon />
+          Board
+        </Button>
+      )}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -238,6 +269,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
+  const boardHidden = useWhiteboardBoardHidden();
   // Subscribed rather than read once: the clamp must track live window size,
   // and a clamped drag ends with an unchanged width, which skips the re-render
   // that would otherwise refresh a render-time snapshot.
@@ -264,6 +296,13 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...(isMacosDesktop && !isWindowFullscreen
       ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
+      : {}),
+    // Header content clears the Board button (w-18 plus mr-2) placed before the sidebar trigger.
+    ...(boardHidden
+      ? {
+          "--workspace-titlebar-content-left":
+            "calc(var(--workspace-controls-left) + var(--workspace-titlebar-control-size) + var(--workspace-titlebar-control-gap) + 5rem)",
+        }
       : {}),
   } as CSSProperties;
 
@@ -344,7 +383,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         {children}
-        <SidebarControl />
+        <SidebarControl boardHidden={boardHidden} />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
       </SidebarProvider>
