@@ -167,15 +167,16 @@ function SidebarControl({ boardHidden }: { boardHidden: boolean }) {
       data-sidebar-control=""
     >
       {boardHidden && (
-        <Button
-          className="pointer-events-auto mr-2 w-18"
-          size="sm"
-          variant="ghost"
-          onClick={() => window.parent.postMessage({ type: "wb-show-board" }, "*")}
-        >
-          <PresentationIcon />
-          Board
-        </Button>
+        <div className="pointer-events-auto mr-2 w-18">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => window.parent.postMessage({ type: "wb-show-board" }, "*")}
+          >
+            <PresentationIcon />
+            Board
+          </Button>
+        </div>
       )}
       <Tooltip>
         <TooltipTrigger
