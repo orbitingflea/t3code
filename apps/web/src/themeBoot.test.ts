@@ -110,7 +110,7 @@ function runtimeResolvedAppearance(
   invalidateCustomThemes();
   try {
     const raw = storage[THEME_STORAGE_KEY] ?? null;
-    const theme = raw !== null && isKnownThemePreference(raw) ? raw : "light";
+    const theme = raw !== null && isKnownThemePreference(raw) ? raw : "system";
     const followRaw = storage[THEME_FOLLOW_SYSTEM_STORAGE_KEY] ?? null;
     const appearanceRaw = storage[THEME_APPEARANCE_MODE_STORAGE_KEY] ?? null;
     const appearanceMode =
