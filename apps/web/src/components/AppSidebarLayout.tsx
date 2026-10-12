@@ -356,8 +356,12 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        // Inside the whiteboard iframe the board owns the width, so start collapsed; standalone keeps upstream's open default.
-        defaultOpen={window.self === window.top}
+        // Inside the whiteboard iframe the board owns the width, so start collapsed; standalone starts
+        // open only when the window fits the sidebar beside the minimum thread width.
+        defaultOpen={
+          window.self === window.top &&
+          viewportWidth >= sidebarWidth + THREAD_MAIN_CONTENT_MIN_WIDTH
+        }
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
