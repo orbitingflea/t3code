@@ -2,6 +2,7 @@ import { useAtomValue } from "@effect/atom-react";
 import * as Schema from "effect/Schema";
 import {
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type CSSProperties,
@@ -83,9 +84,9 @@ function readInitialThreadSidebarWidth(): number {
 }
 
 // The whiteboard parent page reports whether its board panel is collapsed; asking on mount
-// covers the report it sent before this listener existed.
+// covers the report it sent before this listener existed. Null until the first report.
 function useWhiteboardBoardHidden() {
-  const [boardHidden, setBoardHidden] = useState(false);
+  const [boardHidden, setBoardHidden] = useState<boolean | null>(null);
   useEffect(() => {
     if (window.parent === window) return;
     const receive = (event: MessageEvent) => {
@@ -100,10 +101,24 @@ function useWhiteboardBoardHidden() {
   return boardHidden;
 }
 
-function SidebarControl({ boardHidden }: { boardHidden: boolean }) {
+function SidebarControl({
+  boardHidden,
+  sidebarFits,
+}: {
+  boardHidden: boolean | null;
+  sidebarFits: boolean;
+}) {
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  const { setOpen, toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  // In the whiteboard the first layout report sets the start state: with the board hidden this
+  // frame is the whole page, so the sidebar opens by the same width rule as standalone.
+  const startStateSet = useRef(false);
+  useEffect(() => {
+    if (boardHidden === null || startStateSet.current) return;
+    startStateSet.current = true;
+    if (boardHidden && sidebarFits) void setOpen(true);
+  }, [boardHidden, sidebarFits, setOpen]);
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(
@@ -282,6 +297,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const [brandWidth, setBrandWidth] = useState(0);
   const sidebarMinimumWidth = resolveThreadSidebarMinimumWidth(brandWidth);
   const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth, sidebarMinimumWidth);
+  const sidebarFits = viewportWidth >= sidebarWidth + THREAD_MAIN_CONTENT_MIN_WIDTH;
   const resetSidebarWidth = () => {
     try {
       removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
@@ -356,12 +372,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        // Inside the whiteboard iframe the board owns the width, so start collapsed; standalone starts
-        // open only when the window fits the sidebar beside the minimum thread width.
-        defaultOpen={
-          window.self === window.top &&
-          viewportWidth >= sidebarWidth + THREAD_MAIN_CONTENT_MIN_WIDTH
-        }
+        // Standalone starts open only when the window fits the sidebar beside the minimum thread
+        // width; inside the whiteboard iframe SidebarControl sets the start state from the layout report.
+        defaultOpen={window.self === window.top && sidebarFits}
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
@@ -397,7 +410,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
           <SidebarRail onDoubleClick={resetSidebarWidth} />
         </Sidebar>
         {children}
-        <SidebarControl boardHidden={boardHidden} />
+        <SidebarControl boardHidden={boardHidden} sidebarFits={sidebarFits} />
         <NavigationHistoryShortcuts />
         <MainAppLocationTracker />
       </SidebarProvider>
