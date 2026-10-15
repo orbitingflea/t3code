@@ -2,8 +2,8 @@ import { useNavigation } from "@react-navigation/native";
 import { SettingsRow } from "./components/SettingsRow";
 import { AuthSettingsWriteScope } from "@t3tools/contracts";
 import { readEnvironmentScope, useEnvironmentsWithScope } from "../../state/session";
-import { ScreenScrollView as ScrollView } from "../../components/ScreenScrollView";
-import { AppText as Text } from "../../components/AppText";
+import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
+import { AppText as Text } from "../../components/ui/AppText";
 import {
   type ResponseStreamingMode,
   type ServerSettings,
@@ -456,7 +456,7 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                       subtitle={
                         projectSelected
                           ? "Environment-wide setting. Select All projects to change it."
-                          : "Check installed provider CLIs for newer versions."
+                          : "Check installed provider CLIs for newer versions and fetch model catalog updates. When off, new models may not appear."
                       }
                       value={uniform("enableProviderUpdateChecks")}
                       disabled={disabledFor("enableProviderUpdateChecks")}
