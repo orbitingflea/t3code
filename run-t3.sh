@@ -21,6 +21,8 @@ export BASH_ENV="$(dirname "$T3_DIR")/tools/agent-env.sh"
 # into it. The whiteboard wants the new-thread landing instead.
 export T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD=false
 export T3CODE_UNSAFE_NO_AUTH=1
+# exec keeps this PID, so `wb` finds its agent among the server's children.
+export WB_CHAT_PID=$$
 
 exec node "$T3_DIR/apps/server/src/bin.ts" start \
   --mode web \
