@@ -150,8 +150,8 @@ describe("storage cleanup settings", () => {
 });
 
 describe("ClientSettings rich text composer", () => {
-  it("keeps math opt-in and preserves its preference through patches and persistence", () => {
-    expect(decodeClientSettings({}).mathRenderingEnabled).toBe(false);
+  it("turns math on by default and preserves its preference through patches and persistence", () => {
+    expect(decodeClientSettings({}).mathRenderingEnabled).toBe(true);
     for (const mathRenderingEnabled of [true, false]) {
       const preference = { mathRenderingEnabled };
       expect(decodeClientSettingsPatch(preference)).toEqual(preference);
