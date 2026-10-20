@@ -31,15 +31,16 @@ applies to the web and desktop clients.
 
 ## Math
 
-LaTeX in messages and Markdown previews is typeset on web, desktop, and mobile. Turn it off with
-**Render math** in **Settings → Appearance**. It reads `$…$`, `$$…$$`, `\(…\)`, and `\[…\]`, outside of code.
+Messages and Markdown previews typeset LaTeX on web, desktop, and mobile. Math is read from
+`$…$`, `$$…$$`, `\(…\)`, and `\[…\]`, outside of code.
 Fenced `math` blocks also render. Formulas work in tables, including absolute-value bars.
 Dollar amounts such as `$5 and $10` stay text; write `\$` to keep any other dollar sign literal.
 Wide formulas scroll horizontally while the surrounding text wraps. Copying a formula or
 exporting a table preserves the TeX.
 
-The composer keeps TeX source editable, including when rich text is enabled. The Render math
-preference is saved separately on each device.
+The composer keeps TeX source editable, including when rich text is enabled. To show the TeX
+source instead, turn off **Render math** in **Settings → Appearance**. The preference is saved
+separately on each device.
 
 ## Motion
 

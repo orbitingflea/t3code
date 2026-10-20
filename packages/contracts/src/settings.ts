@@ -480,7 +480,8 @@ export const ClientSettingsSchema = Schema.Struct({
   snapShotAnimations: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   wordWrap: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   // TeX typesetting in rendered Markdown. Off keeps math parsing and KaTeX out
-  // of the render path entirely. The fork defaults it on; upstream defaults off.
+  // of the render path entirely. The fork defaults it on while upstream defaults
+  // off; keep `true` when merging upstream.
   mathRenderingEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
