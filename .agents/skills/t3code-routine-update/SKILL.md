@@ -22,7 +22,7 @@ Before touching anything: `git fetch upstream && git fetch origin`, then report 
 
 1. In a fresh worktree on a branch from `origin/main`, `git merge upstream/main` with the title above.
 2. Resolve conflicts per carried commit, keeping upstream's structure and re-applying the fork fix (the `resolving-merge-conflicts` skill covers the method). `pnpm-lock.yaml`: take upstream's file, then `pnpm install --lockfile-only` so the fork's extra packages are added back. The merge commit body names how non-trivial conflicts were resolved.
-3. `vp i`, then run the tests and typecheck of each package a carried commit touches (e.g. `vp test run apps/web/src/components/ChatMarkdown.test.tsx`).
+3. `vp i`, then run the tests and typecheck of each package a carried commit touches (e.g. `cd apps/web && vp test run --project browser src/components/ChatMarkdown.browser.test.tsx`; browser tests only run from `apps/web`).
 4. After the user approves: `git push origin HEAD:main`, then `git -C ~/utils/t3code merge --ff-only origin/main`. Remove the worktree.
 
 Done when `origin/main` contains `upstream/main`, touched tests and typecheck pass, and the main checkout sits at `origin/main`.

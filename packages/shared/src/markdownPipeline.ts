@@ -6,7 +6,6 @@ import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
 import { remarkGithubAlerts } from "./markdownGithubAlerts.ts";
 import { remarkNormalizeListItemIndentation } from "./markdownListIndentation.ts";
 import {
@@ -30,14 +29,6 @@ function meaningfulHastChildren(node: MarkdownImageHastNode): MarkdownImageHastN
   );
 }
 
-/**
- * An image that is the only content of its block (optionally wrapped in a
- * link) is almost always a screenshot or figure, so it gets a reserved slot
- * while it loads. Images mixed with text or other images — badge rows, icons
- * in a sentence — stay inline at their natural size, since a placeholder taller
- * than the image would move the page more than the image itself does.
- */
-/** Containers whose sole child image reads as a figure rather than part of a sentence. */
 const STANDALONE_IMAGE_BLOCKS = new Set([
   "p",
   "div",
@@ -55,15 +46,12 @@ function soleImageDescendant(node: MarkdownImageHastNode): MarkdownImageHastNode
   const only = children[0];
   if (only?.type !== "element") return undefined;
   if (only.tagName === "img") return only;
-  // A link, emphasis, or similar inline wrapper around the image still counts
-  // as long as nothing else shares the block.
   return only.tagName === "a" || only.tagName === "strong" || only.tagName === "em"
     ? soleImageDescendant(only)
     : undefined;
 }
 
 function markStandaloneImages(node: MarkdownImageHastNode) {
-  // A raw `<img>` on its own line reaches the root without a paragraph.
   if (node.type === "root" || (node.tagName && STANDALONE_IMAGE_BLOCKS.has(node.tagName))) {
     const image = soleImageDescendant(node);
     if (image) image.properties = { ...image.properties, dataStandalone: true };
@@ -73,7 +61,6 @@ function markStandaloneImages(node: MarkdownImageHastNode) {
   });
 }
 
-/** Keep unmatched inline `<A>` placeholders from opening an HTML link over later blocks. */
 function rehypePreserveBareAnchorPlaceholders() {
   return (tree: MarkdownImageHastNode) => {
     const anchors: Array<MarkdownImageHastNode | null> = [];
@@ -121,7 +108,6 @@ function rehypePreserveBareAnchorPlaceholders() {
   };
 }
 
-/** Carries authored image source metadata through the sanitizer to the image renderer. */
 function rehypePreserveImageSourceMeta() {
   return (tree: MarkdownImageHastNode) => {
     const visit = (node: MarkdownImageHastNode) => {
@@ -147,10 +133,9 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   attributes: {
     ...defaultSchema.attributes,
     "*": (defaultSchema.attributes?.["*"] ?? []).filter((attribute) => attribute !== "title"),
+    // Fence languages plus the two math classes the web chat's math plugin emits.
     code: [
-      // First match wins: keep the display marker `remarkMathDelimiters` sets for KaTeX.
-      ["className", /^language-./, "math-display"],
-      ...(defaultSchema.attributes?.code ?? []),
+      ["className", /^language-./, "math-inline", "math-display"],
       "dataCodeMeta",
       "dataInlineCode",
     ],
@@ -179,26 +164,22 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
 
 export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkGfm,
-  remarkKeepWindowsPathDestinations,
+  remarkKeepWindowsPaths,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkCjkFriendly,
-  remarkMath,
-  remarkMathDelimiters,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ];
 
 export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkGfm,
-  remarkKeepWindowsPathDestinations,
+  remarkKeepWindowsPaths,
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
   remarkCjkFriendly,
-  remarkMath,
-  remarkMathDelimiters,
   remarkBreaks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
@@ -215,48 +196,11 @@ type MarkdownAstNode = {
   type?: string;
   meta?: unknown;
   url?: string;
-  value?: string;
-  position?: { start: { offset?: number }; end: { offset?: number } };
   data?: {
     hProperties?: Record<string, unknown>;
   };
   children?: MarkdownAstNode[];
 };
-
-/**
- * Two rules the math parser lacks. Display delimiters mean display everywhere:
- * `$$…$$` and `\[…\]` render as block math even mid-paragraph, where the parser
- * reads them inline. And Pandoc's currency guard: `remark-math` reads `$…$`
- * with code-span rules, which turns prices such as "$5 and $3" into math, so
- * demote every single-dollar span whose content starts or ends with whitespace
- * or whose closing dollar is followed by a digit. Write `\$` to force a literal.
- */
-function remarkMathDelimiters() {
-  return (tree: MarkdownAstNode, file: { value?: unknown }) => {
-    const source = typeof file.value === "string" ? file.value : "";
-    const visit = (node: MarkdownAstNode) => {
-      node.children?.forEach((child, index, children) => {
-        visit(child);
-        const from = child.position?.start.offset;
-        const to = child.position?.end.offset;
-        if (child.type !== "inlineMath" || from === undefined || to === undefined) return;
-        const raw = source.slice(from, to);
-        if (raw.startsWith("$$") || raw.startsWith("\\[")) {
-          child.data = {
-            ...child.data,
-            hProperties: { className: ["language-math", "math-display"] },
-          };
-          return;
-        }
-        if (!raw.startsWith("$")) return;
-        const content = raw.slice(1, -1);
-        if (/^\S/.test(content) && /\S$/.test(content) && !/\d/.test(source[to] ?? "")) return;
-        children[index] = { type: "text", value: raw };
-      });
-    };
-    visit(tree);
-  };
-}
 
 function remarkPreserveCodeMeta() {
   return (tree: MarkdownAstNode) => {
@@ -277,11 +221,6 @@ function remarkPreserveCodeMeta() {
   };
 }
 
-/**
- * Preserve Windows drive links as allowed `file:` URLs before sanitization.
- * The same traversal tags inline code while it can still be distinguished
- * from fenced code. Code inside links stays untagged to avoid nested anchors.
- */
 function remarkNormalizeLinksAndTagInlineCode() {
   return (tree: MarkdownAstNode) => {
     const visit = (node: MarkdownAstNode, insideLink: boolean) => {
@@ -324,17 +263,37 @@ function keepWindowsPathDestination(this: DestinationCompileContext, token: unkn
     node.url = isWindowsAbsolutePath(authored) && !authored.includes("&") ? authored : decoded;
 }
 
+// A drive path that has not reached whitespace yet: `C:`, `C:\Users\me`, `C:/work`.
+const UNFINISHED_DRIVE_PATH = /(?:^|\W)[A-Za-z]:(?:[\\/]\S*)?$/;
+
+interface EscapeCompileContext {
+  readonly stack: ReadonlyArray<{
+    readonly type: string;
+    children?: Array<{ type: string; value?: string }>;
+  }>;
+}
+
+function keepWindowsPathEscape(this: EscapeCompileContext) {
+  const text = this.stack.at(-1)?.children?.at(-1);
+  if (text?.type !== "text" || text.value === undefined) return;
+  const before = text.value.slice(0, -1);
+  if (UNFINISHED_DRIVE_PATH.test(before)) text.value = `${before}\\${text.value.slice(-1)}`;
+}
+
 /**
- * CommonMark reads the `\.` in `C:\me\.t3\shot.png` as an escape, even in a link
- * destination. Every backslash in a Windows path is a separator, so link, image, and
- * definition destinations that are Windows paths keep the text as written.
+ * CommonMark reads the `\.` in `C:\me\.t3\shot.png` as an escape. Every backslash in a
+ * Windows path is a separator, so link, image, and definition destinations that are
+ * Windows paths keep the text as written, and so do escapes inside drive paths in prose.
+ * Prose paths end at whitespace: past that, nothing tells a path from a sentence, and
+ * `C:\x and \*this\*` must still read `*this*`.
  */
-function remarkKeepWindowsPathDestinations(this: Processor) {
+function remarkKeepWindowsPaths(this: Processor) {
   const data = this.data();
   (data.fromMarkdownExtensions ??= []).push({
     exit: {
       resourceDestinationString: keepWindowsPathDestination,
       definitionDestinationString: keepWindowsPathDestination,
+      characterEscape: keepWindowsPathEscape,
     },
   });
 }

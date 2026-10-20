@@ -5,6 +5,7 @@ import { Atom } from "effect/reactivity";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { whenProtectedDataAvailable } from "../../lib/protectedData";
 import { useEnvironments } from "../../state/environments";
 import { environmentSession } from "../../state/session";
 
@@ -35,7 +36,8 @@ export function PermissionUpdateNotice() {
 
   useEffect(() => {
     let active = true;
-    void SecureStore.getItemAsync(storageKey)
+    void whenProtectedDataAvailable()
+      .then(() => SecureStore.getItemAsync(storageKey))
       .then((raw) => {
         const value: unknown = raw === null ? [] : JSON.parse(raw);
         if (active)
@@ -66,12 +68,9 @@ export function PermissionUpdateNotice() {
     const dismiss = () => {
       dismissedThisLaunch.add(environment.environmentId);
       const next = new Set([...dismissed, ...dismissedThisLaunch]);
-      // Keep notices serial when several environments have old grants.
       showing.current = false;
       setDismissed(next);
-      void SecureStore.setItemAsync(storageKey, JSON.stringify([...next])).catch(() => {
-        // Remember for this launch even if persistent storage is unavailable.
-      });
+      void SecureStore.setItemAsync(storageKey, JSON.stringify([...next])).catch(() => {});
     };
     Dialog.alert(
       `Permissions have changed for ${environment.label}`,

@@ -1,4 +1,4 @@
-import { Toolbar } from "../../components/ui/Toolbar";
+import { SheetHeader } from "../../components/ui/SheetHeader";
 import {
   DatePicker,
   Host,
@@ -215,7 +215,6 @@ export function CustomSnoozeSheet(props: {
   );
 }
 
-/** The popover owns a native navigation bar, just like the app's sheet screens. */
 function SnoozePopoverNavigation(props: {
   readonly width: number;
   readonly height: number;
@@ -250,16 +249,12 @@ function SnoozePopoverNavigation(props: {
                 <SnoozeStack.Screen name="CustomSnooze">
                   {() => (
                     <>
-                      <Toolbar placement="left">
-                        <Toolbar.Button
-                          accessibilityLabel="Cancel custom snooze"
-                          icon="xmark"
-                          onPress={props.onClose}
-                        />
-                      </Toolbar>
-                      <Toolbar placement="right">
-                        <Toolbar.Button label="Snooze" onPress={props.onSubmit} />
-                      </Toolbar>
+                      <SheetHeader
+                        title="Custom snooze"
+                        onCancel={props.onClose}
+                        accessibilityLabel="Cancel custom snooze"
+                        confirm={{ label: "Snooze", onPress: props.onSubmit }}
+                      />
                       <ScrollView
                         contentInsetAdjustmentBehavior="automatic"
                         showsVerticalScrollIndicator={false}
