@@ -155,7 +155,7 @@ export async function clearBrowserProfileData(
   ]);
 }
 
-export function browserProfileRemovalAvailable(
+function browserProfileRemovalAvailable(
   bridgeAvailable: boolean,
   environmentsReady: boolean,
   environmentCount: number,
@@ -780,7 +780,7 @@ function PullRequestLinksOpenInAppSetting() {
   return (
     <SettingsRow
       {...searchableSetting("pull-request-links-open-in-app")}
-      description="Clicking a pull request link opens it in T3 Code. Turn off to open pull request links like any other link, on GitHub or your git host."
+      description="Clicking a pull request link opens it in T3 Code. Turn off to open pull request links like any other link, on your git host."
       resetAction={
         openInApp ? null : (
           <SettingResetButton
@@ -820,7 +820,7 @@ function DeviceIntegrationSettings() {
   );
 }
 
-export function DeviceIntegrationControls({
+function DeviceIntegrationControls({
   environmentId,
   enabled,
   agentAccessEnabled,

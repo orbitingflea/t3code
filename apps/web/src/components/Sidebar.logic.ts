@@ -7,7 +7,12 @@ import {
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
 import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
-import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
+import {
+  threadSearchMatchKey,
+  threadSearchSubject,
+  type ThreadSearchShell,
+} from "@t3tools/client-runtime/state/thread-search";
+import { foldSearchQuery, rankSearchItems, scoreThreadSearch } from "@t3tools/shared/paletteSearch";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
 import type { AsyncResult } from "effect/reactivity";
@@ -25,7 +30,6 @@ import {
 import type { SidebarThreadSummary, Thread } from "../types";
 import { normalizeSearchText } from "../lib/utils";
 import { isLatestRunSettled } from "../session-logic";
-import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -44,7 +48,7 @@ export function shouldNavigateAfterThreadPark(input: {
 }
 
 const THREAD_SELECTION_SAFE_SELECTOR = "[data-thread-item], [data-thread-selection-safe]";
-export const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
+const THREAD_JUMP_HINT_SHOW_DELAY_MS = 200;
 
 export function resolveSidebarRowAccessibility(input: {
   readonly title: string;
@@ -552,17 +556,6 @@ export function filterSidebarV2VisibleThreads<
   );
 }
 
-export function getSidebarForkParentThreadId(
-  thread: Pick<SidebarThreadSummary, "forkedFrom" | "lineage">,
-) {
-  if (thread.lineage.relationshipToParent !== "fork") {
-    return null;
-  }
-  return thread.forkedFrom?.type === "run"
-    ? thread.forkedFrom.threadId
-    : thread.lineage.parentThreadId;
-}
-
 export function buildBulkTitleRegenerationContextMenuItem(input: {
   supportedCount: number;
   actionableCount: number;
@@ -634,14 +627,7 @@ export interface ThreadJumpHintVisibilityController {
   dispose: () => void;
 }
 
-export function resolveSidebarStageBadgeLabel(input: {
-  primaryServerVersion: string | null | undefined;
-  fallbackStageLabel: string;
-}): string {
-  return resolveServerBackedAppStageLabel(input);
-}
-
-export function createThreadJumpHintVisibilityController(input: {
+function createThreadJumpHintVisibilityController(input: {
   delayMs: number;
   onVisibilityChange: (visible: boolean) => void;
   setTimeoutFn?: typeof globalThis.setTimeout;
@@ -971,10 +957,6 @@ export function resolveSidebarV2TopStatus(input: {
   return input.isUnread ? "done" : null;
 }
 
-export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
-  return status === "working";
-}
-
 export function firstValidTimestampMs(
   ...candidates: ReadonlyArray<string | null | undefined>
 ): number {
@@ -998,37 +980,43 @@ export { sortPinnedThreadsByOrderKey as sortPinnedThreadsForSidebar } from "@t3t
 
 const EMPTY_CONTENT_MATCH_KEYS: ReadonlySet<string> = new Set<string>();
 
+/**
+ * Sidebar search results: title, branch, and pull request matches ranked as
+ * the command palette ranks them, then threads listed only because their
+ * messages match, in `contentMatchKeys` order.
+ */
 export function searchSidebarThreads<
-  T extends {
+  T extends ThreadSearchShell & {
     readonly environmentId: EnvironmentId;
     readonly id: ThreadId;
-    readonly title: string;
-  } & Parameters<typeof threadPullRequestSearchTerms>[0],
+  },
 >(
   threads: readonly T[],
   query: string,
   contentMatchKeys: ReadonlySet<string> = EMPTY_CONTENT_MATCH_KEYS,
-): T[] {
-  const normalizedQuery = query.trim().toLowerCase();
-  if (normalizedQuery.length === 0) return [];
-  const titleMatches: T[] = [];
-  const contentMatches: T[] = [];
-  for (const thread of threads) {
-    const matchesTitle = [thread.title, ...threadPullRequestSearchTerms(thread)].some((term) =>
-      term.toLowerCase().includes(normalizedQuery),
-    );
-    if (matchesTitle) {
-      titleMatches.push(thread);
-    } else if (
-      contentMatchKeys.size > 0 &&
-      contentMatchKeys.has(
-        threadSearchMatchKey({ environmentId: thread.environmentId, threadId: thread.id }),
-      )
-    ) {
-      contentMatches.push(thread);
-    }
-  }
-  return [...titleMatches, ...contentMatches];
+  now = Date.now(),
+): { readonly titleMatches: T[]; readonly contentMatches: T[] } {
+  const normalizedQuery = foldSearchQuery(query);
+  if (normalizedQuery.length === 0) return { titleMatches: [], contentMatches: [] };
+  const titleMatches = rankSearchItems(threads, (thread, options) =>
+    scoreThreadSearch(normalizedQuery, threadSearchSubject(thread, null), now, {
+      ...options,
+      picks: false,
+    }),
+  ).map(({ item }) => item);
+  const listed = new Set(titleMatches);
+  // In the order the server ranked their messages, as the palette lists them.
+  const threadByKey = new Map(
+    threads.map((thread) => [
+      threadSearchMatchKey({ environmentId: thread.environmentId, threadId: thread.id }),
+      thread,
+    ]),
+  );
+  const contentMatches = [...contentMatchKeys].flatMap((key) => {
+    const thread = threadByKey.get(key);
+    return thread && !listed.has(thread) ? [thread] : [];
+  });
+  return { titleMatches, contentMatches };
 }
 
 export function pullRequestMatchesSearchQuery(
@@ -1079,14 +1067,6 @@ export function resolveWorkingStartedAt(
   thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
 ): string | null {
   return resolveThreadWorkingStartedAt(thread);
-}
-
-export function formatWorkingDurationLabel(elapsedMs: number): string {
-  const seconds = Number.isFinite(elapsedMs) ? Math.max(0, Math.floor(elapsedMs / 1000)) : 0;
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 }
 
 export function resolveThreadStatusPill(input: {
@@ -1228,7 +1208,7 @@ export function getFallbackThreadIdAfterDelete<
     )[0]?.id ?? null
   );
 }
-export function getProjectSortTimestamp(
+function getProjectSortTimestamp(
   project: SidebarProject,
   projectThreads: readonly ThreadSortInput[],
   sortOrder: Exclude<SidebarProjectSortOrder, "manual">,
