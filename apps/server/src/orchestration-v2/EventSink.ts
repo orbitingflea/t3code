@@ -72,7 +72,7 @@ export interface EventSinkV2Shape {
       OrchestrationV2ProviderThread,
       "driver" | "providerInstanceId" | "appThreadId" | "nativeThreadRef"
     >;
-    readonly guardPendingUserInputCancellations?: boolean;
+    readonly guardPendingRequestCancellations?: boolean;
     readonly commandId?: CommandId;
     readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2StoredEvent>, EventSinkV2Error>;
@@ -86,13 +86,13 @@ export interface EventSinkV2Shape {
       OrchestrationV2ProviderThread,
       "driver" | "providerInstanceId" | "appThreadId" | "nativeThreadRef"
     >;
-    readonly guardPendingUserInputCancellations?: boolean;
+    readonly guardPendingRequestCancellations?: boolean;
     readonly commandId?: CommandId;
     readonly events: ReadonlyArray<OrchestrationV2DomainEvent>;
     readonly effects: ReadonlyArray<EffectOutbox.PendingOrchestrationEffectV2>;
   }) => Effect.Effect<ReadonlyArray<OrchestrationV2StoredEvent>, EventSinkV2Error>;
   readonly writeIfRunCurrent: (input: {
-    readonly guardPendingUserInputCancellations?: boolean;
+    readonly guardPendingRequestCancellations?: boolean;
     readonly commandId?: CommandId;
     readonly threadId: ThreadId;
     readonly runId: RunId;
@@ -114,7 +114,7 @@ export interface EventSinkV2Shape {
    * a newer attempt that already claimed the thread.
    */
   readonly writeIfProviderThreadOwner: (input: {
-    readonly guardPendingUserInputCancellations?: boolean;
+    readonly guardPendingRequestCancellations?: boolean;
     readonly commandId?: CommandId;
     readonly providerThreadId: ProviderThreadId;
     readonly runId: RunId;
@@ -433,7 +433,7 @@ const layerBase: Layer.Layer<
               )
             : input.events;
           const normalized = yield* normalizeEvents(
-            input.guardPendingUserInputCancellations === true
+            input.guardPendingRequestCancellations === true
               ? yield* guardRuntimeRequestCancellations(events)
               : events,
           );
@@ -492,7 +492,7 @@ const layerBase: Layer.Layer<
             }
 
             const normalized = yield* normalizeEvents(
-              input.guardPendingUserInputCancellations === true
+              input.guardPendingRequestCancellations === true
                 ? yield* guardRuntimeRequestCancellations(input.events)
                 : input.events,
             );
@@ -557,7 +557,7 @@ const layerBase: Layer.Layer<
           }
 
           const normalized = yield* normalizeEvents(
-            input.guardPendingUserInputCancellations === true
+            input.guardPendingRequestCancellations === true
               ? yield* guardRuntimeRequestCancellations(input.events)
               : input.events,
           );
