@@ -1151,6 +1151,136 @@ layer("ProviderEventIngestorV2", (it) => {
       }),
   );
 
+  it.effect("keeps an approval the user answered before the provider cancelled it", () =>
+    Effect.gen(function* () {
+      const now = yield* DateTime.now;
+      const eventSink = yield* EventSink.EventSinkV2;
+      const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+      const ingestor = yield* ProviderEventIngestor.ProviderEventIngestorV2;
+      const idAllocator = yield* IdAllocator.IdAllocatorV2;
+      const threadEvent = yield* threadCreatedEvent(now);
+      const threadId = threadEvent.threadId;
+      const providerSessionId = yield* idAllocator.allocate.providerSession({
+        providerInstanceId: modelSelection.instanceId,
+        threadId,
+      });
+      const providerTurnId = idAllocator.derive.providerTurn({
+        driver: CODEX_DRIVER,
+        nativeTurnId: `${threadId}:approvals`,
+      });
+      const fixtures = (["answered", "open"] as const).map((key, ordinal) => {
+        const nodeId = NodeId.make(`${threadId}:${key}`);
+        const answered = key === "answered";
+        const request: OrchestrationV2RuntimeRequest = {
+          id: RuntimeRequestId.make(`${threadId}:${key}`),
+          nodeId,
+          providerTurnId,
+          nativeRequestRef: null,
+          kind: "command",
+          status: answered ? "resolved" : "pending",
+          responseCapability: { type: "live", providerSessionId },
+          createdAt: now,
+          resolvedAt: answered ? now : null,
+          ...(answered ? { decision: "accept" as const } : {}),
+        };
+        const node: OrchestrationV2ExecutionNode = {
+          id: nodeId,
+          threadId,
+          runId: null,
+          parentNodeId: null,
+          rootNodeId: nodeId,
+          kind: "approval_request",
+          status: answered ? "completed" : "waiting",
+          countsForRun: false,
+          providerThreadId: null,
+          providerTurnId,
+          nativeItemRef: null,
+          runtimeRequestId: request.id,
+          checkpointScopeId: null,
+          startedAt: now,
+          completedAt: answered ? now : null,
+        };
+        const item: OrchestrationV2TurnItem = {
+          id: TurnItemId.make(`${threadId}:${key}`),
+          threadId,
+          runId: null,
+          nodeId,
+          providerThreadId: null,
+          providerTurnId,
+          nativeItemRef: null,
+          parentItemId: null,
+          ordinal,
+          status: answered ? "completed" : "waiting",
+          title: "Run command?",
+          startedAt: now,
+          completedAt: answered ? now : null,
+          updatedAt: now,
+          type: "approval_request",
+          requestId: request.id,
+          requestKind: "command",
+        };
+        return { request, node, item };
+      });
+      const seedEvents: Array<OrchestrationV2DomainEvent> = [threadEvent];
+      for (const { request, node, item } of fixtures) {
+        for (const payload of [
+          { type: "runtime-request.updated" as const, payload: request },
+          { type: "node.updated" as const, payload: node },
+          { type: "turn-item.updated" as const, payload: item },
+        ]) {
+          seedEvents.push({
+            id: yield* idAllocator.allocate.event({ threadId }),
+            threadId,
+            occurredAt: now,
+            ...payload,
+          });
+        }
+      }
+      yield* eventSink.write({ events: seedEvents });
+
+      // A provider abort sends each cancelled record as its own event.
+      for (const { request, node, item } of fixtures) {
+        for (const event of [
+          {
+            type: "node.updated" as const,
+            node: { ...node, status: "cancelled" as const, completedAt: now },
+          },
+          {
+            type: "runtime_request.updated" as const,
+            threadId,
+            runtimeRequest: { ...request, status: "cancelled" as const, resolvedAt: now },
+          },
+          {
+            type: "turn_item.updated" as const,
+            turnItem: { ...item, status: "cancelled" as const, completedAt: now },
+          },
+        ]) {
+          yield* ingestor.ingestNormalized({
+            providerSessionId,
+            providerInstanceId: modelSelection.instanceId,
+            threadId,
+            event: { ...event, driver: CODEX_DRIVER },
+          });
+        }
+      }
+
+      const projection = yield* projectionStore.getThreadProjection(threadId);
+      const statuses = fixtures.map(({ request, node, item }) => {
+        const stored = projection.runtimeRequests.find((entry) => entry.id === request.id);
+        return {
+          request: stored?.status,
+          decision: stored?.decision,
+          node: projection.nodes.find((entry) => entry.id === node.id)?.status,
+          item: projection.turnItems.find((entry) => entry.id === item.id)?.status,
+        };
+      });
+      assert.deepEqual(statuses, [
+        { request: "resolved", decision: "accept", node: "completed", item: "completed" },
+        { request: "cancelled", decision: undefined, node: "cancelled", item: "cancelled" },
+      ]);
+    }),
+  );
+
   it.effect(
     "preserves an answer committed after terminal normalization reads a pending question",
     () =>
