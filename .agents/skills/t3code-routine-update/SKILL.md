@@ -1,11 +1,11 @@
 ---
 name: t3code-routine-update
-description: Routine update ("常规更新") of the user's T3 Code fork - merge upstream into fork main, rebase the `wb` branch, move the whiteboard's chat-t3 submodule to the new `wb` and restart wb-t3. Use when the user asks to update/sync T3 Code with upstream or refresh the whiteboard chat.
+description: Routine update ("常规更新") of the user's T3 Code fork - merge upstream into fork main, rebase the `wb` branch, move the whiteboard's chat-t3 submodule to the new `wb`, rebuild the whiteboard sandboxes, and restart wb-t3. Use when the user asks to update/sync T3 Code with upstream or refresh the whiteboard chat.
 ---
 
 # T3 Code routine update
 
-A routine update carries upstream T3 Code into everything the user runs, in this order: fork `main` → fork `wb` → whiteboard `chat-t3` (the running `wb-t3` service). Each stage builds on the previous one; finish and verify a stage before starting the next.
+A routine update carries upstream T3 Code into everything the user runs, in this order: fork `main` → fork `wb` → whiteboard `chat-t3` (the running `wb-t3` service and the whiteboard sandboxes). Each stage builds on the previous one; finish and verify a stage before starting the next.
 
 ## Layout
 
@@ -51,13 +51,18 @@ Run in `~/research/whiteboard` on a new branch `t3-sync-<wb-short-sha>`.
    ```
 5. Smoke test on a pruned copy: `node chat-t3/apps/server/scripts/migrate-dev-db.ts --source <the step-4 snapshot> --base-dir /tmp/wbt3-smoke`, with `T3CODE_UNSAFE_NO_AUTH` unset. Never smoke-test on a raw VACUUM copy: it keeps in-flight runs, and the smoke server resumes them as real agents, including the thread running this update. Then run `T3_DATA=/tmp/wbt3-smoke T3_PORT=6079 setsid bash chat-t3/run-t3.sh` in the background, wait for it to listen, and expect 200 from `http://127.0.0.1:6079/chat/` and a JSON reply from `/api/auth/session`. Also check that a websocket to `ws://127.0.0.1:6079/ws?orchestrationProtocol=2` stays open for 5 s and answers a `subscribeServerConfig` request; a socket that closes at once leaves the page stuck on "Still connecting". Stop it by its process group, then also kill the 6079 owner from `ss -H -ltnp` after checking that its `/proc/<pid>/environ` has `T3_DATA=/tmp/wbt3-smoke` (the server forks a child that keeps the port; its cwd matches the live `wb-t3`, so cwd proves nothing). "Unknown source control provider" log errors are harmless.
 6. Commit `Refresh chat-t3 to fork wb@<wb-short-sha>`. Ask the user: PR, or fast-forward whiteboard `main` and push directly. GitHub reports a bypassed "changes must be made through a pull request" rule on direct push; that is expected.
-7. Restart `wb-t3` last, after commits, pushes, and memory notes are written. The restart stops every agent session `wb-t3` runs, even though they live in their own `t3code-*.scope` cgroups, so `/proc/$$/cgroup` does not show whether you are one of them. Check `tr '\0' '\n' < /proc/$$/environ | grep -q '^WB_CHAT_PID='` instead (`run-t3.sh` exports it): if it matches, you run under `wb-t3` and a direct restart kills you mid-turn. Then tell the user that running `wb-t3` threads will be interrupted, schedule the restart with `systemd-run --user --on-active=30s systemctl --user restart wb-t3`, and end the turn; check it in the next turn. Otherwise restart directly. Either way, check the `journalctl --user -u wb-t3` tail and that `/chat/` on 6070 answers 200.
+7. Deploy the step-6 commit to every whiteboard sandbox (`~/utils/wb-sandbox`). Each sandbox mounts a release built from a fixed whiteboard commit, so restarting a sandbox does not update it. Run `~/utils/wb-sandbox/bin/wb-sandbox list` and note each sandbox's COMMIT (the rollback needs it). Then, for each NAME, run `~/utils/wb-sandbox/bin/wb-sandbox rebuild <name>`, which deploys the local whiteboard `main`; if step 6 opened a PR, add `--commit <step-6 sha>`. The user runs this update only when restarts are fine, so rebuild all of them without asking.
+   - Each rebuild restarts that sandbox's whiteboard and T3 services, which interrupts its running threads. A stopped sandbox is started and left running.
+   - The first rebuild builds the shared release `/srv/whiteboard/<sha>` and takes several minutes; run it in the background or with a long timeout. Then run the step-2 micromark check against `/srv/whiteboard/<sha>/chat-t3`; if it differs, tell the user before rebuilding the rest.
+   - A failed rebuild leaves that sandbox on its previous release and exits non-zero. Stop at the first failure and show the user the error tail; the release is shared, so the rest would fail the same way.
+   - Done when `list` shows the new commit for every sandbox.
+8. Restart `wb-t3` last, after commits, pushes, and memory notes are written. The restart stops every agent session `wb-t3` runs, even though they live in their own `t3code-*.scope` cgroups, so `/proc/$$/cgroup` does not show whether you are one of them. Check `tr '\0' '\n' < /proc/$$/environ | grep -q '^WB_CHAT_PID='` instead (`run-t3.sh` exports it): if it matches, you run under `wb-t3` and a direct restart kills you mid-turn. Then tell the user that running `wb-t3` threads will be interrupted, schedule the restart with `systemd-run --user --on-active=30s systemctl --user restart wb-t3`, and end the turn; check it in the next turn. Otherwise restart directly. Either way, check the `journalctl --user -u wb-t3` tail and that `/chat/` on 6070 answers 200.
 
-Done when the whiteboard `chat-t3` submodule points at the pushed `wb` tip, the smoke test passed, the commit is pushed or in a PR, and `wb-t3` runs the new build.
+Done when the whiteboard `chat-t3` submodule points at the pushed `wb` tip, the smoke test passed, the commit is pushed or in a PR, every sandbox runs the new whiteboard commit, and `wb-t3` runs the new build.
 
 ## Rollback
 
-Every stage leaves a way back: fork main is a merge (revert or reset to the previous tip), `wb` has its backup branch, whiteboard has the DB snapshot, the old `dist`, and the previous commit.
+Every stage leaves a way back: fork main is a merge (revert or reset to the previous tip), `wb` has its backup branch, whiteboard has the DB snapshot, the old `dist`, and the previous commit. A sandbox goes back with `wb-sandbox rebuild <name> --commit <its COMMIT from the step-7 list>`; a release is deleted once no sandbox uses it, so this usually builds it again (several minutes).
 
 ## Afterwards
 
