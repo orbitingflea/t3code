@@ -3,6 +3,8 @@ import { expect, it } from "@effect/vitest";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
   ProviderInstanceId,
+  ProviderSessionId,
+  ThreadId,
   type AntigravitySettings,
 } from "@t3tools/contracts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -26,6 +28,7 @@ import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEve
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as ModelManifest from "../ModelManifest.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { AntigravityDriver } from "./AntigravityDriver.ts";
 import * as ProviderHostLive from "../ProviderHostLive.ts";
 import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
@@ -106,9 +109,11 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
   const first = yield* makeExecutable("runtime 'one");
   const second = yield* makeExecutable("runtime two");
   const signedOut = yield* makeExecutable("runtime signed-out", true);
+  const patched = yield* makeExecutable("runtime patched");
   const controls = { selected: first, failResolution: false, beforeAcquire: Effect.void };
   const acquisitions: Array<{ binaryPath: string | undefined; path: string | undefined }> = [];
   const releases: Array<string | null> = [];
+  const chatRequests: Array<string | null> = [];
   const launches: Array<{
     command: string;
     args: ReadonlyArray<string>;
@@ -152,6 +157,11 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
           }),
         );
         return selected;
+      }),
+    chatExecutable: (executable) =>
+      Effect.sync(() => {
+        chatRequests.push(executable.version);
+        return { ...executable, executablePath: patched.executablePath };
       }),
   });
   const observedSpawner = ChildProcessSpawner.make((command) =>
@@ -218,6 +228,7 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
     }
   });
   return {
+    instanceId,
     instance,
     refresh,
     fs,
@@ -228,6 +239,8 @@ const makeHarness = Effect.fn("makeAntigravityDriverHarness")(function* (
     first,
     second,
     signedOut,
+    patched,
+    chatRequests,
     controls,
     acquisitions,
     releases,
@@ -351,6 +364,39 @@ it.layer(layerTest)("AntigravityDriver", (it) => {
         expect(h.releases).toEqual([h.first.version, h.signedOut.version]);
         yield* h.assertClosed;
       }).pipe(Effect.scoped),
+  );
+
+  it.effect.skipIf(windowsHost)("launches the patched server only for chat sessions", () =>
+    Effect.gen(function* () {
+      const h = yield* makeHarness();
+      yield* h.refresh();
+      const workspace = yield* h.fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-chat-" });
+      const threadId = ThreadId.make("thread-antigravity-chat");
+      const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        cwd: workspace,
+      });
+      const modelSelection = { instanceId: h.instanceId, model: "gemini-test-low" } as const;
+      const session = yield* h.instance.orchestrationAdapter.openSession({
+        threadId,
+        providerSessionId: ProviderSessionId.make("provider-session-antigravity-chat"),
+        modelSelection,
+        runtimePolicy,
+      });
+      yield* session.ensureThread({ threadId, modelSelection, runtimePolicy });
+
+      const nativeLaunches = h.launches.filter((launch) => launch.harnessPath !== undefined);
+      expect(nativeLaunches.map((launch) => launch.command)).toEqual([
+        h.first.executablePath,
+        h.patched.executablePath,
+      ]);
+      expect(nativeLaunches.map((launch) => launch.harnessPath)).toEqual([
+        h.first.harnessPath,
+        h.first.harnessPath,
+      ]);
+      expect(h.chatRequests).toEqual([h.first.version]);
+    }).pipe(Effect.scoped),
   );
 
   it.effect.skipIf(windowsHost)("keeps the previous catalog when executable resolution fails", () =>

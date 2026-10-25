@@ -266,6 +266,23 @@ export function normalizeAntigravitySessionUpdate(
   };
 }
 
+const decodeStopHookMeta = Schema.decodeUnknownOption(
+  Schema.Struct({ "t3.stop_hook": Schema.Struct({ id: Schema.String, reason: Schema.String }) }),
+);
+
+// T3's patched agy server (antigravityChatPatch.ts) sends each Stop hook
+// continue reason as a tagged thought chunk, since ACP has no notice update.
+export function extractAntigravityStopHookNotice(
+  notification: EffectAcpSchema.SessionNotification,
+): { readonly id: string; readonly message: string } | undefined {
+  const update = notification.update;
+  if (update.sessionUpdate !== "agent_thought_chunk") return undefined;
+  const marker = Option.getOrUndefined(decodeStopHookMeta(update._meta))?.["t3.stop_hook"];
+  return marker === undefined
+    ? undefined
+    : { id: marker.id, message: `Stop hook feedback: ${boundText(marker.reason)}` };
+}
+
 function localImagePath(imagePath: string | undefined): string | undefined {
   if (!imagePath || imagePath.length > TOOL_TEXT_LIMIT) {
     return undefined;

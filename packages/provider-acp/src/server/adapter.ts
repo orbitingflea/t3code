@@ -233,6 +233,10 @@ export interface AcpAdapterV2Flavor {
   readonly normalizeSessionUpdate?: (
     notification: EffectAcpSchema.SessionNotification,
   ) => EffectAcpSchema.SessionNotification;
+  /** A thought chunk that carries a provider notice, shown as its own item, never as reasoning. */
+  readonly extractSystemNotice?: (
+    notification: EffectAcpSchema.SessionNotification,
+  ) => { readonly id: string; readonly message: string } | undefined;
   readonly onAvailableCommandsUpdate?: (
     commands: ReadonlyArray<EffectAcpSchema.AvailableCommand>,
   ) => Effect.Effect<void>;
@@ -2509,6 +2513,38 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           yield* closeTextStream(context, "assistant");
         });
 
+        // Closing the streams first makes text after the notice a new assistant segment.
+        const emitSystemNotice = Effect.fnUntraced(function* (
+          context: ActiveAcpTurn,
+          notice: { readonly id: string; readonly message: string },
+        ) {
+          yield* closeTextStreams(context);
+          const now = yield* DateTime.now;
+          const nativeItemId = `${context.nativeTurnId}:notice:${notice.id}`;
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver,
+            turnItem: {
+              id: idAllocator.derive.turnItemFromProviderItem({ driver, nativeItemId }),
+              threadId: context.input.threadId,
+              runId: context.input.runId,
+              nodeId: context.input.rootNodeId,
+              providerThreadId: context.input.providerThread.id,
+              providerTurnId: context.providerTurnId,
+              nativeItemRef: { driver, nativeId: nativeItemId, strength: "weak" },
+              parentItemId: null,
+              ordinal: yield* resolveItemOrdinal(context, nativeItemId),
+              type: "system_notice",
+              status: "completed",
+              title: notice.message,
+              message: notice.message,
+              startedAt: now,
+              completedAt: now,
+              updatedAt: now,
+            },
+          });
+        });
+
         const appendText = Effect.fnUntraced(function* (
           context: ActiveAcpTurn,
           kind: "user" | "assistant" | "reasoning",
@@ -4757,6 +4793,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               update.sessionUpdate === "agent_message_chunk" ||
               update.sessionUpdate === "agent_thought_chunk"
             ) {
+              // A notice belongs to the live turn that produced it; outside one it has no place.
+              if (flavor.extractSystemNotice?.(notification) !== undefined) return;
               const text = acpContentBlockDisplayText(update.content);
               if (text === undefined) return;
               const lateBackgroundMutations =
@@ -4940,6 +4978,11 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
               break;
             }
             case "agent_thought_chunk": {
+              const notice = flavor.extractSystemNotice?.(notification);
+              if (notice !== undefined) {
+                yield* emitSystemNotice(context, notice);
+                break;
+              }
               const text = acpContentBlockDisplayText(update.content);
               if (text !== undefined) {
                 yield* appendText(context, "reasoning", text, update.messageId);

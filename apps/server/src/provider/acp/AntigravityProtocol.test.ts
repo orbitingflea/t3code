@@ -4,6 +4,7 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 import * as AcpWireSchema from "effect-acp/schema-v1";
 
 import {
+  extractAntigravityStopHookNotice,
   extractAntigravityUserInputQuestion,
   isAntigravityOpenCommand,
   antigravityApprovalOptions,
@@ -23,6 +24,34 @@ import {
 } from "@t3tools/provider-acp/server/runtimeModel";
 
 const isSessionNotification = Schema.is(AcpWireSchema.SessionNotification);
+
+describe("Antigravity Stop hook feedback", () => {
+  const thought = (meta?: {
+    readonly "t3.stop_hook": { readonly id: string; readonly reason?: string };
+  }): EffectAcpSchema.SessionNotification => ({
+    sessionId: "session-1",
+    update: {
+      sessionUpdate: "agent_thought_chunk",
+      content: { type: "text", text: "Stop hook feedback: Fix the tests." },
+      ...(meta === undefined ? {} : { _meta: meta }),
+    },
+  });
+
+  it("reads the patched server's tagged thought as a notice", () => {
+    expect(
+      extractAntigravityStopHookNotice(
+        thought({ "t3.stop_hook": { id: "stop:1", reason: "Fix the tests." } }),
+      ),
+    ).toEqual({ id: "stop:1", message: "Stop hook feedback: Fix the tests." });
+  });
+
+  it("leaves real thoughts and malformed tags as reasoning", () => {
+    expect(extractAntigravityStopHookNotice(thought())).toBeUndefined();
+    expect(
+      extractAntigravityStopHookNotice(thought({ "t3.stop_hook": { id: "stop:1" } })),
+    ).toBeUndefined();
+  });
+});
 
 describe("native Antigravity subagent tools", () => {
   it("recognizes only native invocation titles and excludes MCP tools", () => {

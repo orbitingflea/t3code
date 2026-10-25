@@ -28,6 +28,12 @@ import * as EffectAcpErrors from "effect-acp/errors";
 
 import * as ServerConfig from "../config.ts";
 import { openZipArchive } from "../zipArchive.ts";
+import {
+  ANTIGRAVITY_CHAT_PATCH_REVISION,
+  patchAntigravityPar,
+  resolveAntigravityChatPatch,
+  type AntigravityParPatch,
+} from "./antigravityChatPatch.ts";
 import { makeAntigravityAcpRuntime } from "./acp/AntigravityAcpSupport.ts";
 import {
   buildAntigravityAcpSpawnInput,
@@ -91,6 +97,14 @@ interface AntigravityInstallationService {
     binaryPath?: string,
     environment?: NodeJS.ProcessEnv,
   ) => Effect.Effect<AntigravityExecutable, AntigravityInstallationError, Scope.Scope>;
+  /**
+   * The managed server with T3's chat patch, or the input unchanged when the
+   * patch does not apply. Call it with an acquired executable: the copy runs
+   * under that lease and keeps its harness.
+   */
+  readonly chatExecutable: (
+    executable: AntigravityExecutable,
+  ) => Effect.Effect<AntigravityExecutable>;
   readonly start: Effect.Effect<ProviderInstallState, AntigravityInstallationError>;
   readonly cancel: (
     operationId: string,
@@ -122,6 +136,7 @@ export interface AntigravityInstallationOptions {
     executable: AntigravityExecutable,
     expectedVersion: string,
   ) => Effect.Effect<void, AntigravityInstallationError, Scope.Scope>;
+  readonly chatPatch?: (version: string | null) => AntigravityParPatch | undefined;
 }
 
 const installationError = (operation: string, detail: string, cause?: unknown) =>
@@ -172,6 +187,7 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
   const versionsDirectory = path.join(managedDirectory, "versions");
   const activePath = path.join(managedDirectory, "active.json");
   const gate = yield* Semaphore.make(1);
+  const patchGate = yield* Semaphore.make(1);
   const leases = new Map<string, number>();
   let running: { readonly operationId: string; readonly fiber: Fiber.Fiber<void> } | undefined;
   const state = yield* SubscriptionRef.make<ProviderInstallState>({
@@ -347,6 +363,60 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
           }),
         ),
     );
+
+  const patchedDirectory = path.join(managedDirectory, "patched");
+  const chatExecutable = Effect.fn("AntigravityInstallation.chatExecutable")(function* (
+    executable: AntigravityExecutable,
+  ) {
+    // macOS is left alone: rewriting a signed bundle member is unproven there.
+    const patch =
+      platform === "linux" && executable.source === "managed"
+        ? (options.chatPatch ?? resolveAntigravityChatPatch)(executable.version)
+        : undefined;
+    if (patch === undefined || executable.managedVersionDirectory === null) return executable;
+    const name = path.basename(executable.executablePath);
+    const directory = path.join(
+      patchedDirectory,
+      `${path.basename(executable.managedVersionDirectory)}-r${ANTIGRAVITY_CHAT_PATCH_REVISION}`,
+    );
+    const target = path.join(directory, name);
+    return yield* patchGate
+      .withPermit(
+        Effect.gen(function* () {
+          const bytes = Number((yield* fs.stat(executable.executablePath)).size);
+          if (yield* executableFile(target, bytes)) return target;
+          yield* fs.makeDirectory(patchedDirectory, { recursive: true });
+          // Patch a private copy, then rename it into place, so other T3
+          // processes see either no file or a complete one.
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const staging = yield* fs.makeTempDirectoryScoped({
+                directory: patchedDirectory,
+                prefix: ".staging-",
+              });
+              const copy = path.join(staging, name);
+              yield* fs.copyFile(executable.executablePath, copy);
+              yield* patchAntigravityPar(copy, patch).pipe(
+                Effect.provideService(FileSystem.FileSystem, fs),
+              );
+              yield* fs.chmod(copy, 0o755);
+              yield* fs.makeDirectory(directory, { recursive: true });
+              yield* fs.rename(copy, target);
+            }),
+          );
+          return target;
+        }),
+      )
+      .pipe(
+        Effect.map((executablePath) => ({ ...executable, executablePath })),
+        Effect.catch((cause) =>
+          Effect.logWarning(
+            "Could not patch the Antigravity server for chat; Stop hooks will run only at session end.",
+            { cause },
+          ).pipe(Effect.as(executable)),
+        ),
+      );
+  });
 
   const validate =
     options.validate ??
@@ -872,6 +942,7 @@ export const makeAntigravityInstallation = Effect.fn("AntigravityInstallation.ma
     managedDirectory,
     resolve,
     acquire,
+    chatExecutable,
     start,
     cancel,
     state: SubscriptionRef.get(state),

@@ -1,3 +1,5 @@
+// @effect-diagnostics nodeBuiltinImport:off - the ZIP fixture needs CRC-32, which Effect lacks.
+import * as NodeZlib from "node:zlib";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -15,9 +17,11 @@ import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Sink from "effect/Sink";
 import * as Stream from "effect/Stream";
+import * as Logger from "effect/Logger";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as AntigravityInstallation from "./AntigravityInstallation.ts";
+import { type AntigravityParPatch } from "./antigravityChatPatch.ts";
 import { type AntigravityReleaseAsset } from "./antigravityRelease.ts";
 
 const serverContents = "antigravity runtime\n";
@@ -82,14 +86,17 @@ const writeRelease = Effect.fn("test.writeAntigravityRelease")(function* (
   managedDirectory: string,
   asset: AntigravityReleaseAsset,
   active = true,
+  server: string | Uint8Array = serverContents,
 ) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const directory = path.join(managedDirectory, "versions", asset.sha256);
   yield* fs.makeDirectory(directory, { recursive: true });
-  yield* fs.writeFileString(path.join(directory, asset.executable.name), serverContents, {
-    mode: 0o755,
-  });
+  yield* fs.writeFile(
+    path.join(directory, asset.executable.name),
+    typeof server === "string" ? new TextEncoder().encode(server) : server,
+    { mode: 0o755 },
+  );
   yield* fs.writeFileString(path.join(directory, asset.harness.name), harnessContents, {
     mode: 0o755,
   });
@@ -124,6 +131,7 @@ interface HarnessOptions {
   readonly fileSystem?: FileSystem.FileSystem;
   readonly validate?: AntigravityInstallation.AntigravityInstallationOptions["validate"];
   readonly useDefaultValidation?: boolean;
+  readonly chatPatch?: AntigravityInstallation.AntigravityInstallationOptions["chatPatch"];
 }
 
 const makeHarness = Effect.fn("test.makeAntigravityInstallation")(function* (
@@ -167,6 +175,7 @@ const makeHarness = Effect.fn("test.makeAntigravityInstallation")(function* (
   const installation = yield* AntigravityInstallation.makeAntigravityInstallation({
     baseDir,
     releaseAsset: asset,
+    ...(options.chatPatch ? { chatPatch: options.chatPatch } : {}),
     ...(options.useDefaultValidation
       ? {}
       : {
@@ -235,6 +244,144 @@ const expectPreviousRelease = Effect.fn("test.expectPreviousAntigravityRelease")
   expect(yield* fs.readFileString(resolved.harnessPath)).toBe(harnessContents);
   expect((yield* installation.state).installedVersion).toBe(previousVersion);
 });
+
+interface ZipMember {
+  readonly name: string;
+  readonly data: Uint8Array;
+  readonly method?: number;
+}
+
+/** An executable prefix plus a ZIP, like a PAR, with each member's offsets. */
+function buildPar(members: ReadonlyArray<ZipMember>) {
+  const prefix = Buffer.from("#!/bin/false\n\x7fELF not really\n");
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  const offsets = new Map<string, { dataAt: number; localCrcAt: number; centralCrcAt: number }>();
+  let zipOffset = 0;
+  for (const member of members) {
+    const name = Buffer.from(member.name);
+    const crc = NodeZlib.crc32(member.data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(member.method ?? 0, 8);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(member.data.length, 18);
+    local.writeUInt32LE(member.data.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(member.method ?? 0, 10);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(member.data.length, 20);
+    central.writeUInt32LE(member.data.length, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(zipOffset, 42);
+    const centralAt = centrals.reduce((total, entry) => total + entry.length, 0);
+    offsets.set(member.name, {
+      dataAt: prefix.length + zipOffset + 30 + name.length,
+      localCrcAt: prefix.length + zipOffset + 14,
+      centralCrcAt: centralAt + 16,
+    });
+    locals.push(local, name, Buffer.from(member.data));
+    centrals.push(Buffer.concat([central, name]));
+    zipOffset += 30 + name.length + member.data.length;
+  }
+  const centralBytes = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(members.length, 8);
+  eocd.writeUInt16LE(members.length, 10);
+  eocd.writeUInt32LE(centralBytes.length, 12);
+  eocd.writeUInt32LE(zipOffset, 16);
+  const centralStart = prefix.length + zipOffset;
+  for (const entry of offsets.values()) entry.centralCrcAt += centralStart;
+  return { bytes: Buffer.concat([prefix, ...locals, centralBytes, eocd]), offsets };
+}
+
+const chatSource = Buffer.from("def stop():\n  return 'old'\n\n# room for the patch\n");
+const chatPatchedHead = Buffer.from("def stop():\n  return 'brand new'\n\n");
+const chatPatchedSource = Buffer.concat([
+  chatPatchedHead,
+  Buffer.alloc(chatSource.length - chatPatchedHead.length, 0x20),
+]);
+const chatBytecode = Buffer.from("\x2b\x0e\x0d\x0abytecode body");
+
+const sha256Hex = (bytes: Uint8Array) =>
+  Effect.flatMap(Crypto.Crypto, (crypto) => crypto.digest("SHA-256", bytes)).pipe(
+    Effect.map(Hex.encode),
+    Effect.orDie,
+  );
+
+const chatPatchFixture = Effect.gen(function* () {
+  return {
+    entries: [
+      {
+        name: "acp/hooks.py",
+        sha256: yield* sha256Hex(chatSource),
+        edits: [
+          { find: "'old'", replace: "'brand new'" },
+          { find: "# room for the patch\n", replace: "" },
+        ],
+      },
+      { name: "acp/hooks.pyc", sha256: yield* sha256Hex(chatBytecode), breakBytecode: true },
+    ],
+  } satisfies AntigravityParPatch;
+});
+
+const chatMembers: ReadonlyArray<ZipMember> = [
+  { name: "acp/__init__.py", data: Buffer.from("") },
+  { name: "acp/hooks.py", data: chatSource },
+  { name: "acp/hooks.pyc", data: chatBytecode },
+  { name: "acp/server.py", data: Buffer.from("print('server')\n") },
+];
+
+// The chat patch is Linux-only and these fixtures rely on POSIX exec bits.
+const windowsHost = hostPlatform === "win32";
+
+const makeChatHarness = Effect.fn("test.makeAntigravityChatHarness")(function* (
+  members: ReadonlyArray<ZipMember>,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const copies: string[] = [];
+  const patch = yield* chatPatchFixture;
+  const harness = yield* makeHarness({
+    chatPatch: (version) => (version === previousVersion ? patch : undefined),
+    fileSystem: FileSystem.FileSystem.of({
+      ...fs,
+      copyFile: (from, to) =>
+        Effect.sync(() => copies.push(to)).pipe(Effect.andThen(fs.copyFile(from, to))),
+    }),
+  });
+  const par = buildPar(members);
+  const asset = yield* releaseAsset();
+  yield* writeRelease(
+    harness.installation.managedDirectory,
+    {
+      ...asset,
+      sha256: previousReleaseId,
+      version: previousVersion,
+      executable: { ...asset.executable, bytes: par.bytes.length },
+    },
+    true,
+    par.bytes,
+  );
+  const original = yield* harness.installation.resolve();
+  return { ...harness, par, original, copies };
+});
+
+const captureWarnings = <A, E, R>(effect: Effect.Effect<A, E, R>) => {
+  const messages: unknown[] = [];
+  const logger = Logger.make<unknown, void>(({ message }) => {
+    messages.push(message);
+  });
+  return effect.pipe(
+    Effect.provide(Logger.layer([logger], { mergeWithExisting: false })),
+    Effect.map((value) => ({ value, messages })),
+  );
+};
 
 it.layer(NodeServices.layer)("Antigravity installation", (it) => {
   it.effect("reports missing Node before downloading the standalone provider runtime", () =>
@@ -794,6 +941,94 @@ it.layer(NodeServices.layer)("Antigravity installation", (it) => {
       });
       expect(yield* installation.state).toMatchObject({ phase: "idle", operationId: null });
       expect(requests).toEqual([]);
+    }),
+  );
+
+  it.effect.skipIf(windowsHost)("patches a private copy of the server for chat sessions", () =>
+    Effect.gen(function* () {
+      const { installation, fs, path, par, original, copies } = yield* makeChatHarness(chatMembers);
+      const chat = yield* installation.chatExecutable(original);
+
+      expect(chat).toEqual({
+        ...original,
+        executablePath: path.join(
+          installation.managedDirectory,
+          "patched",
+          `${previousReleaseId}-r1`,
+          executableName,
+        ),
+      });
+      expect(Buffer.from(yield* fs.readFile(original.executablePath))).toEqual(par.bytes);
+      const patched = Buffer.from(yield* fs.readFile(chat.executablePath));
+      expect(patched.length).toBe(par.bytes.length);
+      expect(((yield* fs.stat(chat.executablePath)).mode & 0o111) !== 0).toBe(true);
+      const expected = new Map([
+        ["acp/hooks.py", chatPatchedSource],
+        ["acp/hooks.pyc", Buffer.concat([Buffer.alloc(4), chatBytecode.subarray(4)])],
+        ["acp/server.py", Buffer.from("print('server')\n")],
+      ]);
+      for (const [name, data] of expected) {
+        const at = par.offsets.get(name);
+        if (!at) return yield* Effect.die(`Missing fixture member ${name}.`);
+        expect(patched.subarray(at.dataAt, at.dataAt + data.length)).toEqual(data);
+        expect(patched.readUInt32LE(at.localCrcAt)).toBe(NodeZlib.crc32(data));
+        expect(patched.readUInt32LE(at.centralCrcAt)).toBe(NodeZlib.crc32(data));
+      }
+
+      expect(yield* installation.chatExecutable(original)).toEqual(chat);
+      expect(copies).toHaveLength(1);
+      expect(
+        (yield* fs.readDirectory(path.join(installation.managedDirectory, "patched"))).sort(),
+      ).toEqual([`${previousReleaseId}-r1`]);
+    }),
+  );
+
+  const unpatchable: ReadonlyArray<readonly [string, ReadonlyArray<ZipMember>]> = [
+    [
+      "a patched file has other bytes",
+      chatMembers.map((member) =>
+        member.name === "acp/hooks.py"
+          ? { ...member, data: Buffer.from(chatSource.toString().replace("old", "odd")) }
+          : member,
+      ),
+    ],
+    [
+      "a patched file is compressed",
+      chatMembers.map((member) =>
+        member.name === "acp/hooks.py" ? { ...member, method: 8 } : member,
+      ),
+    ],
+    [
+      "the bytecode file is missing",
+      chatMembers.filter((member) => member.name !== "acp/hooks.pyc"),
+    ],
+  ];
+  for (const [label, members] of unpatchable) {
+    it.effect.skipIf(windowsHost)(`launches the original server when ${label}`, () =>
+      Effect.gen(function* () {
+        const { installation, fs, path, par, original } = yield* makeChatHarness(members);
+        const { value: chat, messages } = yield* captureWarnings(
+          installation.chatExecutable(original),
+        );
+
+        expect(chat).toEqual(original);
+        expect(Buffer.from(yield* fs.readFile(original.executablePath))).toEqual(par.bytes);
+        expect(messages).toEqual([
+          [expect.stringContaining("Could not patch the Antigravity server"), expect.anything()],
+        ]);
+        expect(
+          yield* fs.readDirectory(path.join(installation.managedDirectory, "patched")),
+        ).toEqual([]);
+      }),
+    );
+  }
+
+  it.effect.skipIf(windowsHost)("launches the original server for unknown versions", () =>
+    Effect.gen(function* () {
+      const { installation, original, copies } = yield* makeChatHarness(chatMembers);
+      const unknown = { ...original, version: "9.9.9" };
+      expect(yield* installation.chatExecutable(unknown)).toEqual(unknown);
+      expect(copies).toEqual([]);
     }),
   );
 });

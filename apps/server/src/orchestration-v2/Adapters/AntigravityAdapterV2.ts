@@ -30,6 +30,7 @@ import {
   antigravityApprovalOptions,
   antigravitySubagentOutput,
   classifyAntigravitySubagentToolCall,
+  extractAntigravityStopHookNotice,
   extractAntigravityUserInputQuestion,
   makeAntigravityUserInputResponse,
   normalizeAntigravityToolCall,
@@ -203,6 +204,7 @@ export function makeAntigravityAcpAdapterFlavor(
       };
     },
     normalizeToolCall: normalizeAntigravityToolCall,
+    extractSystemNotice: extractAntigravityStopHookNotice,
     extractSubagentUpdate: extractAntigravitySubagentUpdate,
     supportsImagePrompts: true,
     supportsCompaction: true,

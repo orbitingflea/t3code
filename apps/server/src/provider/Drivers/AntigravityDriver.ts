@@ -169,8 +169,11 @@ export const AntigravityDriver: ProviderDriver<
         Effect.map((catalog) => stampIdentity(ModelCatalog.applyModelCatalog(draft, catalog))),
       );
 
+    // Only chat sessions run the patched server: its Stop hooks may continue
+    // the turn, which setup, sign-in, and text generation must never do.
     const makeRuntime = Effect.fn("AntigravityDriver.makeRuntime")(function* (
       input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner">,
+      launch: "original" | "chat" = "original",
     ): Effect.fn.Return<
       AcpSessionRuntime.AcpSessionRuntime["Service"],
       AcpError | ProviderSetupError,
@@ -192,6 +195,9 @@ export const AntigravityDriver: ProviderDriver<
               detail: cause.detail,
               cause,
             }),
+        ),
+        Effect.flatMap((acquired) =>
+          launch === "chat" ? installation.chatExecutable(acquired) : Effect.succeed(acquired),
         ),
       );
       const profile = yield* prepareAntigravityProfile({
@@ -415,7 +421,7 @@ export const AntigravityDriver: ProviderDriver<
     const orchestrationAdapter = yield* makeAntigravityAdapterV2({
       instanceId,
       selfInvocation,
-      makeRuntime,
+      makeRuntime: (input) => makeRuntime(input, "chat"),
       withProcess: authFlow.withProcess,
       defaultModel,
       onSessionStarted: provider.onSessionStarted,
