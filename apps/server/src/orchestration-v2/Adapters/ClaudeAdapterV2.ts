@@ -8848,39 +8848,25 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* handleRoutedSdkMessage(input);
         });
 
-        const emitRuntimeRequestArtifacts = (
-          artifacts: Effect.Success<ReturnType<typeof buildApprovalRequestArtifacts>>,
-        ) =>
-          Effect.all(
-            [
-              emitProviderEvent({
-                type: "node.updated",
-                driver: CLAUDE_PROVIDER,
-                node: artifacts.node,
-              }),
-              emitProviderEvent({
-                type: "runtime_request.updated",
-                driver: CLAUDE_PROVIDER,
-                runtimeRequest: artifacts.request,
-              }),
-              emitProviderEvent({
-                type: "turn_item.updated",
-                driver: CLAUDE_PROVIDER,
-                turnItem: artifacts.turnItem,
-              }),
-            ],
-            { concurrency: 1 },
-          );
-
         // The SDK aborts a request it settled without the user, such as when a
         // PermissionRequest hook answered first. No user response will close it.
         const cancelRuntimeRequest = Effect.fn("ClaudeAdapterV2.cancelRuntimeRequest")(function* (
           artifacts: Effect.Success<ReturnType<typeof buildApprovalRequestArtifacts>>,
         ) {
           const now = yield* DateTime.now;
-          yield* emitRuntimeRequestArtifacts({
+          yield* emitProviderEvent({
+            type: "node.updated",
+            driver: CLAUDE_PROVIDER,
             node: { ...artifacts.node, status: "cancelled", completedAt: now },
-            request: { ...artifacts.request, status: "cancelled", resolvedAt: now },
+          });
+          yield* emitProviderEvent({
+            type: "runtime_request.updated",
+            driver: CLAUDE_PROVIDER,
+            runtimeRequest: { ...artifacts.request, status: "cancelled", resolvedAt: now },
+          });
+          yield* emitProviderEvent({
+            type: "turn_item.updated",
+            driver: CLAUDE_PROVIDER,
             turnItem: {
               ...artifacts.turnItem,
               status: "cancelled",
@@ -8967,7 +8953,26 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
               return updated;
             });
-            yield* emitRuntimeRequestArtifacts(artifacts);
+            yield* Effect.all(
+              [
+                emitProviderEvent({
+                  type: "node.updated",
+                  driver: CLAUDE_PROVIDER,
+                  node: artifacts.node,
+                }),
+                emitProviderEvent({
+                  type: "runtime_request.updated",
+                  driver: CLAUDE_PROVIDER,
+                  runtimeRequest: artifacts.request,
+                }),
+                emitProviderEvent({
+                  type: "turn_item.updated",
+                  driver: CLAUDE_PROVIDER,
+                  turnItem: artifacts.turnItem,
+                }),
+              ],
+              { concurrency: 1 },
+            );
             const resolvedAnswers = yield* awaitClaudeUserInputAnswers(
               answers,
               callbackOptions.signal,
@@ -9065,7 +9070,26 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
             return updated;
           });
-          yield* emitRuntimeRequestArtifacts(artifacts);
+          yield* Effect.all(
+            [
+              emitProviderEvent({
+                type: "node.updated",
+                driver: CLAUDE_PROVIDER,
+                node: artifacts.node,
+              }),
+              emitProviderEvent({
+                type: "runtime_request.updated",
+                driver: CLAUDE_PROVIDER,
+                runtimeRequest: artifacts.request,
+              }),
+              emitProviderEvent({
+                type: "turn_item.updated",
+                driver: CLAUDE_PROVIDER,
+                turnItem: artifacts.turnItem,
+              }),
+            ],
+            { concurrency: 1 },
+          );
 
           const resolvedDecision = yield* awaitClaudeApprovalDecision(
             decision,

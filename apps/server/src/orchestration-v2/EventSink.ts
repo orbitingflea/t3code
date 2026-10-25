@@ -8,7 +8,6 @@ import {
   RunAttemptId,
   RunId,
   RuntimeRequestId,
-  NodeId,
   type ProjectId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -208,6 +207,17 @@ export class EventSinkV2 extends Context.Service<EventSinkV2, EventSinkV2Shape>(
   "t3/orchestration-v2/EventSink/EventSinkV2",
 ) {}
 
+const cancelledRuntimeRequestId = (event: OrchestrationV2DomainEvent) =>
+  !("status" in event.payload) || event.payload.status !== "cancelled"
+    ? null
+    : event.type === "runtime-request.updated"
+      ? event.payload.id
+      : event.type === "node.updated"
+        ? event.payload.runtimeRequestId
+        : event.type === "turn-item.updated" && "requestId" in event.payload
+          ? event.payload.requestId
+          : null;
+
 const layerBase: Layer.Layer<
   EventSinkV2,
   never,
@@ -297,43 +307,23 @@ const layerBase: Layer.Layer<
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(function* (events: ReadonlyArray<OrchestrationV2DomainEvent>) {
         const staleRequests = new Set<RuntimeRequestId>();
-        const staleNodes = new Set<NodeId>();
         for (const event of events) {
+          const requestId = cancelledRuntimeRequestId(event);
+          if (requestId === null) continue;
+          const current = yield* projectionStore.getRuntimeRequest(event.threadId, requestId);
           if (
-            event.type !== "runtime-request.updated" ||
-            event.payload.kind !== "user_input" ||
-            event.payload.status !== "cancelled"
-          )
-            continue;
-          const current = yield* projectionStore.getRuntimeRequest(
-            event.threadId,
-            event.payload.id,
-          );
-          if (
-            current?.status !== "pending" ||
-            current.kind !== "user_input" ||
-            current.providerTurnId !== event.payload.providerTurnId ||
-            current.responseCapability.type === "message"
+            (event.type === "runtime-request.updated"
+              ? current?.status !== "pending" ||
+                current.providerTurnId !== event.payload.providerTurnId
+              : current?.status === "resolved") ||
+            (current?.kind === "user_input" && current.responseCapability.type === "message")
           ) {
-            staleRequests.add(event.payload.id);
-            staleNodes.add(event.payload.nodeId);
+            staleRequests.add(requestId);
           }
         }
         return events.filter((event) => {
-          switch (event.type) {
-            case "runtime-request.updated":
-              return event.payload.status !== "cancelled" || !staleRequests.has(event.payload.id);
-            case "node.updated":
-              return event.payload.status !== "cancelled" || !staleNodes.has(event.payload.id);
-            case "turn-item.updated":
-              return (
-                event.payload.type !== "user_input_request" ||
-                event.payload.status !== "cancelled" ||
-                !staleRequests.has(event.payload.requestId)
-              );
-            default:
-              return true;
-          }
+          const requestId = cancelledRuntimeRequestId(event);
+          return requestId === null || !staleRequests.has(requestId);
         });
       });
 
