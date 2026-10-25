@@ -8848,6 +8848,48 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* handleRoutedSdkMessage(input);
         });
 
+        const emitRuntimeRequestArtifacts = (
+          artifacts: Effect.Success<ReturnType<typeof buildApprovalRequestArtifacts>>,
+        ) =>
+          Effect.all(
+            [
+              emitProviderEvent({
+                type: "node.updated",
+                driver: CLAUDE_PROVIDER,
+                node: artifacts.node,
+              }),
+              emitProviderEvent({
+                type: "runtime_request.updated",
+                driver: CLAUDE_PROVIDER,
+                runtimeRequest: artifacts.request,
+              }),
+              emitProviderEvent({
+                type: "turn_item.updated",
+                driver: CLAUDE_PROVIDER,
+                turnItem: artifacts.turnItem,
+              }),
+            ],
+            { concurrency: 1 },
+          );
+
+        // The SDK aborts a request it settled without the user, such as when a
+        // PermissionRequest hook answered first. No user response will close it.
+        const cancelRuntimeRequest = Effect.fn("ClaudeAdapterV2.cancelRuntimeRequest")(function* (
+          artifacts: Effect.Success<ReturnType<typeof buildApprovalRequestArtifacts>>,
+        ) {
+          const now = yield* DateTime.now;
+          yield* emitRuntimeRequestArtifacts({
+            node: { ...artifacts.node, status: "cancelled", completedAt: now },
+            request: { ...artifacts.request, status: "cancelled", resolvedAt: now },
+            turnItem: {
+              ...artifacts.turnItem,
+              status: "cancelled",
+              completedAt: now,
+              updatedAt: now,
+            },
+          });
+        });
+
         const canUseToolEffect = Effect.fn("ClaudeAdapterV2.canUseTool")(function* (
           toolName: Parameters<CanUseTool>[0],
           toolInput: Parameters<CanUseTool>[1],
@@ -8925,26 +8967,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               });
               return updated;
             });
-            yield* Effect.all(
-              [
-                emitProviderEvent({
-                  type: "node.updated",
-                  driver: CLAUDE_PROVIDER,
-                  node: artifacts.node,
-                }),
-                emitProviderEvent({
-                  type: "runtime_request.updated",
-                  driver: CLAUDE_PROVIDER,
-                  runtimeRequest: artifacts.request,
-                }),
-                emitProviderEvent({
-                  type: "turn_item.updated",
-                  driver: CLAUDE_PROVIDER,
-                  turnItem: artifacts.turnItem,
-                }),
-              ],
-              { concurrency: 1 },
-            );
+            yield* emitRuntimeRequestArtifacts(artifacts);
             const resolvedAnswers = yield* awaitClaudeUserInputAnswers(
               answers,
               callbackOptions.signal,
@@ -8957,6 +8980,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               ),
             );
+            if (!(yield* Deferred.isDone(answers))) yield* cancelRuntimeRequest(artifacts);
             return callbackOptions.signal.aborted
               ? ({
                   behavior: "deny",
@@ -9041,26 +9065,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             });
             return updated;
           });
-          yield* Effect.all(
-            [
-              emitProviderEvent({
-                type: "node.updated",
-                driver: CLAUDE_PROVIDER,
-                node: artifacts.node,
-              }),
-              emitProviderEvent({
-                type: "runtime_request.updated",
-                driver: CLAUDE_PROVIDER,
-                runtimeRequest: artifacts.request,
-              }),
-              emitProviderEvent({
-                type: "turn_item.updated",
-                driver: CLAUDE_PROVIDER,
-                turnItem: artifacts.turnItem,
-              }),
-            ],
-            { concurrency: 1 },
-          );
+          yield* emitRuntimeRequestArtifacts(artifacts);
 
           const resolvedDecision = yield* awaitClaudeApprovalDecision(
             decision,
@@ -9074,6 +9079,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               }),
             ),
           );
+          if (!(yield* Deferred.isDone(decision))) yield* cancelRuntimeRequest(artifacts);
 
           return permissionResultFromDecision({
             toolName,

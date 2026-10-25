@@ -982,6 +982,168 @@ describe("ClaudeAdapterV2 approval cancellation", () => {
       assert.deepEqual(result, { decision: "cancel" });
     }),
   );
+
+  it.effect.each([
+    { name: "command approval", toolName: "Bash", toolInput: { command: "rm -rf build" } },
+    {
+      name: "user question",
+      toolName: "AskUserQuestion",
+      toolInput: {
+        questions: [
+          {
+            header: "Target",
+            question: "Deploy where?",
+            options: [
+              { label: "Production", description: "Deploy to production." },
+              { label: "Staging", description: "Deploy to staging." },
+            ],
+            multiSelect: false,
+          },
+        ],
+      },
+    },
+  ])("closes the $name when the SDK aborts it", ({ toolName, toolInput }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        let openedOptions: ClaudeAdapterV2.ClaudeAgentSdkQueryOptions | undefined;
+        const adapter = yield* ClaudeAdapterV2.makeClaudeAdapterV2({
+          instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
+          settings: DEFAULT_CLAUDE_SETTINGS,
+          environment: {},
+          attachmentsDir: yield* fileSystem.makeTempDirectoryScoped({
+            prefix: "t3-claude-aborted-request-",
+          }),
+          fileSystem,
+          path: yield* Path.Path,
+          crypto: yield* Crypto.Crypto,
+          idAllocator: yield* IdAllocator.IdAllocatorV2,
+          queryRunner: {
+            allocateSessionId: Effect.succeed("native-thread-claude-aborted-request"),
+            open: (input) =>
+              Effect.sync(() => {
+                openedOptions = input.options;
+                return {
+                  messages: Stream.never,
+                  offer: () => Effect.void,
+                  setModel: () => Effect.void,
+                  applyFlagSettings: () => Effect.void,
+                  setPermissionMode: () => Effect.void,
+                  backgroundTasks: () => Effect.succeed(false),
+                  stopTask: () => Effect.void,
+                  interrupt: Effect.void,
+                  close: Effect.void,
+                };
+              }),
+            forkSession: () => Effect.die("unused"),
+            subagentLaunchToolUseId: () => Effect.succeed(null),
+            assertComplete: Effect.void,
+          },
+        });
+        const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
+          runtimeMode: "approval-required",
+          interactionMode: "default",
+          cwd: "/workspace",
+        });
+        const threadId = ThreadId.make("thread-claude-aborted-request");
+        const runtime = yield* adapter.openSession({
+          threadId,
+          providerSessionId: ProviderSessionId.make("provider-session-claude-aborted-request"),
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy,
+        });
+        const providerThread = yield* runtime.ensureThread({
+          threadId,
+          modelSelection: CLAUDE_TEST_MODEL_SELECTION,
+          runtimePolicy,
+        });
+        yield* runtime.startTurn(
+          makeClaudeTestTurnInput({
+            threadId,
+            providerThread,
+            now: yield* DateTime.now,
+            attemptId: RunAttemptId.make("attempt-claude-aborted-request"),
+            text: "Clean the build.",
+            attachments: [],
+            runtimePolicy,
+          }),
+        );
+        const canUseTool = openedOptions?.canUseTool;
+        assert.isFunction(canUseTool);
+
+        const opened = yield* runtime.events.pipe(
+          Stream.filter((event) => event.type === "runtime_request.updated"),
+          Stream.runHead,
+          Effect.forkScoped,
+        );
+        // A PermissionRequest hook that answers first makes the SDK abort this callback.
+        const controller = new AbortController();
+        const result = yield* Effect.promise(() =>
+          canUseTool!(toolName, toolInput, {
+            signal: controller.signal,
+            toolUseID: "tool-aborted-request",
+            requestId: "request-aborted-request",
+          }),
+        ).pipe(Effect.forkScoped);
+        const openedEvent = yield* Fiber.join(opened);
+        if (Option.isNone(openedEvent) || openedEvent.value.type !== "runtime_request.updated") {
+          return assert.fail("the request never opened");
+        }
+        const request = openedEvent.value.runtimeRequest;
+        assert.equal(request.status, "pending");
+
+        controller.abort();
+        assert.equal((yield* Fiber.join(result))?.behavior, "deny");
+        // The event queue never ends, so a later plan marks where the abort's updates must be.
+        const marker = yield* Effect.promise(() =>
+          canUseTool!(
+            "ExitPlanMode",
+            { plan: "# Marker" },
+            {
+              signal: new AbortController().signal,
+              toolUseID: "tool-marker",
+              requestId: "request-marker",
+            },
+          ),
+        );
+        assert.equal(marker?.behavior, "deny");
+        const afterAbort = yield* runtime.events.pipe(
+          Stream.takeUntil((event) => event.type === "plan.updated"),
+          Stream.runCollect,
+        );
+
+        const closedRequest = afterAbort.findLast(
+          (event) =>
+            event.type === "runtime_request.updated" && event.runtimeRequest.id === request.id,
+        );
+        assert.deepInclude(
+          closedRequest?.type === "runtime_request.updated" ? closedRequest.runtimeRequest : {},
+          { status: "cancelled" },
+        );
+        const closedNode = afterAbort.findLast(
+          (event) => event.type === "node.updated" && event.node.id === request.nodeId,
+        );
+        assert.equal(
+          closedNode?.type === "node.updated" ? closedNode.node.status : null,
+          "cancelled",
+        );
+        const closedItem = afterAbort.findLast(
+          (event) =>
+            event.type === "turn_item.updated" &&
+            "requestId" in event.turnItem &&
+            event.turnItem.requestId === request.id,
+        );
+        assert.equal(
+          closedItem?.type === "turn_item.updated" ? closedItem.turnItem.status : null,
+          "cancelled",
+        );
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
 });
 
 const captureSdkExecutablePaths = Effect.fn("captureSdkExecutablePaths")(function* (
