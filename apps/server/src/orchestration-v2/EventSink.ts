@@ -303,7 +303,7 @@ const layerBase: Layer.Layer<
 
     // A user can answer after terminal normalization reads the pending request.
     // Recheck inside the write transaction so stale cleanup cannot erase answers.
-    const guardUserInputCancellations =
+    const guardRuntimeRequestCancellations =
       /* This helper runs for individual orchestration events; the enclosing operation owns the span. */
       Effect.fnUntraced(function* (events: ReadonlyArray<OrchestrationV2DomainEvent>) {
         const staleRequests = new Set<RuntimeRequestId>();
@@ -434,7 +434,7 @@ const layerBase: Layer.Layer<
             : input.events;
           const normalized = yield* normalizeEvents(
             input.guardPendingUserInputCancellations === true
-              ? yield* guardUserInputCancellations(events)
+              ? yield* guardRuntimeRequestCancellations(events)
               : events,
           );
           const committed = yield* eventStore.append({
@@ -493,7 +493,7 @@ const layerBase: Layer.Layer<
 
             const normalized = yield* normalizeEvents(
               input.guardPendingUserInputCancellations === true
-                ? yield* guardUserInputCancellations(input.events)
+                ? yield* guardRuntimeRequestCancellations(input.events)
                 : input.events,
             );
             const storedEvents = yield* eventStore.append({
@@ -558,7 +558,7 @@ const layerBase: Layer.Layer<
 
           const normalized = yield* normalizeEvents(
             input.guardPendingUserInputCancellations === true
-              ? yield* guardUserInputCancellations(input.events)
+              ? yield* guardRuntimeRequestCancellations(input.events)
               : input.events,
           );
           const storedEvents = yield* eventStore.append({

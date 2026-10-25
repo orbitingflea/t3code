@@ -8848,16 +8848,16 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* handleRoutedSdkMessage(input);
         });
 
-        // The SDK aborts a request it settled without the user, such as when a
-        // PermissionRequest hook answered first. No user response will close it.
+        // No user response will close a request the SDK aborted, such as one a hook answered.
         const cancelRuntimeRequest = Effect.fn("ClaudeAdapterV2.cancelRuntimeRequest")(function* (
           artifacts: Effect.Success<ReturnType<typeof buildApprovalRequestArtifacts>>,
         ) {
           const now = yield* DateTime.now;
+          const cancelled = { status: "cancelled", completedAt: now } as const;
           yield* emitProviderEvent({
             type: "node.updated",
             driver: CLAUDE_PROVIDER,
-            node: { ...artifacts.node, status: "cancelled", completedAt: now },
+            node: { ...artifacts.node, ...cancelled },
           });
           yield* emitProviderEvent({
             type: "runtime_request.updated",
@@ -8867,12 +8867,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* emitProviderEvent({
             type: "turn_item.updated",
             driver: CLAUDE_PROVIDER,
-            turnItem: {
-              ...artifacts.turnItem,
-              status: "cancelled",
-              completedAt: now,
-              updatedAt: now,
-            },
+            turnItem: { ...artifacts.turnItem, ...cancelled, updatedAt: now },
           });
         });
 
