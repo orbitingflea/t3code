@@ -1686,7 +1686,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
             pathService.join(homeDirectory, ".codex"),
           "auth.json",
         );
-        // Read before spawn: a switch that lands during startup then restarts once more, never zero times.
+        // Read before spawn: a switch during startup costs one extra restart, never a missed one.
         const spawnedAccount = yield* readCodexAccount(fileSystem, authPath);
         const client = yield* clientFactory.open({
           instanceId: adapterOptions.instanceId,
