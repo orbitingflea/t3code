@@ -48,7 +48,7 @@ import * as SqlitePersistence from "../persistence/Sqlite.ts";
 const DEFAULT_SESSION_SUBJECT = "cli-issued-session";
 export const INTERNAL_ADMINISTRATIVE_BOOTSTRAP_SUBJECT = "administrative-bootstrap";
 
-const unsafeSession: AuthenticatedSession = {
+const unsafeSession: AuthenticatedSession & { readonly audience?: undefined } = {
   sessionId: AuthSessionId.make("unsafe-no-auth"),
   subject: "unsafe-no-auth",
   method: "browser-session-cookie",

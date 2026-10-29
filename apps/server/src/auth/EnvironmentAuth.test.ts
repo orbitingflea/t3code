@@ -305,10 +305,10 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       const request = { cookies: {}, headers: {} };
       const session = yield* serverAuth.authenticateHttpRequest(request as never);
       const ticket = yield* serverAuth.issueWebSocketTicket(session);
-      const websocketSession = yield* serverAuth.authenticateWebSocketUpgrade({
-        ...request,
-        url: `/?wsTicket=${encodeURIComponent(ticket.ticket)}`,
-      } as never);
+      const websocketSession = yield* serverAuth.authenticateWebSocketUpgrade(
+        { ...request, url: `/?wsTicket=${encodeURIComponent(ticket.ticket)}` } as never,
+        "rpc",
+      );
 
       expect(session.subject).toBe("unsafe-no-auth");
       expect(session.scopes).toEqual(AuthStandardClientScopes);
