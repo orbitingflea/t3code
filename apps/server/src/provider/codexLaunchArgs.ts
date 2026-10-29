@@ -1,7 +1,7 @@
 import { tokenizeCliArgs } from "@t3tools/shared/cliArgs";
 
 const T3CODE_CODEX_LAUNCH_ARGS_ENV = "T3CODE_CODEX_LAUNCH_ARGS";
-export const T3CODE_CODEX_SKILL_ROOT_ENV = "T3CODE_CODEX_SKILL_ROOT";
+const T3CODE_CODEX_SKILL_ROOT_ENV = "T3CODE_CODEX_SKILL_ROOT";
 
 export const resolveCodexLaunchArgs = (
   launchArgs?: string,
