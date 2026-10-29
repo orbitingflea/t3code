@@ -335,6 +335,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
     }) => Effect.Effect<void>;
     readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
     readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
+    readonly accountChanged?: Effect.Effect<boolean>;
     readonly backgroundTasksEndWithProcess?: boolean;
     readonly hangSessionScopeClose?: boolean;
     readonly startTurn?: Effect.Effect<void>;
@@ -425,6 +426,9 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
             : {
                 hasPendingBackgroundWorkForThread: () => options.hasPendingBackgroundWorkForThread!,
               }),
+          ...(options.accountChanged === undefined
+            ? {}
+            : { accountChanged: options.accountChanged }),
           ensureThread: () => unimplemented("ensureThread unused in test"),
           resumeThread: (threadInput) =>
             Ref.update(state, (current) => ({
@@ -482,6 +486,7 @@ function layerTest(input: {
   };
   readonly hasPendingBackgroundWork?: Effect.Effect<boolean>;
   readonly hasPendingBackgroundWorkForThread?: Effect.Effect<boolean>;
+  readonly accountChanged?: Effect.Effect<boolean>;
   readonly backgroundTasksEndWithProcess?: boolean;
   readonly hangSessionScopeClose?: boolean;
   readonly startTurn?: Effect.Effect<void>;
@@ -513,6 +518,7 @@ function layerTest(input: {
       ...(input.hasPendingBackgroundWorkForThread === undefined
         ? {}
         : { hasPendingBackgroundWorkForThread: input.hasPendingBackgroundWorkForThread }),
+      ...(input.accountChanged === undefined ? {} : { accountChanged: input.accountChanged }),
       ...(input.backgroundTasksEndWithProcess === undefined
         ? {}
         : { backgroundTasksEndWithProcess: input.backgroundTasksEndWithProcess }),
@@ -2505,6 +2511,88 @@ it.effect(
                 return false;
               }),
             ),
+          }),
+        ),
+      );
+    }),
+);
+
+it.effect.each([
+  { name: "idle", busy: false, pendingWork: false, restarted: true },
+  { name: "a turn is running", busy: true, pendingWork: false, restarted: false },
+  { name: "background work is pending", busy: false, pendingWork: true, restarted: false },
+])(
+  "ProviderSessionManagerV2 restarts a session whose account changed only when $name",
+  ({ busy, pendingWork, restarted }) =>
+    Effect.gen(function* () {
+      const state = yield* Ref.make(emptyState);
+      const accountChanged = yield* Ref.make(false);
+      const effect = Effect.gen(function* () {
+        const eventSink = yield* EventSink.EventSinkV2;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const manager = yield* ProviderSessionManager.ProviderSessionManagerV2;
+        const projectionStore = yield* ProjectionStore.ProjectionStoreV2;
+        const now = yield* DateTime.now;
+        const threadA = ThreadId.make("thread-provider-session-manager-account-a");
+        const threadB = ThreadId.make("thread-provider-session-manager-account-b");
+        const providerSessionId = idAllocator.derive.providerSession({
+          providerInstanceId: modelSelection.instanceId,
+        });
+        yield* eventSink.write({
+          events: [
+            yield* makeThreadCreatedEvent({ idAllocator, threadId: threadA, now }),
+            yield* makeThreadCreatedEvent({ idAllocator, threadId: threadB, now }),
+          ],
+        });
+        const open = (threadId: ThreadId) =>
+          manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
+        const first = yield* open(threadA);
+        yield* first.events.pipe(Stream.runDrain, Effect.forkScoped);
+        if (busy) {
+          const runId = idAllocator.derive.run({ threadId: threadA, ordinal: 1 });
+          yield* first.startTurn({
+            appThread: (yield* projectionStore.getThreadProjection(threadA)).thread,
+            threadId: threadA,
+            runId,
+            runOrdinal: 1,
+            providerTurnOrdinal: 1,
+            attemptId: idAllocator.derive.runAttempt({ runId, attemptOrdinal: 1 }),
+            rootNodeId: idAllocator.derive.rootNode({ runId }),
+            providerThread: makeProviderThread({
+              idAllocator,
+              threadId: threadA,
+              providerSessionId,
+              now,
+            }),
+            message: {
+              createdBy: "user",
+              creationSource: "web",
+              messageId: yield* idAllocator.allocate.message({ threadId: threadA, ordinal: 1 }),
+              text: "turn",
+              attachments: [],
+            },
+            modelSelection,
+            runtimePolicy,
+          });
+        }
+
+        yield* open(threadB);
+        assert.equal((yield* Ref.get(state)).openCount, 1);
+
+        yield* Ref.set(accountChanged, true);
+        yield* open(threadB);
+        const after = yield* Ref.get(state);
+        assert.equal(after.openCount, restarted ? 2 : 1);
+        assert.equal(after.closeCount, restarted ? 1 : 0);
+      });
+
+      yield* effect.pipe(
+        Effect.provide(
+          layerTest({
+            state,
+            idleTimeoutMs: 60_000,
+            accountChanged: Ref.get(accountChanged),
+            hasPendingBackgroundWork: Effect.succeed(pendingWork),
           }),
         ),
       );
