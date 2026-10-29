@@ -436,6 +436,7 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
               resumeCount: current.resumeCount + 1,
             })).pipe(Effect.as(threadInput.providerThread)),
           startTurn: () => options.startTurn ?? Effect.void,
+          compactThread: () => Effect.void,
           steerTurn: () => Effect.void,
           interruptTurn: () =>
             Ref.update(state, (current) => ({
@@ -2518,12 +2519,13 @@ it.effect(
 );
 
 it.effect.each([
-  { name: "idle", busy: false, pendingWork: false, restarted: true },
-  { name: "a turn is running", busy: true, pendingWork: false, restarted: false },
-  { name: "background work is pending", busy: false, pendingWork: true, restarted: false },
-])(
+  { name: "idle", running: "none", pendingWork: false, restarted: true },
+  { name: "a turn is running", running: "turn", pendingWork: false, restarted: false },
+  { name: "a compaction is running", running: "compaction", pendingWork: false, restarted: false },
+  { name: "background work is pending", running: "none", pendingWork: true, restarted: false },
+] as const)(
   "ProviderSessionManagerV2 restarts a session whose account changed only when $name",
-  ({ busy, pendingWork, restarted }) =>
+  ({ running, pendingWork, restarted }) =>
     Effect.gen(function* () {
       const state = yield* Ref.make(emptyState);
       const accountChanged = yield* Ref.make(false);
@@ -2548,9 +2550,9 @@ it.effect.each([
           manager.open({ threadId, providerSessionId, modelSelection, runtimePolicy });
         const first = yield* open(threadA);
         yield* first.events.pipe(Stream.runDrain, Effect.forkScoped);
-        if (busy) {
+        if (running !== "none") {
           const runId = idAllocator.derive.run({ threadId: threadA, ordinal: 1 });
-          yield* first.startTurn({
+          yield* (running === "turn" ? first.startTurn : first.compactThread!)({
             appThread: (yield* projectionStore.getThreadProjection(threadA)).thread,
             threadId: threadA,
             runId,

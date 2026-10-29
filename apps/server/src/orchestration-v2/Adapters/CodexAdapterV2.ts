@@ -17,7 +17,7 @@ import {
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import type { CodexEffectiveRuntime } from "../../provider/CodexManagedRuntime.ts";
 import { classifyCodexManagedError } from "../../provider/CodexManagedErrors.ts";
-import { openAiUserId } from "../../telemetry/Identify.ts";
+import { CodexAuthJsonSchema, openAiUserId } from "../../telemetry/Identify.ts";
 import {
   buildCodexInitializeParams,
   codexAppServerEnvironment,
@@ -232,16 +232,7 @@ const decodeCodexBackgroundTerminalTerminateResponse = Schema.decodeUnknownEffec
 const decodeCodexBackgroundTerminalsListResponse = Schema.decodeUnknownEffect(
   CodexBackgroundTerminalsListResponse,
 );
-const decodeCodexAuthTokens = Schema.decodeUnknownOption(
-  Schema.fromJsonString(
-    Schema.Struct({
-      tokens: Schema.Struct({
-        account_id: Schema.String,
-        id_token: Schema.optionalKey(Schema.String),
-      }),
-    }),
-  ),
-);
+const decodeCodexAuthJson = Schema.decodeUnknownOption(Schema.fromJsonString(CodexAuthJsonSchema));
 
 // A Team shares `account_id`; the id_token's user id tells its seats apart.
 const readCodexAccount = Effect.fn("CodexAdapterV2.readAccount")(function* (
@@ -249,7 +240,10 @@ const readCodexAccount = Effect.fn("CodexAdapterV2.readAccount")(function* (
   authPath: string,
 ) {
   const text = yield* fileSystem.readFileString(authPath).pipe(Effect.option);
-  return Option.map(Option.flatMap(text, decodeCodexAuthTokens), ({ tokens }) => {
+  const tokens = Option.flatMap(Option.flatMap(text, decodeCodexAuthJson), (auth) =>
+    Option.fromUndefinedOr(auth.tokens),
+  );
+  return Option.map(tokens, (tokens) => {
     const userId = Option.fromUndefinedOr(tokens.id_token).pipe(
       Option.flatMap(openAiUserId),
       Option.getOrElse(() => ""),
