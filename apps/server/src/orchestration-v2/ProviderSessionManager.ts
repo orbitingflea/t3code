@@ -67,6 +67,7 @@ export const ProviderSessionReleaseReason = Schema.Literals([
   "runtime_error",
   "manual_shutdown",
   "server_shutdown",
+  "credentials_changed",
 ]);
 export type ProviderSessionReleaseReason = typeof ProviderSessionReleaseReason.Type;
 
@@ -1146,6 +1147,38 @@ export const layerWithOptions = (
         },
       );
 
+      // The replacement process resumes the thread on the new account, as after an idle release.
+      const releaseIfAccountChanged = Effect.fn("ProviderSessionManager.releaseIfAccountChanged")(
+        function* (entry: LiveSessionEntry): Effect.fn.Return<void> {
+          const { runtime } = entry;
+          if (entry.busyTurns.size > 0 || runtime.accountChanged === undefined) return;
+          if (!(yield* runtime.accountChanged)) return;
+          const hasPendingWork =
+            runtime.hasPendingBackgroundWork === undefined
+              ? false
+              : yield* runtime.hasPendingBackgroundWork.pipe(
+                  Effect.catchCause(() => Effect.succeed(true)),
+                );
+          if (hasPendingWork) return;
+          yield* Effect.logInfo("orchestration-v2.driver-session.credentials-changed", {
+            providerSessionId: runtime.providerSessionId,
+          });
+          // Probes yield; a turn or event since the snapshot keeps the session.
+          yield* releaseEntry({
+            providerSessionId: runtime.providerSessionId,
+            reason: "credentials_changed",
+            onlyIfIdleGeneration: entry.idleGeneration,
+          }).pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("orchestration-v2.driver-session.credentials-release-failed", {
+                providerSessionId: runtime.providerSessionId,
+                cause,
+              }),
+            ),
+          );
+        },
+      );
+
       const withActivityError = <A, E, R>(
         providerSessionId: ProviderSessionId,
         effect: Effect.Effect<A, E, R>,
@@ -1649,7 +1682,7 @@ export const layerWithOptions = (
           ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
         >,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
-        const providerSessionId = runtime.providerSessionId;
+        const { providerSessionId, compactThread } = runtime;
         const subscribeEvents = makeEventSubscription(eventSubscribers);
         const turnMetrics = (operation: string, model?: string) =>
           withMetrics({
@@ -1661,6 +1694,46 @@ export const layerWithOptions = (
               modelFamily: normalizeModelMetricLabel(model),
             },
           });
+        const startBusyTurn = (
+          input: ProviderAdapter.ProviderAdapterV2TurnInput,
+          start: Effect.Effect<void, ProviderAdapter.ProviderAdapterV2Error>,
+        ) =>
+          observeActivity(
+            providerSessionId,
+            ensureThreadAttached({
+              providerSessionId,
+              threadId: input.threadId,
+              providerInstanceId: runtime.instanceId,
+            }),
+          ).pipe(
+            // Failed or stopped starts may omit turn.terminal; clear their turns so sessions can idle.
+            Effect.andThen(
+              holdThreadLoaded({
+                providerSessionId,
+                threadId: input.threadId,
+                providerThread: input.providerThread,
+              }),
+            ),
+            Effect.andThen(
+              Effect.acquireUseRelease(
+                observeActivity(
+                  providerSessionId,
+                  markBusy(
+                    providerSessionId,
+                    busyTurnKey(input.providerThread.id, input.runOrdinal),
+                  ),
+                ),
+                () => start,
+                (_, exit) =>
+                  Exit.isFailure(exit)
+                    ? observeActivity(
+                        providerSessionId,
+                        markIdle(providerSessionId, input.providerThread.id, input.runOrdinal),
+                      )
+                    : Effect.void,
+              ),
+            ),
+          );
         return {
           ...runtime,
           subscribeEvents,
@@ -1766,43 +1839,16 @@ export const layerWithOptions = (
               ),
             ),
           startTurn: (input) =>
-            observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId: input.threadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
-              // Failed or stopped starts may omit turn.terminal; clear their turns so sessions can idle.
-              Effect.andThen(
-                holdThreadLoaded({
-                  providerSessionId,
-                  threadId: input.threadId,
-                  providerThread: input.providerThread,
-                }),
-              ),
-              Effect.andThen(
-                Effect.acquireUseRelease(
-                  observeActivity(
-                    providerSessionId,
-                    markBusy(
-                      providerSessionId,
-                      busyTurnKey(input.providerThread.id, input.runOrdinal),
-                    ),
-                  ),
-                  () =>
-                    runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
-                  (_, exit) =>
-                    Exit.isFailure(exit)
-                      ? observeActivity(
-                          providerSessionId,
-                          markIdle(providerSessionId, input.providerThread.id, input.runOrdinal),
-                        )
-                      : Effect.void,
-                ),
-              ),
+            startBusyTurn(
+              input,
+              runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
             ),
+          ...(compactThread === undefined
+            ? {}
+            : {
+                compactThread: (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+                  startBusyTurn(input, compactThread(input)),
+              }),
           steerTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
               Effect.andThen(runtime.steerTurn(input).pipe(turnMetrics("steer"))),
@@ -2045,6 +2091,8 @@ export const layerWithOptions = (
                 }
               }
               const key = sessionKey(input.providerSessionId);
+              const live = (yield* Ref.get(sessions)).get(key);
+              if (live !== undefined) yield* releaseIfAccountChanged(live);
               const existing = (yield* Ref.get(sessions)).get(key);
               if (existing !== undefined) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
