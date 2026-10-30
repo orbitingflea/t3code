@@ -1,0 +1,40 @@
+/* Defines the full-page split layout and board reference overlays. */
+:root { font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color-scheme: light dark; color: light-dark(#21302b, #e5e7eb); }
+/* tldraw's own canvas colours, so the page under a board that is still loading matches the board. */
+body { background: light-dark(hsl(210, 20%, 98%), hsl(240, 5%, 6.5%)); }
+* { box-sizing: border-box; }
+html, body, #root, main { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+.divider { position: relative; width: 1px; background: #343a40; cursor: col-resize; }
+.divider[data-separator='active'] { background: #111827; }
+@media (prefers-color-scheme: dark) { .divider { background: #e5e7eb; } .divider[data-separator='active'] { background: #f9fafb; } }
+/* Invisible grab strip over both neighbours, as wide as the panel library's resize band, so a press there never reaches the board canvas. */
+.divider::before { content: ''; position: absolute; inset: 0 -5px; z-index: 1; }
+/* With one side collapsed the line takes no width and no colour. */
+.divider.collapsed { width: 0; background: transparent; }
+.boards { position: relative; width: 100%; height: 100%; }
+.board { position: absolute; inset: 0; }
+.loading { display: grid; height: 100%; place-items: center; }
+.wb-show { display: flex; align-items: center; gap: 6px; height: 36px; margin: 8px 8px 0 0; padding: 0 12px 0 10px; border: 0; border-radius: var(--tl-radius-4); background: var(--tl-color-panel); box-shadow: var(--tl-shadow-2); color: var(--tl-color-text-1); font: 500 13px var(--tl-font-sans); cursor: pointer; pointer-events: all; }
+.wb-show:hover { background: var(--tl-color-muted-2); }
+.wb-show svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.chat-slot, .chat-slot iframe { width: 100%; height: 100%; border: 0; }
+/* An inline iframe leaves a descender gap below it; that overflow gave the chat panel a scrollbar. */
+.chat-slot iframe { display: block; }
+.region-clip { position: fixed; z-index: 450; overflow: hidden; pointer-events: none; }
+.region-mark { position: absolute; pointer-events: none; border: 3px solid #e25d38; border-radius: 6px; background: rgba(255,139,69,.12); box-shadow: 0 0 0 3px rgba(255,255,255,.9), 0 0 28px rgba(226,93,56,.6); }
+.region-mark.drag { border-style: dashed; }
+.region-arrow { position: fixed; inset: 0; z-index: 400; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.region-arrow line { stroke: #e25d38; stroke-width: 4; stroke-linecap: round; }
+.region-arrow path { fill: #e25d38; }
+.region-arrow-edge circle { fill: rgba(226,93,56,.18); stroke: #e25d38; stroke-width: 2; }
+.math-node, math-inline .math-render { font-size: 1em; }
+.wb-share { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.wb-share .tlui-people-menu__avatars-button { margin-right: 8px; }
+.wb-cursors { position: fixed; z-index: 460; overflow: hidden; pointer-events: none; }
+.wb-cursor { position: absolute; left: 0; top: 0; pointer-events: none; }
+.wb-cursor-fade { animation: wb-cursor-fade .4s 6s forwards; }
+@keyframes wb-cursor-fade { to { opacity: 0; } }
+/* The triangle's tip, at (8, 4) in its box, sits on the cursor point and is the turning centre. */
+.wb-cursor-arrow { position: absolute; left: -8px; top: -4px; width: 26px; height: 26px; overflow: visible; transform-origin: 8px 4px; }
+.wb-cursor-arrow path { stroke: #fff; stroke-width: 1.5; stroke-linejoin: round; filter: drop-shadow(0 1px 1px rgba(0,0,0,.3)); }
+.wb-cursor-name { position: absolute; box-sizing: border-box; max-width: 150px; height: 24px; padding: 2px 8px; border-radius: 24px; color: #fff; font: 500 13px/20px var(--tl-font-sans); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

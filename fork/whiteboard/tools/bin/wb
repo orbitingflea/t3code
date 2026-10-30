@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Wrapper so `wb` on PATH runs this repo's tools/wb.mjs regardless of symlinks.
+exec node "$(dirname "$(readlink -f "$0")")/../wb.mjs" "$@"

@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+*.log
+data/
+.omo/
+.codegraph/
+.worktrees/
+*.tsbuildinfo
+.debug-journal.md
