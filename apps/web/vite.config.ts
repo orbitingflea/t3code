@@ -22,7 +22,7 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
-import { whiteboardBuildPlugin } from "./vite/whiteboardBuild";
+import { whiteboardBuildPlugin } from "./vite/fork/whiteboardBuild";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
