@@ -256,6 +256,8 @@ import {
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
+import { isWhiteboardBuild } from "../../fork/whiteboard/build";
+import { useWhiteboardInsertRef } from "../../fork/whiteboard/useWhiteboardInsertRef";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useSoftwareKeyboardOpen } from "../../hooks/useSoftwareKeyboardOpen";
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -1007,7 +1009,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const [isDragOverComposer, setIsDragOverComposer] = useState(false);
   const [isComposerPrimaryActionsCompact, setIsComposerPrimaryActionsCompact] = useState(false);
   const [isComposerModelPickerOpen, setIsComposerModelPickerOpen] = useState(false);
-  const isMobileViewport = useMediaQuery("max-sm");
+  const isMobileViewport = useMediaQuery("max-sm") && !isWhiteboardBuild;
   const isSoftwareKeyboardOpen = useSoftwareKeyboardOpen();
   const [isComposerFocused, setIsComposerFocused] = useState(false);
   const [composerSubmissionError, setComposerSubmissionError] = useState<string | null>(null);
@@ -1794,6 +1796,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     return true;
   };
   const applyPromptReplacementStable = useStableCallback(applyPromptReplacement);
+  useWhiteboardInsertRef(composerEditorRef, promptRef, applyPromptReplacementStable);
 
   const readComposerSnapshot = (): {
     value: string;
