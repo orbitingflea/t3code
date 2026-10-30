@@ -16,7 +16,7 @@ VITE_T3_WHITEBOARD=1 pnpm --dir apps/web run build
 
 ## Run as a systemd user service
 
-`run-t3.sh` starts the T3 Code of the repository it sits in. Three environment variables override its defaults: `T3_PORT` (default `6070`, must equal `chatPort` in `~/.whiteboard/config.json`), `T3_DATA` (default `~/.whiteboard/t3-userdata`), and `T3_PROJECT` (default this directory, the project the chat opens in).
+`run-t3.sh` starts the T3 Code of the repository it sits in. Three environment variables override its defaults: `T3_PORT` (default `6070`, must equal `chatPort` in `~/.whiteboard/config.json`), `T3_DATA` (default `~/.whiteboard/t3-userdata`), and `T3_PROJECT` (default the repository root). `T3_PROJECT` is only the server's working directory: with auto-bootstrap off it opens no project, and it does not choose a board.
 
 Save this as `~/.config/systemd/user/wb-t3.service`, with `WorkingDirectory` set to the repository root:
 

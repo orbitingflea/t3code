@@ -7,7 +7,7 @@ WB_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 T3_DIR=$(cd "$WB_DIR/../.." && pwd)
 T3_DATA=${T3_DATA:-$HOME/.whiteboard/t3-userdata}
 T3_PORT=${T3_PORT:-6070}
-T3_PROJECT=${T3_PROJECT:-$WB_DIR}
+T3_PROJECT=${T3_PROJECT:-$T3_DIR}
 
 mkdir -p "$T3_DATA"
 # Inherited T3 settings would point this instance at the personal installation.
