@@ -2632,6 +2632,7 @@ describe("AcpAdapterV2", () => {
       );
       const runtimeInputs: AcpAdapterV2RuntimeInput[] = [];
       let runtimeOrdinalSeen = 0;
+      let account = Option.some("account-a");
       const baseMakeRuntime = makeMockRuntime({
         childProcessSpawner,
         mockAgentPath,
@@ -2646,6 +2647,7 @@ describe("AcpAdapterV2", () => {
         flavor: {
           driver: ACP_TEST_DRIVER,
           capabilities: AcpProviderCapabilitiesV2,
+          readAccount: Effect.sync(() => account),
           makeRuntime: (runtimeInput) =>
             Effect.sync(() => {
               runtimeInputs.push(runtimeInput);
@@ -2672,6 +2674,11 @@ describe("AcpAdapterV2", () => {
         runtimePolicy,
       });
       assert.equal(runtimeOrdinalSeen, 1);
+      const accountChanged = runtime.accountChanged;
+      assert.isDefined(accountChanged);
+      assert.isFalse(yield* accountChanged!, "unchanged");
+      account = Option.some("account-b");
+      assert.isTrue(yield* accountChanged!, "changed after spawn");
       yield* runtimeInputs[0]!.onTermination!(
         new EffectAcpErrors.AcpTransportError({
           detail: "Injected unexpected writer termination",
@@ -2694,6 +2701,20 @@ describe("AcpAdapterV2", () => {
       );
       assert.equal(runtimeOrdinalSeen, 2);
       assert.lengthOf(runtimeInputs, 2);
+      assert.isFalse(yield* accountChanged!, "restarted process read the new account");
+
+      account = Option.some("account-c");
+      yield* runtime.ensureThread({
+        threadId,
+        modelSelection,
+        runtimePolicy,
+        existingProviderThread: { ...providerThread, nativeThreadRef: null },
+        forceNewNativeThread: true,
+      });
+      assert.lengthOf(runtimeInputs, 3);
+      assert.isFalse(yield* accountChanged!, "replacement process read the new account");
+      account = Option.none();
+      assert.isFalse(yield* accountChanged!, "unreadable");
     }).pipe(Effect.provide(layerTest), Effect.scoped),
   );
 
