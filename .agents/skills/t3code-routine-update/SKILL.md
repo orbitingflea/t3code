@@ -12,9 +12,7 @@ A routine update carries upstream T3 Code into everything the user runs, in this
 - Main checkout `~/utils/t3code`: `origin` = orbitingflea/t3code (the fork), `upstream` = pingdotgg/t3code. It only ever fast-forwards to `origin/main`; all merging, building, and editing happen in worktrees (other agent sessions read this checkout).
 - Fork `main` = upstream + the fork-only commits, kept by **merge** (merge commit titled `Merge upstream main <short-sha> (<date>) into the fork`). Find the carried commits with `git log --no-merges upstream/main..origin/main`; drop one when upstream has an equivalent (check the upstream PR state). This skill (`.agents/skills/t3code-routine-update/`) is itself a carried commit; always keep it.
 - The whiteboard is part of the fork. `fork/whiteboard/` holds its code with its own `package.json` (install with `npm ci` there; it is not a pnpm workspace member). The fork's T3 Code carries the whiteboard's embedding changes, switched by environment variables on the server (`T3CODE_UNSAFE_NO_AUTH`, `T3CODE_CLAUDE_PLUGIN_ROOT`, `T3CODE_CODEX_SKILL_ROOT`, all set by `fork/whiteboard/run-t3.sh`) and by `VITE_T3_WHITEBOARD=1` for the web build. `fork/whiteboard/run-t3.md` lists every embedding change with its files; it is the checklist when an upstream merge moves or deletes one of them.
-- Whiteboard deployment `~/research/whiteboard`: a checkout of a fork `main` commit (T3 Code at its root, the whiteboard in `fork/whiteboard`). User units `wb-sync` and `wb-web` run from `fork/whiteboard`; `wb-t3.service` runs `fork/whiteboard/run-t3.sh` on 127.0.0.1:6070 with state in `~/.whiteboard/t3-userdata`. Browsers reach the chat only via wb-web's `/chat/` proxy. The sandboxes (`~/utils/wb-sandbox`) mount releases built from a fork commit.
-
-The deployment layout above is the assumed state after the whiteboard moved into the fork. Check it on the first run (`git -C ~/research/whiteboard log -1 --oneline`, `systemctl --user cat wb-t3 wb-web`) and correct this section if the host differs.
+- Whiteboard deployment `~/.whiteboard/app`: a detached worktree of `~/utils/t3code` at the deployed fork commit (T3 Code at its root, the whiteboard in `fork/whiteboard`). User units `wb-sync` and `wb-web` run from `fork/whiteboard`; `wb-t3.service` runs `fork/whiteboard/run-t3.sh` on 127.0.0.1:6070 with state in `~/.whiteboard/t3-userdata`. Browsers reach the chat only via wb-web's `/chat/` proxy. `~/.local/bin/t3` runs this worktree's server. The sandboxes (`~/utils/wb-sandbox`) mount releases built from a fork commit.
 
 ## Steps
 
@@ -32,9 +30,9 @@ Done when `origin/main` contains `upstream/main`, every `run-t3.md` point still 
 
 ### 2. Deploy fork main to the whiteboard
 
-Run in `~/research/whiteboard`. Note its current commit first (`git rev-parse HEAD`); the rollback needs it.
+Run in `~/.whiteboard/app`. Note its current commit first (`git rev-parse HEAD`); the rollback needs it.
 
-1. `git fetch origin && git merge --ff-only origin/main` (or `git checkout <sha>` for a specific fork commit). The working tree must be clean before and after.
+1. `git fetch origin && git checkout --detach origin/main` (or `--detach <sha>` for a specific fork commit). The working tree must be clean before and after.
 2. `pnpm install --frozen-lockfile` at the root, then the micromark check from stage 1 step 3; then `npm ci` in `fork/whiteboard`.
 3. Build to a side dir: `cd apps/web && VITE_T3_WHITEBOARD=1 vp build --outDir dist.new`; check that `dist.new/index.html` references `/chat/assets/` and `dist.new/manifest.webmanifest` has `#0a0a0a` (a build without the variable is a normal T3 Code build and does not work behind `/chat/`); move `dist` to `~/.whiteboard/chat-dist.old-<yyyymmdd>` and `dist.new` to `dist`.
 4. Snapshot the DB read-only into `statev2.sqlite.bak-sync-<yyyymmdd>` beside the live file, then check `PRAGMA integrity_check` on the copy. The V1 `state.sqlite` there is no longer written.
@@ -50,14 +48,13 @@ Run in `~/research/whiteboard`. Note its current commit first (`git rev-parse HE
    - The first rebuild builds the shared release `/srv/whiteboard/<sha>` and takes several minutes; run it in the background or with a long timeout. Then run the micromark check against `/srv/whiteboard/<sha>` (the release's T3 Code root); if it differs, tell the user before rebuilding the rest.
    - A failed rebuild leaves that sandbox on its previous release and exits non-zero. Stop at the first failure and show the user the error tail; the release is shared, so the rest would fail the same way.
    - Done when `list` shows the new commit for every sandbox.
-   - `wb-sandbox` is a separate repository. This step assumes it takes a fork commit and builds a release with T3 Code at its root and the whiteboard in `fork/whiteboard`. If `rebuild` still expects a commit of the old whiteboard repository, stop and tell the user; it must be updated before this step works.
 7. Restart `wb-t3` last, after pushes and memory notes are written. The restart stops every agent session `wb-t3` runs, even though they live in their own `t3code-*.scope` cgroups, so `/proc/$$/cgroup` does not show whether you are one of them. Check `tr '\0' '\n' < /proc/$$/environ | grep -q '^WB_CHAT_PID='` instead (`run-t3.sh` exports it): if it matches, you run under `wb-t3` and a direct restart kills you mid-turn. Then tell the user that running `wb-t3` threads will be interrupted, schedule the restart with `systemd-run --user --on-active=30s systemctl --user restart wb-t3`, and end the turn; check it in the next turn. Otherwise restart directly. Either way, check the `journalctl --user -u wb-t3` tail and that `/chat/` on 6070 answers 200. When the deployed range changes `fork/whiteboard` (`git diff --stat <previous sha>..HEAD -- fork/whiteboard`), restart `wb-sync` and `wb-web` as well; they run no agents.
 
-Done when `~/research/whiteboard` sits at the pushed fork `main`, the smoke test passed, every sandbox runs the new commit, and `wb-t3` runs the new build.
+Done when `~/.whiteboard/app` sits at the pushed fork `main`, the smoke test passed, every sandbox runs the new commit, and `wb-t3` runs the new build.
 
 ## Rollback
 
-Every stage leaves a way back: fork main is a merge (revert or reset to the previous tip); the whiteboard deployment has the DB snapshot, the old `dist`, and the previous commit (`git checkout <previous sha>`, rebuild, restart). A sandbox goes back with `wb-sandbox rebuild <name> --commit <its COMMIT from the step-6 list>`; a release is deleted once no sandbox uses it, so this usually builds it again (several minutes).
+Every stage leaves a way back: fork main is a merge (revert or reset to the previous tip); the whiteboard deployment has the DB snapshot, the old `dist`, and the previous commit (`git checkout --detach <previous sha>`, rebuild, restart). A sandbox goes back with `wb-sandbox rebuild <name> --commit <its COMMIT from the step-6 list>`; a release is deleted once no sandbox uses it, so this usually builds it again (several minutes).
 
 ## Afterwards
 
