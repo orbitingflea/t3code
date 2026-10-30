@@ -1,0 +1,42 @@
+{
+  "name": "whiteboard",
+  "private": true,
+  "bin": {
+    "wb": "tools/wb.mjs"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "server": "tsx server/main.ts",
+    "test": "tsx web/mathsplit.check.ts && tsx web/camera.check.ts",
+    "build": "tsc --noEmit && vite build"
+  },
+  "dependencies": {
+    "@benrbray/prosemirror-math": "1.0.0",
+    "@tiptap/core": "3.30.5",
+    "@tiptap/pm": "3.30.5",
+    "@tldraw/state-react": "5.3.2",
+    "@tldraw/sync": "5.3.2",
+    "@tldraw/sync-core": "5.3.2",
+    "@tldraw/tlschema": "5.3.2",
+    "@tldraw/utils": "5.3.2",
+    "katex": "0.16.47",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-resizable-panels": "4.12.3",
+    "tldraw": "5.3.2",
+    "ws": "8.21.3"
+  },
+  "devDependencies": {
+    "@types/katex": "0.16.7",
+    "@types/node": "24.3.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@types/ws": "8.18.1",
+    "@vitejs/plugin-react": "^5.2.0",
+    "playwright-core": "1.61.0",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2",
+    "vite": "7.3.6"
+  }
+}

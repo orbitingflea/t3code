@@ -12,6 +12,13 @@ import { useLocation, useRouter, type AnyRouter } from "@tanstack/react-router";
 import { moveWorkspaceFocus, workspaceAreaProps } from "../lib/workspaceFocus";
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { isElectron } from "../env";
+import { isWhiteboardBuild } from "../fork/whiteboard/build";
+import {
+  useWhiteboardBoardHidden,
+  useWhiteboardSidebarStartState,
+  WHITEBOARD_BOARD_BUTTON_TITLEBAR_STYLE,
+  WhiteboardBoardButton,
+} from "../fork/whiteboard/WhiteboardSidebar";
 import {
   releaseThreadUndoShortcut,
   threadUndoClaimsShortcut,
@@ -311,11 +318,18 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
   };
 }
 
-function SidebarControl() {
+function SidebarControl({
+  boardHidden,
+  sidebarFits,
+}: {
+  boardHidden: boolean | null;
+  sidebarFits: boolean;
+}) {
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-  const { toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  const { setOpen, toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  useWhiteboardSidebarStartState(boardHidden, sidebarFits, setOpen);
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);
@@ -379,6 +393,7 @@ function SidebarControl() {
       )}
       data-sidebar-control=""
     >
+      {boardHidden && <WhiteboardBoardButton />}
       <Tooltip>
         <TooltipTrigger
           render={
@@ -413,11 +428,13 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const routePanelAnimationsActive = panelAnimationsActive && !panelAnimationsSuppressed;
   const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
   const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
+  const boardHidden = useWhiteboardBoardHidden();
   // A clamped drag may not change width, so viewport changes need a separate subscription.
   const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
   const [brandWidth, setBrandWidth] = useState(0);
   const sidebarMinimumWidth = resolveThreadSidebarMinimumWidth(brandWidth);
   const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth, sidebarMinimumWidth);
+  const sidebarFits = viewportWidth >= sidebarWidth + THREAD_MAIN_CONTENT_MIN_WIDTH;
   const resetSidebarWidth = () => {
     try {
       removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
@@ -439,6 +456,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
     "--sidebar-width": `${clampThreadSidebarWidth(sidebarWidth, sidebarMinimumWidth, sidebarMaximumWidth)}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
     ...windowControlsInsetStyle,
+    ...(boardHidden ? WHITEBOARD_BOARD_BUTTON_TITLEBAR_STYLE : {}),
   } as CSSProperties;
 
   return (
@@ -446,7 +464,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-        defaultOpen
+        // The whiteboard build starts open only when standalone and wide enough; inside the
+        // board's iframe the start state comes from its layout report (useWhiteboardSidebarStartState).
+        defaultOpen={isWhiteboardBuild ? window.self === window.top && sidebarFits : true}
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe onWidthChange={setBrandWidth} />
@@ -473,7 +493,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
         </Sidebar>
         {children}
         <BackgroundThreadAnnouncer />
-        <SidebarControl />
+        <SidebarControl boardHidden={boardHidden} sidebarFits={sidebarFits} />
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>
   );

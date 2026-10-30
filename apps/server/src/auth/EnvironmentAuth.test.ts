@@ -10,6 +10,7 @@ import {
 } from "@t3tools/shared/dpop";
 import { expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
+import { onTestFinished, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Redacted from "effect/Redacted";
@@ -293,6 +294,27 @@ it.layer(NodeServices.layer)("EnvironmentAuth.layer", (it) => {
       ),
     ),
   );
+
+  it.effect("authenticates requests without credentials through WebSocket setup", () => {
+    vi.stubEnv("T3CODE_UNSAFE_NO_AUTH", "1");
+    onTestFinished(() => {
+      vi.unstubAllEnvs();
+    });
+    return Effect.gen(function* () {
+      const serverAuth = yield* EnvironmentAuth.EnvironmentAuth;
+      const request = { cookies: {}, headers: {} };
+      const session = yield* serverAuth.authenticateHttpRequest(request as never);
+      const ticket = yield* serverAuth.issueWebSocketTicket(session);
+      const websocketSession = yield* serverAuth.authenticateWebSocketUpgrade(
+        { ...request, url: `/?wsTicket=${encodeURIComponent(ticket.ticket)}` } as never,
+        "rpc",
+      );
+
+      expect(session.subject).toBe("unsafe-no-auth");
+      expect(session.scopes).toEqual(AuthStandardClientScopes);
+      expect(websocketSession).toEqual(session);
+    }).pipe(Effect.provide(layerEnvironmentAuth()));
+  });
 
   it.effect("prefers a bearer token over a stale legacy cookie", () =>
     Effect.gen(function* () {
