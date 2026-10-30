@@ -39,7 +39,9 @@ curl -sS -X POST 'http://localhost:6060/api/board/edit?room=<room>' -H 'content-
 
 ## Running the services
 
-The sync server and the web server each run as a systemd user service. Save the two unit files below under `~/.config/systemd/user/`, with `WorkingDirectory` set to the repository root.
+Install the dependencies first with `npm ci` in this directory; they are separate from the repository's pnpm workspace.
+
+The sync server and the web server each run as a systemd user service. Save the two unit files below under `~/.config/systemd/user/`, with `WorkingDirectory` set to this directory.
 
 `wb-sync.service`:
 
@@ -48,7 +50,7 @@ The sync server and the web server each run as a systemd user service. Save the 
 Description=Whiteboard sync server
 
 [Service]
-WorkingDirectory=/path/to/whiteboard
+WorkingDirectory=/path/to/t3code/fork/whiteboard
 ExecStart=/usr/bin/env npm run server
 Restart=always
 RestartSec=5
@@ -64,7 +66,7 @@ WantedBy=default.target
 Description=Whiteboard web server
 
 [Service]
-WorkingDirectory=/path/to/whiteboard
+WorkingDirectory=/path/to/t3code/fork/whiteboard
 ExecStart=/usr/bin/env npm run dev
 Restart=always
 RestartSec=5
@@ -87,9 +89,7 @@ The whiteboard page is at `http://localhost:<webPort>/`. The same port serves th
 
 ## Embedded chat
 
-The chat panel is an iframe holding a T3 Code instance served from `chat-t3/` on `chatPort`. It keeps its own data directory and never reads a personal T3 installation. Vite proxies `/chat/` on `webPort` to it, together with the chat's own `/api`, `/ws`, and `/.well-known` paths, so the iframe loads from the whiteboard's origin. See [chat-t3/run-t3.md](chat-t3/run-t3.md) for how to build and run it.
-
-`chat-t3/` is a git submodule pinned to a commit of the `wb` branch of [orbitingflea/t3code](https://github.com/orbitingflea/t3code); that branch is where its code changes. Clone with `--recurse-submodules`, or run `git submodule update --init` in an existing clone.
+The chat panel is an iframe holding a T3 Code instance served on `chatPort`. This directory is `fork/whiteboard/` of a T3 Code fork ([orbitingflea/t3code](https://github.com/orbitingflea/t3code)); the T3 Code at the repository root, two levels up, carries the whiteboard's embedding changes, and `run-t3.sh` here starts it. The instance keeps its own data directory and never reads a personal T3 installation. Vite proxies `/chat/` on `webPort` to it, together with the chat's own `/api`, `/ws`, and `/.well-known` paths, so the iframe loads from the whiteboard's origin. See [run-t3.md](run-t3.md) for how to build and run it.
 
 ## Tests
 
