@@ -1,8 +1,24 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" /><link rel="icon" type="image/svg+xml" href="/web/favicon.svg" /><link rel="manifest" href="/web/manifest.webmanifest" /><meta name="theme-color" content="#0a0a0a" /><title>Board</title>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
+    <link rel="manifest" href="/web/manifest.webmanifest" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <title>Board</title>
     <!-- Paint the page in the board's colour scheme from the first frame, before any module loads. -->
-    <script>try { const scheme = JSON.parse(localStorage.getItem('TLDRAW_USER_DATA_v3') ?? 'null')?.user?.colorScheme; if (scheme === 'light' || scheme === 'dark') document.documentElement.style.colorScheme = scheme } catch {}</script>
+    <script>
+      try {
+        const scheme = JSON.parse(localStorage.getItem("TLDRAW_USER_DATA_v3") ?? "null")?.user
+          ?.colorScheme;
+        if (scheme === "light" || scheme === "dark")
+          document.documentElement.style.colorScheme = scheme;
+      } catch {}
+    </script>
   </head>
-  <body><div id="root"></div><script type="module" src="/web/main.tsx"></script></body>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/web/main.tsx"></script>
+  </body>
 </html>

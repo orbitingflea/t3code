@@ -7,7 +7,15 @@ A research whiteboard: a tldraw canvas with a side-panel agent chat that support
 The services read `~/.whiteboard/config.json` when it exists. Every field is optional:
 
 ```json
-{ "dataDir": "/path/to/data", "host": "127.0.0.1", "port": 6060, "webPort": 6061, "chatPort": 6070, "allowedHosts": [".ts.net", "board.example.com"], "openViews": { "board.example.com": "board" } }
+{
+  "dataDir": "/path/to/data",
+  "host": "127.0.0.1",
+  "port": 6060,
+  "webPort": 6061,
+  "chatPort": 6070,
+  "allowedHosts": [".ts.net", "board.example.com"],
+  "openViews": { "board.example.com": "board" }
+}
 ```
 
 - `dataDir` — directory holding room snapshots (default `~/.whiteboard/data`).
