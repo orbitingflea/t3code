@@ -21,7 +21,7 @@ import * as ServerConfig from "../config.ts";
  * supported install and not a malformed file. `account_id` is the ChatGPT
  * workspace, which a whole Team shares; the `id_token` names the person.
  */
-const CodexAuthJsonSchema = Schema.Struct({
+export const CodexAuthJsonSchema = Schema.Struct({
   tokens: Schema.optionalKey(
     Schema.Struct({
       account_id: Schema.String,

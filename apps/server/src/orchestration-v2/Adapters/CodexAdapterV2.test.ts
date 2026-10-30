@@ -1055,6 +1055,96 @@ describe("CodexAdapterV2 session initialize", () => {
   );
 });
 
+describe("CodexAdapterV2 account probe", () => {
+  const authJson = (input: { accountId: string; userId: string; accessToken: string }) => {
+    const claims = { "https://api.openai.com/auth": { user_id: input.userId } };
+    const idToken = `e30.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.sig`;
+    return JSON.stringify({
+      tokens: {
+        account_id: input.accountId,
+        id_token: idToken,
+        access_token: input.accessToken,
+      },
+    });
+  };
+
+  it.effect("reports a different account in auth.json, not a refresh or an unreadable file", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const homePath = yield* fs.makeTempDirectoryScoped({ prefix: "t3-codex-account-" });
+      const authPath = `${homePath}/auth.json`;
+      yield* fs.writeFileString(
+        authPath,
+        authJson({ accountId: "acct-a", userId: "user-a", accessToken: "access-1" }),
+      );
+      const scenario = "account-probe";
+      const driver = yield* CodexReplay.makeReplayDriver(
+        makeCodexReplayTranscript({ scenario, entries: [] }),
+      );
+      const adapter = yield* CodexAdapterV2.makeCodexAdapterV2({
+        instanceId: CodexAdapterV2.CODEX_DEFAULT_INSTANCE_ID,
+        settings: { ...DEFAULT_CODEX_SETTINGS, homePath },
+        environment: {},
+        clientFactory: {
+          open: () =>
+            Layer.build(CodexReplay.layerReplayWithDriver(driver)).pipe(
+              Effect.flatMap((context) =>
+                Effect.service(CodexClient.CodexAppServerClient).pipe(Effect.provide(context)),
+              ),
+              Effect.orDie,
+            ),
+        },
+        crypto: yield* Crypto.Crypto,
+        fileSystem: fs,
+        idAllocator: yield* IdAllocator.IdAllocatorV2,
+        serverConfig: yield* ProviderReplayHarness.makeReplayServerConfig(scenario).pipe(
+          Effect.orDie,
+        ),
+      });
+      const runtime = yield* adapter.openSession({
+        threadId: ThreadId.make(`thread-${scenario}`),
+        providerSessionId: ProviderSessionId.make(`provider-session-${scenario}`),
+        modelSelection: CODEX_TEST_MODEL_SELECTION,
+        runtimePolicy: CODEX_TEST_RUNTIME_POLICY,
+      });
+      const probe = runtime.accountChanged;
+      assert.isDefined(probe);
+
+      const cases: ReadonlyArray<readonly [string, string | null, boolean]> = [
+        ["unchanged", null, false],
+        [
+          "token refresh",
+          authJson({ accountId: "acct-a", userId: "user-a", accessToken: "access-2" }),
+          false,
+        ],
+        ["malformed", "{", false],
+        ["API-key login", JSON.stringify({ OPENAI_API_KEY: "test-key" }), false],
+        [
+          "another seat of the same workspace",
+          authJson({ accountId: "acct-a", userId: "user-b", accessToken: "access-3" }),
+          true,
+        ],
+        [
+          "another account",
+          authJson({ accountId: "acct-b", userId: "user-b", accessToken: "access-4" }),
+          true,
+        ],
+      ];
+      for (const [name, contents, expected] of cases) {
+        if (contents !== null) yield* fs.writeFileString(authPath, contents);
+        assert.equal(yield* probe!, expected, name);
+      }
+      yield* fs.remove(authPath);
+      assert.isFalse(yield* probe!, "missing");
+    }).pipe(
+      Effect.scoped,
+      Effect.provide(
+        Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+      ),
+    ),
+  );
+});
+
 describe("CodexAdapterV2 post-settle continuation", () => {
   // The harness notifies after every recorded event or continuation, so a wait
   // re-checks exactly when the state it reads changes. Subscribing before the
