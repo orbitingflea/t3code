@@ -56,7 +56,7 @@ function Cursor({ presence, view }: { presence: TLInstancePresence; view: Box })
   const chip = useRef<HTMLDivElement>(null);
   const [chipWidth, setChipWidth] = useState(30);
   const name = presence.userName && presence.userName !== "New User" ? presence.userName : null;
-  useLayoutEffect(() => setChipWidth(chip.current?.offsetWidth ?? 0), [name]);
+  useLayoutEffect(() => setChipWidth(name ? (chip.current?.offsetWidth ?? 0) : 0), [name]);
   const w = name ? chipWidth : 0;
   const real = editor.pageToViewport(presence.cursor!);
   // As in Zoom, an off-screen tip stays EDGE inside the viewport.

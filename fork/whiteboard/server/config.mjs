@@ -1,11 +1,11 @@
 // Loads the service configuration, merging ~/.whiteboard/config.json over defaults.
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 
-const base = `${homedir()}/.whiteboard`;
+const base = `${NodeOS.homedir()}/.whiteboard`;
 let overrides = {};
 try {
-  overrides = JSON.parse(readFileSync(`${base}/config.json`, "utf8"));
+  overrides = JSON.parse(NodeFS.readFileSync(`${base}/config.json`, "utf8"));
 } catch (error) {
   if (/** @type {NodeJS.ErrnoException} */ (error).code !== "ENOENT") throw error;
 }

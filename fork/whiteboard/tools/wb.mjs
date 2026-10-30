@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 // Agent-facing whiteboard CLI: read, write and delete board shapes, and screenshot a board region.
-import { execFileSync } from "node:child_process";
-import { readFileSync, readlinkSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { dirname } from "node:path";
-import { text as readStream } from "node:stream/consumers";
-import { parseArgs } from "node:util";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+import * as NodeStreamConsumers from "node:stream/consumers";
+import * as NodeUtil from "node:util";
 import { getIndexAbove, getIndexBelow } from "@tldraw/utils";
 import { config } from "../server/config.mjs";
 import { boardRoom } from "../web/room.mjs";
@@ -37,7 +37,7 @@ if (process.argv.includes("--help")) {
 
 const { values: flags, positionals } = (() => {
   try {
-    return parseArgs({
+    return NodeUtil.parseArgs({
       allowPositionals: true,
       options: {
         room: { type: "string" },
@@ -69,10 +69,14 @@ const { values: flags, positionals } = (() => {
 // project directory; the shells below the agent may have moved elsewhere.
 function agentDir() {
   const chat = process.env.WB_CHAT_PID;
+  if (!chat) return process.cwd();
   try {
-    for (let pid = String(process.pid); chat && pid !== "1";) {
-      const parent = readFileSync(`/proc/${pid}/stat`, "utf8").split(") ").at(-1).split(" ")[1];
-      if (parent === chat) return readlinkSync(`/proc/${pid}/cwd`);
+    for (let pid = String(process.pid); pid !== "1";) {
+      const parent = NodeFS.readFileSync(`/proc/${pid}/stat`, "utf8")
+        .split(") ")
+        .at(-1)
+        .split(" ")[1];
+      if (parent === chat) return NodeFS.readlinkSync(`/proc/${pid}/cwd`);
       pid = parent;
     }
   } catch {}
@@ -81,14 +85,14 @@ function agentDir() {
 function projectDir() {
   const cwd = agentDir();
   try {
-    const gitDir = execFileSync(
+    const gitDir = NodeChildProcess.execFileSync(
       "git",
       ["rev-parse", "--path-format=absolute", "--git-common-dir"],
       { cwd, stdio: ["ignore", "pipe", "ignore"] },
     )
       .toString()
       .trim();
-    return dirname(gitDir);
+    return NodePath.dirname(gitDir);
   } catch {
     return cwd;
   }
@@ -507,7 +511,7 @@ async function pages() {
 
 async function shot() {
   const { chromium } = await import("playwright-core");
-  const out = flags.out ?? `${tmpdir()}/wb-shot-${Date.now()}.png`;
+  const out = flags.out ?? `${NodeOS.tmpdir()}/wb-shot-${Date.now()}.png`;
   const arg = positionals[1];
   const box = arg && region(arg);
   const pageId = pageOf(await loadBoard(), box?.page ?? flags.page).id;
@@ -522,7 +526,7 @@ async function shot() {
     await page.goto(`${web}/?room=${room}&export=${request}&page=${encodeURIComponent(pageId)}`);
     await page.waitForFunction(() => window.wbExport);
     const dataUrl = await page.evaluate(() => window.wbExport);
-    writeFileSync(out, Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
+    NodeFS.writeFileSync(out, Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
   } finally {
     await browser.close();
   }
@@ -531,7 +535,7 @@ async function shot() {
 
 // Sends a raw {puts, deletes} body straight to the API, for records the high-level commands do not model.
 async function writeRaw() {
-  const body = JSON.parse(await readStream(process.stdin));
+  const body = JSON.parse(await NodeStreamConsumers.text(process.stdin));
   await editBoard(body.puts ?? [], body.deletes ?? []);
   return { ok: true, puts: (body.puts ?? []).length, deletes: (body.deletes ?? []).length };
 }

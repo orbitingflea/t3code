@@ -84,7 +84,9 @@ export function RefsLayer() {
     () =>
       editor
         .getCollaboratorsOnCurrentPage()
-        .flatMap((presence) => (presence.meta.mark ? [presence.meta.mark as Mark] : [])),
+        .flatMap((presence) =>
+          presence.meta.mark ? [{ key: presence.id, ...(presence.meta.mark as Mark) }] : [],
+        ),
     [editor],
   );
   useValue("reference camera", () => editor.getCamera(), [editor]); // Subscribe so overlays follow pan and zoom.
@@ -119,8 +121,8 @@ export function RefsLayer() {
       h: bottomRight.y - topLeft.y,
     };
   };
-  const marks = [...others, ...(current ? [current] : [])]
-    .map((m) => ({ mode: m.mode, ...toScreen(m) }))
+  const marks = [...others, ...(current ? [{ key: "self", ...current }] : [])]
+    .map((m) => ({ key: m.key, mode: m.mode, ...toScreen(m) }))
     .filter((m) => overlaps(m, view));
   const arrow = current?.mode === "hover" && hoverArrow(toScreen(current), view, current.origin);
   if (!marks.length && !arrow) return null;
@@ -131,9 +133,9 @@ export function RefsLayer() {
           className="region-clip"
           style={{ left: view.x, top: view.y, width: view.w, height: view.h }}
         >
-          {marks.map((m, i) => (
+          {marks.map((m) => (
             <div
-              key={i}
+              key={m.key}
               className={`region-mark ${m.mode}`}
               style={{ left: m.x - view.x, top: m.y - view.y, width: m.w, height: m.h }}
             />

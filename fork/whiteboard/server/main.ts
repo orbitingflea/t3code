@@ -1,8 +1,8 @@
 // Runs the multi-room sync service and exposes room-addressable board HTTP endpoints.
-import { createServer, type ServerResponse } from "node:http";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { randomUUID } from "node:crypto";
-import { text } from "node:stream/consumers";
+import * as NodeHttp from "node:http";
+import * as NodeFSP from "node:fs/promises";
+import * as NodeCrypto from "node:crypto";
+import * as NodeStreamConsumers from "node:stream/consumers";
 import { InMemorySyncStorage, TLSocketRoom, type RoomSnapshot } from "@tldraw/sync-core";
 import { createTLSchema, type TLRecord } from "@tldraw/tlschema";
 import { WebSocketServer } from "ws";
@@ -28,7 +28,7 @@ async function openRoom(name: string): Promise<ActiveRoom> {
       const snapshot = `${config.dataDir}/room-${slug}.json`;
       let initial: RoomSnapshot | undefined;
       try {
-        initial = JSON.parse(await readFile(snapshot, "utf8")) as RoomSnapshot;
+        initial = JSON.parse(await NodeFSP.readFile(snapshot, "utf8")) as RoomSnapshot;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
@@ -50,13 +50,13 @@ function persist(active: ActiveRoom) {
     .catch(() => undefined)
     .then(async () => {
       const temp = `${active.snapshot}.tmp`;
-      await writeFile(temp, JSON.stringify(active.storage.getSnapshot()));
-      await rename(temp, active.snapshot);
+      await NodeFSP.writeFile(temp, JSON.stringify(active.storage.getSnapshot()));
+      await NodeFSP.rename(temp, active.snapshot);
     });
   return active.save;
 }
 
-await mkdir(config.dataDir, { recursive: true });
+await NodeFSP.mkdir(config.dataDir, { recursive: true });
 setInterval(
   () =>
     void Promise.all([...rooms.values()].map(async (room) => persist(await room))).catch(
@@ -65,12 +65,12 @@ setInterval(
   PERSIST_INTERVAL_MS,
 ).unref();
 
-function json(res: ServerResponse, status: number, value: unknown) {
+function json(res: NodeHttp.ServerResponse, status: number, value: unknown) {
   res.writeHead(status, { "content-type": "application/json" });
   res.end(JSON.stringify(value));
 }
 
-const server = createServer(async (req, res) => {
+const server = NodeHttp.createServer(async (req, res) => {
   try {
     const url = new URL(req.url ?? "/", "http://localhost");
     const active = await openRoom(url.searchParams.get("room") ?? "main");
@@ -82,7 +82,7 @@ const server = createServer(async (req, res) => {
       );
     if (req.method !== "POST" || url.pathname !== "/api/board/edit")
       return json(res, 404, { error: "not found" });
-    const body = JSON.parse(await text(req)) as {
+    const body = JSON.parse(await NodeStreamConsumers.text(req)) as {
       puts: Array<{ typeName?: string; props?: { richText?: unknown } }>;
       deletes: string[];
     };
@@ -115,7 +115,7 @@ server.on("upgrade", (req, socket, head) => {
     .then((active) =>
       sockets.handleUpgrade(req, socket, head, (ws) =>
         active.room.handleSocketConnect({
-          sessionId: url.searchParams.get("sessionId") ?? randomUUID(),
+          sessionId: url.searchParams.get("sessionId") ?? NodeCrypto.randomUUID(),
           socket: ws,
         }),
       ),

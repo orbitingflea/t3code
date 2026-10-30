@@ -1,5 +1,5 @@
 // Hand-written input/output pairs for mathsplit, decided before running; run with `npm test`.
-import { strict as assert } from "node:assert";
+import * as NodeAssert from "node:assert/strict";
 import { findMathInputRule, findMathPasteRule, normalizeMath } from "./mathsplit";
 
 // findMathInputRule: fires only when the last $...$ span ends exactly at the end of the text.
@@ -71,7 +71,7 @@ const normalizePairs: Array<[unknown, unknown]> = [
 
 let checked = 0;
 for (const [input, expected] of inputRulePairs) {
-  assert.deepEqual(
+  NodeAssert.deepEqual(
     findMathInputRule(input),
     expected,
     `findMathInputRule(${JSON.stringify(input)})`,
@@ -79,7 +79,7 @@ for (const [input, expected] of inputRulePairs) {
   checked++;
 }
 for (const [input, expected] of pasteRulePairs) {
-  assert.deepEqual(
+  NodeAssert.deepEqual(
     findMathPasteRule(input),
     expected,
     `findMathPasteRule(${JSON.stringify(input)})`,
@@ -87,7 +87,7 @@ for (const [input, expected] of pasteRulePairs) {
   checked++;
 }
 for (const [input, expected] of normalizePairs) {
-  assert.deepEqual(normalizeMath(input), expected, `normalizeMath(${JSON.stringify(input)})`);
+  NodeAssert.deepEqual(normalizeMath(input), expected, `normalizeMath(${JSON.stringify(input)})`);
   checked++;
 }
 console.log(`mathsplit: ${checked} input/output pairs pass`);
