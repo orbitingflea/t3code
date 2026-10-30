@@ -17,6 +17,7 @@ import {
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import type { CodexEffectiveRuntime } from "../../provider/CodexManagedRuntime.ts";
 import { classifyCodexManagedError } from "../../provider/CodexManagedErrors.ts";
+import { CodexAuthJsonSchema, openAiUserId } from "../../telemetry/Identify.ts";
 import {
   buildCodexInitializeParams,
   codexAppServerEnvironment,
@@ -227,6 +228,25 @@ const decodeCodexBackgroundTerminalTerminateResponse = Schema.decodeUnknownEffec
 const decodeCodexBackgroundTerminalsListResponse = Schema.decodeUnknownEffect(
   CodexBackgroundTerminalsListResponse,
 );
+const decodeCodexAuthJson = Schema.decodeUnknownOption(Schema.fromJsonString(CodexAuthJsonSchema));
+
+// A Team shares `account_id`; the id_token's user id tells its seats apart.
+const readCodexAccount = Effect.fn("CodexAdapterV2.readAccount")(function* (
+  fileSystem: FileSystem.FileSystem,
+  authPath: string,
+) {
+  const text = yield* fileSystem.readFileString(authPath).pipe(Effect.option);
+  const tokens = Option.flatMap(Option.flatMap(text, decodeCodexAuthJson), (auth) =>
+    Option.fromUndefinedOr(auth.tokens),
+  );
+  return Option.map(tokens, (tokens) => {
+    const userId = Option.fromUndefinedOr(tokens.id_token).pipe(
+      Option.flatMap(openAiUserId),
+      Option.getOrElse(() => ""),
+    );
+    return `${tokens.account_id}\n${userId}`;
+  });
+});
 const CODEX_CLIENT_CAPABILITIES = {
   experimentalApi: true,
   optOutNotificationMethods: ["turn/diff/updated"],
@@ -1620,6 +1640,8 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
     threadId === null ? Effect.succeed(undefined) : mcpSessions.read(threadId);
   const { clientFactory, crypto, fileSystem, idAllocator, serverConfig } = adapterOptions;
   const continuationRequests = adapterOptions.continuationRequests;
+  const pathService = yield* Path.Path;
+  const homeDirectory = yield* HostProcess.HomeDirectory;
 
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
@@ -1646,13 +1668,23 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     }),
                 ),
               );
+        const clientEnvironment = resolvedRuntime?.environment ?? adapterOptions.environment;
+        const clientSettings = resolvedRuntime?.config ?? adapterOptions.settings;
+        const authPath = pathService.join(
+          clientSettings.homePath ||
+            clientEnvironment.CODEX_HOME ||
+            pathService.join(homeDirectory, ".codex"),
+          "auth.json",
+        );
+        // Read before spawn: a switch during startup costs one extra restart, never a missed one.
+        const spawnedAccount = yield* readCodexAccount(fileSystem, authPath);
         const client = yield* clientFactory.open({
           instanceId: adapterOptions.instanceId,
           threadId: input.threadId,
           providerSessionId: input.providerSessionId,
           runtimePolicy: input.runtimePolicy,
-          settings: resolvedRuntime?.config ?? adapterOptions.settings,
-          environment: resolvedRuntime?.environment ?? adapterOptions.environment,
+          settings: clientSettings,
+          environment: clientEnvironment,
         });
         const additionalContextByThread = yield* Ref.make(
           new Map<
@@ -6723,6 +6755,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           providerSession: session,
           events: Stream.fromEffectRepeat(Queue.take(events)),
           canReuseContextUsage: canReuseCodexContextUsage,
+          accountChanged: readCodexAccount(fileSystem, authPath).pipe(
+            Effect.map(
+              (current) =>
+                Option.isSome(current) &&
+                (Option.isNone(spawnedAccount) || current.value !== spawnedAccount.value),
+            ),
+          ),
           // Idle release can beat delayed subagent resumes: Codex reports them completed between turns with no resume-expected signal.
           hasPendingBackgroundWork: Effect.gen(function* () {
             for (const items of (yield* Ref.get(runningCommandItemsByTurn)).values()) {
