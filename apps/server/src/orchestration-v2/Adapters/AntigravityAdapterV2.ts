@@ -9,8 +9,10 @@ import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Exit from "effect/Exit";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as EffectAcpErrors from "effect-acp/errors";
@@ -62,6 +64,7 @@ const AntigravityProviderCapabilitiesV2 = {
 
 export interface AntigravityAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
+  readonly profileDirectory: string;
   readonly selfInvocation: SelfInvocation;
   readonly makeRuntime: (
     input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner">,
@@ -104,6 +107,10 @@ const extractAntigravitySubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractS
     result: status === "failed" ? (antigravitySubagentOutput(toolCall) ?? null) : null,
   };
 };
+
+const decodeRefreshToken = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ refresh_token: Schema.NonEmptyString })),
+);
 
 interface AntigravityFlavorServices {
   readonly crypto: Crypto.Crypto;
@@ -184,11 +191,32 @@ export function makeAntigravityAcpAdapterFlavor(
     ),
   );
 
+  // A new process may rewrite project_id after onboarding; the refresh token alone names the login.
+  const readAccount = Effect.fn("AntigravityAdapterV2.readAccount")(function* () {
+    const tokenPath = options.path.join(
+      options.profileDirectory,
+      "antigravity-acp",
+      "acp_token.json",
+    );
+    const token = Option.flatMap(
+      yield* options.fileSystem.readFileString(tokenPath).pipe(Effect.option),
+      decodeRefreshToken,
+    );
+    if (Option.isNone(token)) return Option.none<string>();
+    const digest = yield* options.crypto
+      .digest("SHA-256", new TextEncoder().encode(token.value.refresh_token))
+      .pipe(Effect.option);
+    return Option.map(digest, (bytes) =>
+      Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""),
+    );
+  });
+
   return {
     driver: ANTIGRAVITY_PROVIDER,
     runtimeHarness: "Antigravity",
     capabilities: AntigravityProviderCapabilitiesV2,
     makeRuntime,
+    readAccount: readAccount(),
     buildPrompt: ({ text, attachments, promptCapabilities }) =>
       buildAntigravityPrompt({
         input: text,

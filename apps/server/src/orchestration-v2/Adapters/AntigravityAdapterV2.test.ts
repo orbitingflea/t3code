@@ -20,6 +20,7 @@ import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import { ChildProcessSpawner } from "effect/process";
@@ -39,8 +40,11 @@ import {
   makeAntigravityAdapterV2,
 } from "./AntigravityAdapterV2.ts";
 
-const flavor = makeAntigravityAcpAdapterFlavor({
+const unusedProfileDirectory = "antigravity-profile-unused";
+
+const flavorOptions = {
   instanceId: ProviderInstanceId.make("antigravity-test"),
+  profileDirectory: unusedProfileDirectory,
   crypto: undefined as never,
   fileSystem: undefined as never,
   path: undefined as never,
@@ -50,7 +54,8 @@ const flavor = makeAntigravityAcpAdapterFlavor({
   withProcess: (_stop, task) => task,
   // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
   defaultModel: Effect.succeed(undefined),
-});
+} satisfies Parameters<typeof makeAntigravityAcpAdapterFlavor>[0];
+const flavor = makeAntigravityAcpAdapterFlavor(flavorOptions);
 
 function permissionRequest(
   toolCallId: string,
@@ -117,6 +122,43 @@ describe("AntigravityAdapterV2 flavor", () => {
       outcome: { outcome: "selected", optionId: "opt-dev" },
     });
   });
+
+  it.effect("keys the account by the refresh token alone and reads a bad token file as none", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const profileDirectory = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-antigravity-account-",
+      });
+      const { readAccount } = makeAntigravityAcpAdapterFlavor({
+        ...flavorOptions,
+        profileDirectory,
+        crypto: yield* Crypto.Crypto,
+        fileSystem,
+        path,
+      });
+      assert.isDefined(readAccount);
+      assert.isTrue(Option.isNone(yield* readAccount!), "missing");
+      const tokenPath = path.join(profileDirectory, "antigravity-acp", "acp_token.json");
+      yield* fileSystem.makeDirectory(path.dirname(tokenPath));
+      const writeToken = (fields: { refresh_token: string; project_id?: string }) =>
+        fileSystem.writeFileString(
+          tokenPath,
+          JSON.stringify({ client_id: "client", client_secret: "secret", ...fields }),
+        );
+      yield* writeToken({ refresh_token: "refresh-a" });
+      const first = yield* readAccount!;
+      assert.match(Option.getOrThrow(first), /^[0-9a-f]{64}$/);
+      yield* writeToken({ refresh_token: "refresh-a", project_id: "project-1" });
+      assert.deepEqual(yield* readAccount!, first, "project_id rewrite");
+      yield* writeToken({ refresh_token: "refresh-b", project_id: "project-1" });
+      const second = yield* readAccount!;
+      assert.isTrue(Option.isSome(second));
+      assert.notDeepEqual(second, first, "another login");
+      yield* fileSystem.writeFileString(tokenPath, "{");
+      assert.isTrue(Option.isNone(yield* readAccount!), "malformed");
+    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+  );
 });
 
 const layerSession = Layer.mergeAll(
@@ -146,6 +188,7 @@ describe("AntigravityAdapterV2 client file system", () => {
       const instanceId = ProviderInstanceId.make("antigravity-containment-test");
       const adapter = yield* makeAntigravityAdapterV2({
         instanceId,
+        profileDirectory: unusedProfileDirectory,
         selfInvocation: yield* resolveSelfInvocation(),
         makeRuntime: (input) =>
           makeAntigravityAcpRuntime({
@@ -283,6 +326,7 @@ describe("AntigravityAdapterV2 workspace changes", () => {
       const instanceId = ProviderInstanceId.make("antigravity-workspace-change-test");
       const adapter = yield* makeAntigravityAdapterV2({
         instanceId,
+        profileDirectory: unusedProfileDirectory,
         selfInvocation: yield* resolveSelfInvocation(),
         makeRuntime: (input) =>
           makeAntigravityAcpRuntime({
@@ -453,6 +497,7 @@ describe("AntigravityAdapterV2 html_render pages", () => {
       const errored = { ...report, html: "<p>Revenue error</p>" };
       const adapter = yield* makeAntigravityAdapterV2({
         instanceId,
+        profileDirectory: unusedProfileDirectory,
         selfInvocation: yield* resolveSelfInvocation(),
         makeRuntime: (input) =>
           makeAntigravityAcpRuntime({
@@ -738,6 +783,7 @@ describe("AntigravityAdapterV2 subagent reads", () => {
       const threadId = ThreadId.make("thread-antigravity-subagent-reads");
       const adapter = yield* makeAntigravityAdapterV2({
         instanceId,
+        profileDirectory: unusedProfileDirectory,
         selfInvocation: yield* resolveSelfInvocation(),
         makeRuntime: (input) =>
           makeAntigravityAcpRuntime({
