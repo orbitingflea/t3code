@@ -12,6 +12,13 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 
+const nextRetry = (thread: ProjectionStore.ProjectionLimitRecoveryCandidate) =>
+  Orchestrator.nextLimitRetry(
+    DateTime.toEpochMillis(thread.latestRunCompletedAt ?? thread.updatedAt),
+    Date.parse(thread.usageLimitResetAt ?? ""),
+    thread.latestRunMessageId,
+  );
+
 export function limitRecoveryCommand(
   thread: ProjectionStore.ProjectionLimitRecoveryCandidate,
   autoResume: boolean,
@@ -38,7 +45,12 @@ export function limitRecoveryCommand(
   const identity = `${thread.id}:${thread.latestRunId}:${resetMs}`;
   const recovery = thread.limitRecovery;
   if (recovery?.runId !== thread.latestRunId || recovery.resetAt !== thread.usageLimitResetAt) {
-    if (!autoResume && (!snooze || resetMs <= nowMs)) return null;
+    // An early retry that hits the limit again keeps the thread's auto-resume choice.
+    const resume =
+      autoResume ||
+      (recovery?.autoResume === true &&
+        thread.latestRunMessageId?.startsWith("limit-retry:") === true);
+    if (!resume && (!snooze || resetMs <= nowMs)) return null;
     return {
       type: "thread.metadata.update",
       commandId: CommandId.make(`limit-arm:${identity}`),
@@ -46,22 +58,23 @@ export function limitRecoveryCommand(
       limitRecovery: {
         runId: thread.latestRunId,
         resetAt: thread.usageLimitResetAt,
-        autoResume,
+        autoResume: resume,
         snooze: snooze && resetMs > nowMs,
       },
     };
   }
+  const retry = nextRetry(thread);
   if (
     !recovery.autoResume ||
-    resetMs > nowMs ||
+    retry.atMs > nowMs ||
     (thread.snoozedUntil != null && DateTime.toEpochMillis(thread.snoozedUntil) > nowMs)
   )
     return null;
   const deliveryIdentity = `${identity}:${recovery.requestId ?? "legacy"}`;
   return {
     type: "message.dispatch",
-    commandId: CommandId.make(`limit-resume:${deliveryIdentity}`),
-    messageId: MessageId.make(`limit-resume:${deliveryIdentity}`),
+    commandId: CommandId.make(`${retry.kind}:${deliveryIdentity}`),
+    messageId: MessageId.make(`${retry.kind}:${deliveryIdentity}`),
     threadId: thread.id,
     usageLimitContinuationOfRunId: thread.latestRunId,
     ...(recovery.requestId === undefined
@@ -108,7 +121,10 @@ const makeSweep = Effect.gen(function* () {
       snooze: preferences.snoozeLimitedThreads,
     });
     let acted = false;
+    let retryAt = Infinity;
     for (const thread of candidates) {
+      const { atMs } = nextRetry(thread);
+      if (atMs > nowMs) retryAt = Math.min(retryAt, atMs);
       const command = limitRecoveryCommand(
         thread,
         preferences.autoResumeLimitedThreads,
@@ -139,7 +155,7 @@ const makeSweep = Effect.gen(function* () {
     // A sweep that acted, or failed to, re-checks on the next tick.
     if (acted) return;
     const wakeAt = yield* projections.getLimitRecoveryWakeAt(now);
-    yield* due.record(readVersion, wakeAt ?? Infinity, nowMs);
+    yield* due.record(readVersion, Math.min(wakeAt ?? Infinity, retryAt), nowMs);
   });
 });
 

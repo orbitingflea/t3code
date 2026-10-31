@@ -463,6 +463,20 @@ function wakeWorkStartedAt(
 
 const threadPullRequestLinksEqual = Schema.toEquivalence(Schema.NullOr(ThreadLinkedPullRequest));
 
+// A limit can clear before its reported reset, for example when the account is swapped, so
+// auto-resume tries about 2 and 30 minutes after the first limit before waiting for the reset.
+const EARLY_LIMIT_RETRY_DELAYS_MS = [2 * 60_000, 28 * 60_000];
+
+/** `runMessageId` is the limited run's message; early retry `n` sends `limit-retry:n:…`. */
+export function nextLimitRetry(failedAtMs: number, resetMs: number, runMessageId?: string) {
+  const [kind, attempt] = runMessageId?.split(":") ?? [];
+  const next = kind === "limit-retry" ? Number(attempt) + 1 : 0;
+  const delay = EARLY_LIMIT_RETRY_DELAYS_MS[next];
+  return delay !== undefined && failedAtMs + delay < resetMs
+    ? { atMs: failedAtMs + delay, kind: `limit-retry:${next}` }
+    : { atMs: resetMs, kind: "limit-resume" };
+}
+
 /** Unfinished runs (including queued) or open requests block moving a thread to another project. */
 export function threadHasUnfinishedWork(records: {
   readonly runs: ReadonlyArray<{ readonly status: string }>;
@@ -5224,7 +5238,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         recovery.requestId !== command.usageLimitRecoveryRequestId ||
         recovery.runId !== run.id ||
         recovery.resetAt !== failure.resetAt ||
-        Date.parse(recovery.resetAt) > DateTime.toEpochMillis(now) ||
+        nextLimitRetry(
+          DateTime.toEpochMillis(run.completedAt ?? run.requestedAt),
+          Date.parse(recovery.resetAt),
+          run.userMessageId,
+        ).atMs > DateTime.toEpochMillis(now) ||
         projection.thread.archivedAt !== null ||
         projection.thread.deletedAt !== null ||
         projection.thread.settledOverride === "settled" ||
