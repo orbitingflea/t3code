@@ -370,6 +370,47 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
+  it.effect("finds a Claude login only by its exact email and organization", () =>
+    Effect.gen(function* () {
+      const claude = { ...accounts[0]!, provider: "claude", organization_uuid: "org-1" };
+      const login = { email: "FIRST@example.com", organizationId: "org-1" };
+      for (const [hubAccounts, expected] of [
+        [[{ ...claude, organization_uuid: "org-2" }, claude], "first.json"],
+        [[{ ...claude, organization_uuid: "org-2" }], undefined],
+        [[{ ...accounts[0]!, provider: "claude" }], undefined],
+        [[{ ...claude, disabled: true }], undefined],
+        [[claude, { ...claude, id: "copy.json" }], undefined],
+      ] as const) {
+        const api = yield* fixture({ accounts: [...hubAccounts] }).api;
+        expect((yield* api.findClaudeLogin([config], login))?.account.id).toBe(expected);
+      }
+      const test = fixture({ accounts: [claude] });
+      const api = yield* test.api;
+      expect(
+        yield* api.findClaudeLogin(
+          [
+            { ...config, enabled: false },
+            { ...config, managementKey: "" },
+          ],
+          login,
+        ),
+      ).toBeUndefined();
+      expect(
+        yield* api.findClaudeLogin([config], { ...login, organizationId: undefined }),
+      ).toBeUndefined();
+      expect(test.requests).toEqual([]);
+      const unreadable = yield* Effect.flip(
+        (yield* unreachableHub(
+          (request) =>
+            new HttpClientError.HttpClientError({
+              reason: new HttpClientError.TransportError({ request }),
+            }),
+        )).findClaudeLogin([config], login),
+      );
+      expect(unreadable._tag).toBe("UsageLimitSourceError");
+    }),
+  );
+
   it.effect("redeems a Claude reset for the account's own organization", () =>
     Effect.gen(function* () {
       const claude = { ...accounts[0]!, provider: "claude", organization_uuid: "org-1" };

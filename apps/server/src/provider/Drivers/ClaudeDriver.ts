@@ -1,12 +1,15 @@
-import { ClaudeSettings, ProviderDriverKind } from "@t3tools/contracts";
+import { ClaudeSettings, ProviderDriverKind, UsageLimitSourceError } from "@t3tools/contracts";
 import * as Cache from "effect/Cache";
+import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
@@ -15,6 +18,8 @@ import { makeClaudeTextGeneration } from "../../textGeneration/ClaudeTextGenerat
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import * as ServerConfig from "../../config.ts";
+import * as Settings from "../../serverSettings.ts";
+import { makeCliproxyApi } from "../../usage/cliproxyApi.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import {
@@ -130,6 +135,8 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const httpClient = yield* HttpClient.HttpClient;
     const latestVersions = yield* ProviderLatestVersions.ProviderLatestVersions;
     const resetCreditCoordinator = yield* ResetCreditCoordinator.ResetCreditCoordinator;
+    const usageSources = yield* makeCliproxyApi;
+    const serverSettings = yield* Effect.serviceOption(Settings.ServerSettingsService);
     const catalogService = yield* ModelCatalog.ModelCatalog;
     const modelCatalog = catalogService
       .current(DRIVER_KIND)
@@ -197,22 +204,54 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
       modelCatalog,
     );
 
+    // A login held by a usage source is read and redeemed only through that source.
+    const findUsageSource = Effect.fn("ClaudeDriver.findUsageSource")(function* (
+      login: Effect.Success<ReturnType<typeof ClaudeResetCredits.readClaudeLogin>>,
+    ) {
+      if (Option.isNone(serverSettings)) return undefined;
+      const settings = yield* serverSettings.value.getSettings.pipe(
+        Effect.mapError(
+          () => new UsageLimitSourceError({ detail: "The usage sources could not be read." }),
+        ),
+      );
+      return yield* usageSources.findClaudeLogin(Object.values(settings.usageLimitSources), login);
+    });
+
+    const probeCapabilities = Effect.fn("ClaudeDriver.probeCapabilities")(function* () {
+      const login = yield* ClaudeResetCredits.readClaudeLogin(accountConfigPath);
+      const usageCheckedAt = DateTime.formatIso(yield* DateTime.now);
+      const viaSource = yield* findUsageSource(login).pipe(
+        Effect.flatMap((source) =>
+          source
+            ? usageSources.claudeUsage(source.config, source.account).pipe(Effect.asSome)
+            : Effect.succeedNone,
+        ),
+        Effect.result,
+      );
+      const direct = Result.isSuccess(viaSource) && Option.isNone(viaSource.success);
+      const probed = yield* probeClaudeCapabilities(effectiveConfig, processEnv, stateDir, direct);
+      const capabilities: ClaudeCapabilitiesProbe = login.organizationId
+        ? { ...probed, workspaceId: login.organizationId }
+        : probed;
+      if (Result.isFailure(viaSource)) {
+        return { capabilities: { ...capabilities, usageError: viaSource.failure.detail } };
+      }
+      if (Option.isNone(viaSource.success)) return { capabilities };
+      const { response, resetCredits } = viaSource.success.value;
+      return {
+        capabilities: { ...capabilities, usage: response, usageCheckedAt },
+        source: { resetCredits },
+      };
+    });
+
     // Per-instance capabilities cache: keyed on binary + resolved HOME so
     // account-specific probes never share auth metadata across instances.
     // A transient miss may reuse the last account once, but its usage windows keep their age.
     const lastGoodCapabilities = yield* Ref.make<ClaudeCapabilitiesProbe | undefined>(undefined);
     const capabilitiesProbeCache = yield* Cache.makeWith(
       () =>
-        probeClaudeCapabilities(effectiveConfig, processEnv, stateDir).pipe(
-          Effect.flatMap((capabilities) =>
-            ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath).pipe(
-              Effect.map((workspaceId) => ({
-                _tag: "fresh" as const,
-                capabilities:
-                  workspaceId === undefined ? capabilities : { ...capabilities, workspaceId },
-              })),
-            ),
-          ),
+        probeCapabilities().pipe(
+          Effect.map((entry) => ({ _tag: "fresh" as const, ...entry })),
           Effect.tap(({ capabilities }) => Ref.set(lastGoodCapabilities, capabilities)),
           Effect.catch((error) =>
             Ref.getAndSet(lastGoodCapabilities, undefined).pipe(
@@ -267,10 +306,17 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
               catalog,
               scopedLimitNames,
               (version) =>
-                ClaudeResetCredits.readClaudeResetCredits(configDir, version).pipe(
-                  Effect.provideService(HttpClient.HttpClient, httpClient),
-                  Effect.provideService(FileSystem.FileSystem, fileSystem),
-                  Effect.provideService(Path.Path, path),
+                Cache.get(capabilitiesProbeCache, capabilitiesCacheKey).pipe(
+                  Effect.flatMap((entry) =>
+                    "source" in entry && entry.source
+                      ? Effect.succeed(entry.source.resetCredits)
+                      : ClaudeResetCredits.readClaudeResetCredits(configDir, version).pipe(
+                          Effect.provideService(HttpClient.HttpClient, httpClient),
+                          Effect.provideService(FileSystem.FileSystem, fileSystem),
+                          Effect.provideService(Path.Path, path),
+                        ),
+                  ),
+                  Effect.orElseSucceed(() => undefined),
                 ),
             ),
           ),
@@ -334,16 +380,21 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         const grantId = current.usageLimits?.resetCredits?.nextCreditId;
         if (!grantId || !current.version) return "noCredit" as const;
         const version = current.version;
+        const source = yield* findUsageSource(
+          yield* ClaudeResetCredits.readClaudeLogin(accountConfigPath),
+        );
         return yield* resetCreditCoordinator.redeem(
           configDir,
           (requestId) =>
-            ClaudeResetCredits.consumeClaudeResetCredit({
-              configDir,
-              accountConfigPath,
-              version,
-              grantId,
-              requestId,
-            }),
+            source
+              ? usageSources.claimClaudeLogin(source.config, source.account, grantId, requestId)
+              : ClaudeResetCredits.consumeClaudeResetCredit({
+                  configDir,
+                  accountConfigPath,
+                  version,
+                  grantId,
+                  requestId,
+                }),
           ClaudeResetCredits.isSettledClaudeResetCreditFailure,
         );
       },
@@ -356,7 +407,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
             driver: DRIVER_KIND,
             instanceId,
             detail:
-              cause._tag === "ClaudeResetCreditError"
+              cause._tag === "ClaudeResetCreditError" || cause._tag === "UsageLimitSourceError"
                 ? cause.message
                 : "Claude could not redeem the reset.",
             cause,
