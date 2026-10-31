@@ -51,7 +51,6 @@ function fixture(
     accounts?: Array<
       (typeof accounts)[number] & {
         disabled?: boolean;
-        organization_uuid?: string;
         id_token: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
       }
     >;
@@ -313,30 +312,14 @@ describe("CLIProxyAPI built-in management API", () => {
     }),
   );
 
-  it.effect("maps Claude scoped windows and reset credits without a scheduler plugin", () =>
+  it.effect("maps Claude scoped windows without a scheduler plugin", () =>
     Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse("2026-10-31T12:00:00Z"));
       const test = fixture({
         accounts: [{ ...accounts[0]!, provider: "claude" }],
-        // Usage answers 429, and reset credits ineligible, without a Claude Code user agent.
+        // The usage endpoint answers 429 to requests without a Claude Code user agent.
         upstream: (request) => ({
-          status: /^claude-cli\/\S+ \(external, cli\)$/.test(request.header?.["User-Agent"] ?? "")
-            ? 200
-            : 429,
+          status: request.header?.["User-Agent"]?.startsWith("claude-code/") ? 200 : 429,
           body: {
-            cedar_ember: {
-              eligible: true,
-              next_grant_id: "grant_a",
-              grants: [
-                {
-                  id: "grant_a",
-                  resets_left: 1,
-                  usable_now: true,
-                  ends_at: "2099-01-01T00:00:00Z",
-                },
-                { id: "grant_b", resets_left: 2, usable_now: true },
-              ],
-            },
             five_hour: { utilization: 10, resets_at: null },
             seven_day: { utilization: 50, resets_at: "2099-01-01T00:00:00Z" },
             limits: [
@@ -359,83 +342,6 @@ describe("CLIProxyAPI built-in management API", () => {
         ["seven_day", 50],
         ["seven_day_fable", 80],
       ]);
-      expect(result[0]?.usageLimits.resetCredits).toEqual({
-        availableCount: 3,
-        nextCreditId: "grant_a",
-        nextExpiresAt: "2099-01-01T00:00:00.000Z",
-      });
-      expect(test.requests.find((request) => request.body?.url)?.body?.url).toBe(
-        "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1",
-      );
-    }),
-  );
-
-  it.effect("redeems a Claude reset for the account's own organization", () =>
-    Effect.gen(function* () {
-      const claude = { ...accounts[0]!, provider: "claude", organization_uuid: "org-1" };
-      const answer = (status: number, body: unknown) =>
-        fixture({ accounts: [claude], upstream: () => ({ status, body }) });
-      for (const [status, body, outcome, clearsCooldown] of [
-        [200, { result: "reset" }, "reset", true],
-        [200, { result: "already_used" }, "alreadyRedeemed", true],
-        [200, { result: "not_limited" }, "nothingToReset", false],
-        [200, { result: "ineligible" }, "noCredit", false],
-      ] as const) {
-        const test = answer(status, body);
-        expect(yield* (yield* test.api).consume(config, "first.json", "grant_a")).toEqual({
-          outcome,
-        });
-        const redemption = test.requests.find((request) => request.body?.url);
-        expect(redemption?.body?.url).toBe(
-          "https://api.anthropic.com/api/organizations/org-1/reset_rate_limits",
-        );
-        expect(redemption?.body?.method).toBe("POST");
-        expect(redemption?.body?.data).toBe(
-          encodeJson({
-            program: "cedar_ember",
-            grant_id: "grant_a",
-            request_id: "2493d13b-1b9d-5e0f-96a6-a8113a4dd7f4",
-          }),
-        );
-        expect(test.requests.some((request) => request.path.endsWith("/reset-quota"))).toBe(
-          clearsCooldown,
-        );
-      }
-      for (const [status, body, detail] of [
-        [200, { result: "cooldown" }, "Claude resets are cooling down. Try again later."],
-        [
-          200,
-          { result: "unavailable" },
-          "Claude could not confirm the reset. If you are still limited in a moment, try again.",
-        ],
-        [429, {}, "Claude is rate limiting resets. Try again soon."],
-        [403, { error: "organization mismatch" }, "Sign in to Claude again to redeem resets."],
-        [502, {}, "Claude could not redeem the reset."],
-      ] as const) {
-        const test = answer(status, body);
-        const error = yield* Effect.flip(
-          (yield* test.api).consume(config, "first.json", "grant_a"),
-        );
-        expect(error.detail).toBe(detail);
-        expect(test.requests.some((request) => request.path.endsWith("/reset-quota"))).toBe(false);
-      }
-    }),
-  );
-
-  it.effect("refuses a Claude redemption without an organization or with a malformed grant", () =>
-    Effect.gen(function* () {
-      for (const [account, grantId] of [
-        [{ ...accounts[0]!, provider: "claude" }, "grant_a"],
-        [{ ...accounts[0]!, provider: "claude", organization_uuid: " " }, "grant_a"],
-        [{ ...accounts[0]!, provider: "claude", organization_uuid: "org-1" }, "Bad Grant"],
-      ] as const) {
-        const test = fixture({ accounts: [account] });
-        const result = yield* (yield* test.api)
-          .consume(config, "first.json", grantId)
-          .pipe(Effect.result);
-        expect(result._tag).toBe("Failure");
-        expect(test.requests.every((request) => request.path.endsWith("/auth-files"))).toBe(true);
-      }
     }),
   );
 
