@@ -1,4 +1,4 @@
-# T3 Code
+# About this fork
 
 This is a fork of T3 Code that integrates a few additional features, including:
 - **Whiteboard:** A tldraw whiteboard that sits side-by-side with T3 Code, allowing users to interact with agents (or other users) by editing and pointing to the whiteboard. Both the user and the agents can conveniently write links that point to a rectangular region on the whiteboard.
@@ -8,9 +8,9 @@ This is a fork of T3 Code that integrates a few additional features, including:
 - Enabling math rendering by default.
 - Other small fixes.
 
-**The following is the README from upstream.**
+The following is the README from upstream.
 
----
+# T3 Code
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
 
