@@ -255,7 +255,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
   const accounts = new Map<string, LimitAccount>();
   const creditSources = new Map<string, LimitAccount>();
   const hubRedeems = new Map<string, LimitAccount>();
-  const merge = (key: string, next: LimitAccount) => {
+  const merge = (key: string, next: LimitAccount, labeled = false) => {
     // Prefer hub redemption to clear its routing cooldown too; displayed balance still follows the freshest read.
     const previousHub = hubRedeems.get(key);
     if (
@@ -290,9 +290,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
     const creditSource = creditSources.get(key);
     accounts.set(key, {
       ...previous,
-      // A hub names the login itself; a native instance name such as "Claude" does not.
-      displayName:
-        (next.sourceLabel && next.displayName) || previous.displayName || next.displayName,
+      displayName: labeled ? next.displayName : (previous.displayName ?? next.displayName),
       plan: previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
@@ -343,31 +341,32 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       for (const account of source.accounts) {
         if (limitsNotice(account.usageLimits) !== null) continue;
         const key = `${source.id}:${account.id}${account.workspaceId ? `:${account.workspaceId}` : ""}`;
-        merge(resolveKey(account) ?? key, {
-          key,
-          driver: account.driver,
-          // CLIProxyAPI auth file ids repeat the email; other hub ids (t3switch slugs) name the login.
-          displayName:
-            account.email && /\.json$/i.test(account.id)
-              ? null
-              : account.id.replace(/\.json$/i, ""),
-          email: account.email,
-          plan: account.plan,
-          accentColor: undefined,
-          environments: [],
-          sourceLabel,
-          redeem: account.usageLimits.resetCredits?.nextCreditId
-            ? {
-                environmentId,
-                input: {
-                  sourceId: source.id,
-                  accountId: account.id,
-                  creditId: account.usageLimits.resetCredits.nextCreditId,
-                },
-              }
-            : null,
-          limits: account.usageLimits,
-        });
+        merge(
+          resolveKey(account) ?? key,
+          {
+            key,
+            driver: account.driver,
+            displayName:
+              account.label ?? (account.email ? null : account.id.replace(/\.json$/i, "")),
+            email: account.email,
+            plan: account.plan,
+            accentColor: undefined,
+            environments: [],
+            sourceLabel,
+            redeem: account.usageLimits.resetCredits?.nextCreditId
+              ? {
+                  environmentId,
+                  input: {
+                    sourceId: source.id,
+                    accountId: account.id,
+                    creditId: account.usageLimits.resetCredits.nextCreditId,
+                  },
+                }
+              : null,
+            limits: account.usageLimits,
+          },
+          account.label !== undefined,
+        );
       }
     }
   }

@@ -632,12 +632,13 @@ describe("pools", () => {
     expect(accounts[0]?.displayName).toBe("claude-team-seat");
   });
 
-  it("names hub accounts by their id over the native instance name, one row per login", () => {
+  it("names hub accounts by their label over the native instance name, else as upstream", () => {
     const codex = ProviderDriverKind.make("codex");
-    const hubAccount = (id: string, driver: typeof claude, email: string) => ({
+    const hubAccount = (id: string, driver: typeof claude, email: string, label?: string) => ({
       id,
       driver,
       email,
+      ...(label ? { label } : {}),
       ...(driver === codex ? { workspaceId: "ws" } : {}),
       usageLimits: { checkedAt, windows: [window] },
     });
@@ -665,10 +666,11 @@ describe("pools", () => {
               {
                 ...source,
                 accounts: [
-                  hubAccount("orbitingflea", claude, "a@example.com"),
-                  hubAccount("renfeiz", claude, "b@example.com"),
-                  hubAccount("orbitingflea", codex, "a@example.com"),
+                  hubAccount("work", claude, "a@example.com", "Work"),
+                  hubAccount("team", claude, "b@example.com", "Team"),
+                  hubAccount("work", codex, "a@example.com"),
                   hubAccount("claude-c@example.com.json", claude, "c@example.com"),
+                  hubAccount("personal", claude, "d@example.com"),
                 ],
               },
             ],
@@ -679,9 +681,10 @@ describe("pools", () => {
     expect(
       collectLimitAccounts(input).map((account) => [account.driver, account.displayName]),
     ).toEqual([
-      ["claudeAgent", "orbitingflea"],
-      ["codex", "orbitingflea"],
-      ["claudeAgent", "renfeiz"],
+      ["claudeAgent", "Work"],
+      ["codex", "Codex"],
+      ["claudeAgent", "Team"],
+      ["claudeAgent", null],
       ["claudeAgent", null],
     ]);
   });
@@ -761,11 +764,11 @@ describe("pools", () => {
       ],
     ]);
     const [pool] = collectLimitPools(collectLimitAccounts(input), now);
-    expect(pool?.accounts.map((account) => account.displayName)).toEqual([
-      "early-week",
-      "late-week",
-      "no-week-early",
-      "no-week-late",
+    expect(pool?.accounts.map((account) => account.email)).toEqual([
+      "early-week@example.com",
+      "late-week@example.com",
+      "no-week-early@example.com",
+      "no-week-late@example.com",
     ]);
   });
 

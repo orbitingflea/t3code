@@ -50,6 +50,7 @@ function fixture(
   options: {
     accounts?: Array<
       (typeof accounts)[number] & {
+        label?: string;
         disabled?: boolean;
         id_token: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
       }
@@ -199,9 +200,10 @@ describe("CLIProxyAPI built-in management API", () => {
     () =>
       Effect.gen(function* () {
         yield* TestClock.setTime(1788710400000);
-        const test = fixture();
+        const test = fixture({ accounts: [{ ...accounts[0]!, label: " Work " }, accounts[1]!] });
         const api = yield* test.api;
         const result = yield* api.readAccounts(config);
+        expect(result.map((account) => account.label)).toEqual(["Work", undefined]);
         expect(result.map((account) => account.usageLimits.resetCredits)).toEqual([
           { availableCount: 2, nextCreditId: "first", nextExpiresAt: "2099-01-01T00:00:00.000Z" },
           { availableCount: 2, nextCreditId: "first", nextExpiresAt: "2099-01-01T00:00:00.000Z" },
