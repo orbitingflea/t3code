@@ -725,48 +725,47 @@ describe("pools", () => {
     ).toEqual(["weekly", "weekly:secondary"]);
   });
 
-  it("orders accounts by weekly reset, then by the first window for accounts without one", () => {
-    const account = (id: string, sessionReset: string, weeklyReset?: string) => ({
+  it("orders accounts by name whatever their resets, input order or native login", () => {
+    const account = (id: string, weeklyReset: string) => ({
       id,
       driver: claude,
       email: `${id}@example.com`,
-      usageLimits: {
-        checkedAt,
-        windows: [
-          { ...window, resetsAt: sessionReset },
-          ...(weeklyReset ? [{ ...weekly, usedPercent: 20, resetsAt: weeklyReset }] : []),
-        ],
-      },
+      usageLimits: { checkedAt, windows: [{ ...weekly, usedPercent: 20, resetsAt: weeklyReset }] },
     });
-    const input = new Map([
-      [
-        EnvironmentId.make("env-a"),
-        {
-          ...laptop,
-          serverConfig: {
-            providers: [],
-            usageLimitSources: [
+    const accounts = [
+      account("succinctor", "2026-09-04T12:00:00.000Z"),
+      account("Orbitingflea", "2026-09-08T12:00:00.000Z"),
+      account("renfeiz", "2026-09-05T12:00:00.000Z"),
+    ];
+    const order = (hubAccounts: typeof accounts, nativeEmail: string) =>
+      collectLimitPools(
+        collectLimitAccounts(
+          new Map([
+            [
+              EnvironmentId.make("env-a"),
               {
-                ...source,
-                accounts: [
-                  account("late-week", "2026-09-03T12:30:00.000Z", "2026-09-08T12:00:00.000Z"),
-                  account("no-week-late", "2026-09-03T16:00:00.000Z"),
-                  account("early-week", "2026-09-03T15:00:00.000Z", "2026-09-04T12:00:00.000Z"),
-                  account("no-week-early", "2026-09-03T13:00:00.000Z"),
-                ],
+                ...laptop,
+                serverConfig: {
+                  providers: [
+                    provider({
+                      driver: claude,
+                      instanceId: ProviderInstanceId.make("claudeAgent"),
+                      displayName: "Claude",
+                      auth: { status: "authenticated", email: nativeEmail },
+                      usageLimits: { checkedAt, windows: [window] },
+                    }),
+                  ],
+                  usageLimitSources: [{ ...source, accounts: hubAccounts }],
+                },
               },
             ],
-          },
-        },
-      ],
-    ]);
-    const [pool] = collectLimitPools(collectLimitAccounts(input), now);
-    expect(pool?.accounts.map((account) => account.displayName)).toEqual([
-      "early-week",
-      "late-week",
-      "no-week-early",
-      "no-week-late",
-    ]);
+          ]),
+        ),
+        now,
+      )[0]?.accounts.map((account) => account.displayName);
+    const expected = ["Orbitingflea", "renfeiz", "succinctor"];
+    expect(order(accounts, "renfeiz@example.com")).toEqual(expected);
+    expect(order(accounts.toReversed(), "succinctor@example.com")).toEqual(expected);
   });
 
   it("pools windows by id across accounts and orders resets by when they land", () => {
@@ -1029,7 +1028,7 @@ describe("pooled account columns", () => {
     ]);
     const available = account("available", [window]);
     const [before] = collectLimitPools([blocked, available], now);
-    expect(before!.accounts.map((account) => account.key)).toEqual(["blocked", "available"]);
+    expect(before!.accounts.map((account) => account.key)).toEqual(["available", "blocked"]);
     expect(before!.windows[0]!.remainingPercent).toBe(30);
     const refreshed = {
       ...blocked,
@@ -1039,7 +1038,7 @@ describe("pooled account columns", () => {
       },
     };
     const [after] = collectLimitPools([refreshed, available], now);
-    expect(after!.accounts.map((account) => account.key)).toEqual(["blocked", "available"]);
+    expect(after!.accounts.map((account) => account.key)).toEqual(["available", "blocked"]);
     expect(after!.windows[0]!.remainingPercent).toBe(60);
     expect(after!.windows[0]!.resets[0]).toMatchObject({
       at: Date.parse("2026-09-03T13:00:00.000Z"),
@@ -1060,23 +1059,12 @@ describe("pooled account columns", () => {
       now,
     );
     expect(keys(pool!)).toEqual([
-      ["b", null, "a"],
-      ["b", "c", null],
+      ["a", "b", null],
+      [null, "b", "c"],
     ]);
     expect(pool!.windows[1]!.members.map((member) => member.account.key)).toEqual(["b", "c"]);
     expect(pool!.windows[1]!.remainingPercent).toBe(40);
     expect(pool!.windows[1]!.resets.map((reset) => reset.restoresPercent)).toEqual([40, 20]);
-  });
-
-  it("falls back to weekly resets when no account reports a session", () => {
-    const [pool] = collectLimitPools(
-      [
-        account("a", [{ ...weekly, resetsAt: "2026-09-06T12:00:00.000Z" }]),
-        account("b", [{ ...weekly, resetsAt: "2026-09-05T12:00:00.000Z" }]),
-      ],
-      now,
-    );
-    expect(keys(pool!)).toEqual([["b", "a"]]);
   });
 });
 
@@ -1153,9 +1141,9 @@ describe("/usage-limits", () => {
     ];
     const report = collectProviderUsageLimits(workspaces[0]!.instanceId, workspaces, hub, now);
     expect(report?.accounts.map((account) => account.resetCreditInput)).toEqual([
+      { sourceId: "hub", accountId: "duplicate", creditId: "c" },
       { instanceId: "ws-a" },
       { instanceId: "ws-b" },
-      { sourceId: "hub", accountId: "duplicate", creditId: "c" },
     ]);
   });
 
@@ -1196,6 +1184,29 @@ describe("/usage-limits", () => {
     expect(report?.accounts[0]?.limits.resetCredits?.availableCount).toBe(3);
   });
 
+  it("orders rows by hub name, keeping a native row in place when its login switches", () => {
+    const hub = [
+      {
+        ...sources[0]!,
+        accounts: ["succinctor", "orbitingflea", "renfeiz"].map((id) => ({
+          id,
+          driver: selected.driver,
+          email: `${id}@example.com`,
+          usageLimits: limits,
+        })),
+      },
+    ];
+    const order = (email: string) =>
+      collectProviderUsageLimits(
+        selected.instanceId,
+        [provider({ usageLimits: limits, auth: { status: "authenticated", email } })],
+        hub,
+        now,
+      )?.accounts.map((account) => account.id);
+    expect(order("renfeiz@example.com")).toEqual(["hub:orbitingflea", "codex", "hub:succinctor"]);
+    expect(order("orbitingflea@example.com")).toEqual(["codex", "hub:renfeiz", "hub:succinctor"]);
+  });
+
   it("keeps unidentified custom instances separate, filtering by driver", () => {
     const report = collectProviderUsageLimits(
       selected.instanceId,
@@ -1218,18 +1229,18 @@ describe("/usage-limits", () => {
     expect(report?.createdAt).toBe("2026-09-03T12:00:00.000Z");
     expect(report?.accounts.map((account) => account.id)).toEqual([
       "codex",
-      "codex-work",
       "hub:oss",
+      "codex-work",
     ]);
     expect(report?.accounts[0]).toMatchObject({
       instanceId: selected.instanceId,
       email: selected.auth.email,
     });
-    expect(report?.accounts[1]).toMatchObject({
+    expect(report?.accounts[2]).toMatchObject({
       displayName: "Work",
       limits: { resetCredits: { availableCount: 2 } },
     });
-    expect(report?.accounts[2]).toMatchObject({
+    expect(report?.accounts[1]).toMatchObject({
       label: "Accounts · oss",
       sourceLabel: "CLI Proxy",
       plan: "Codex OSS",
@@ -1313,7 +1324,7 @@ describe("/usage-limits", () => {
         [],
         now,
       )?.accounts.map((account) => account.id),
-    ).toEqual(["workspace-a-fresh", "codex"]);
+    ).toEqual(["codex", "workspace-a-fresh"]);
     expect(
       collectProviderUsageLimits(
         selected.instanceId,
@@ -1321,7 +1332,7 @@ describe("/usage-limits", () => {
         [],
         now,
       )?.accounts.map((account) => account.id),
-    ).toEqual(["workspace-a-fresh", "codex", "workspace-b"]);
+    ).toEqual(["codex", "workspace-a-fresh", "workspace-b"]);
   });
 
   it("supports a source-only provider and keeps duplicates when the native probe failed", () => {

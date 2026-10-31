@@ -346,11 +346,7 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         merge(resolveKey(account) ?? key, {
           key,
           driver: account.driver,
-          // CLIProxyAPI auth file ids repeat the email; other hub ids (t3switch slugs) name the login.
-          displayName:
-            account.email && /\.json$/i.test(account.id)
-              ? null
-              : account.id.replace(/\.json$/i, ""),
+          displayName: hubAccountName(account),
           email: account.email,
           plan: account.plan,
           accentColor: undefined,
@@ -465,29 +461,9 @@ export function collectLimitPools(
     else byDriver.set(account.driver, [account]);
   }
   return [...byDriver].map(([driver, members]) => {
-    const windows = members.flatMap((account) => account.limits.windows);
-    const resetOf =
-      (orderWindow: ServerProviderUsageWindow | undefined) => (account: LimitAccount) => {
-        const window = account.limits.windows.find(
-          (window) => orderWindow && poolKey(driver, window) === poolKey(driver, orderWindow),
-        );
-        return (
-          (window ? resetMillis(poolMember(account, window, now).window) : null) ??
-          Number.POSITIVE_INFINITY
-        );
-      };
-    // The weekly reset keeps the order stable; the session reset would reshuffle it every few hours.
-    const weeklyReset = resetOf(windows.find((window) => window.kind === "weekly"));
-    const firstReset = resetOf(
-      windows.sort(
-        (left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind],
-      )[0],
-    );
     const sorted = [...members].sort(
       (left, right) =>
-        weeklyReset(left) - weeklyReset(right) ||
-        firstReset(left) - firstReset(right) ||
-        accountSortName(left).localeCompare(accountSortName(right)) ||
+        compareNames(accountSortName(left), accountSortName(right)) ||
         left.key.localeCompare(right.key),
     );
     return { driver, accounts: sorted, windows: poolWindows(sorted, now) };
@@ -495,7 +471,15 @@ export function collectLimitPools(
 }
 
 function accountSortName(account: LimitAccount): string {
-  return (account.displayName ?? account.email ?? account.key).toLowerCase();
+  return account.displayName ?? account.email ?? account.key;
+}
+
+const compareNames = (left: string, right: string) =>
+  left.toLowerCase().localeCompare(right.toLowerCase());
+
+// CLIProxyAPI auth file ids repeat the email; other hub ids (t3switch slugs) name the login.
+function hubAccountName(account: UsageLimitSourceSnapshots[number]["accounts"][number]) {
+  return account.email && /\.json$/i.test(account.id) ? null : account.id.replace(/\.json$/i, "");
 }
 
 // Codex ids name slots, so pool by kind; other drivers' ids identify distinct allowances.
@@ -791,6 +775,8 @@ export function collectProviderUsageLimits(
     }),
   );
   const accounts: Array<UsageLimitsReport["accounts"][number]> = [];
+  // Hub accounts name the login, so a native row keeps its place when its login switches accounts.
+  const sortNames = new Map<string, string>();
   const notices: string[] = [];
   for (const {
     usage: { provider, limits },
@@ -819,10 +805,18 @@ export function collectProviderUsageLimits(
     const shownCredits = showHubCredits
       ? hubCredits.account.usageLimits.resetCredits
       : credits?.limits.resetCredits;
+    const hubAccount = sources
+      .flatMap((source) => source.accounts)
+      .find((account) => key !== null && resolveKey(account) === key);
+    const label = `${provider.displayName?.trim() || String(provider.driver)} [${provider.instanceId}]`;
+    sortNames.set(
+      provider.instanceId,
+      (hubAccount && hubAccountName(hubAccount)) ?? provider.auth.email ?? label,
+    );
     accounts.push({
       id: provider.instanceId,
       driver: provider.driver,
-      label: `${provider.displayName?.trim() || String(provider.driver)} [${provider.instanceId}]`,
+      label,
       ...(provider.auth.label ? { plan: provider.auth.label } : {}),
       instanceId: provider.instanceId,
       resetCreditInput:
@@ -844,6 +838,10 @@ export function collectProviderUsageLimits(
     for (const account of matching) {
       const key = resolveKey(account);
       if (key && nativeAccountKeys.has(key)) continue;
+      sortNames.set(
+        `${source.id}:${account.id}`,
+        hubAccountName(account) ?? account.email ?? account.id,
+      );
       accounts.push({
         id: `${source.id}:${account.id}`,
         driver: account.driver,
@@ -867,5 +865,10 @@ export function collectProviderUsageLimits(
       notices.push(`${source.label}: ${source.error}`);
     }
   }
+  accounts.sort(
+    (left, right) =>
+      compareNames(sortNames.get(left.id) ?? left.id, sortNames.get(right.id) ?? right.id) ||
+      left.id.localeCompare(right.id),
+  );
   return { createdAt: DateTime.formatIso(DateTime.makeUnsafe(now)), accounts, notices };
 }
