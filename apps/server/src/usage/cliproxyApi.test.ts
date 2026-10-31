@@ -1,6 +1,8 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
@@ -57,6 +59,7 @@ function fixture(
     >;
     upstream?: (request: RequestBody) => { status: number; body: unknown };
     cooldownStatus?: number;
+    redeemDelay?: Duration.Input;
   } = {},
 ) {
   const requests: Array<{ path: string; body?: RequestBody }> = [];
@@ -109,7 +112,13 @@ function fixture(
         request,
         Response.json({ status_code: upstream.status, body: encodeJson(upstream.body) }),
       );
-    }),
+    }).pipe(
+      Effect.delay(
+        request.method === "POST" && request.url.endsWith("/api-call")
+          ? (options.redeemDelay ?? 0)
+          : 0,
+      ),
+    ),
   );
   return {
     requests,
@@ -318,11 +327,9 @@ describe("CLIProxyAPI built-in management API", () => {
       yield* TestClock.setTime(Date.parse("2026-10-31T12:00:00Z"));
       const test = fixture({
         accounts: [{ ...accounts[0]!, provider: "claude" }],
-        // Usage answers 429, and reset credits ineligible, without a Claude Code user agent.
+        // The hub sets its own client headers.
         upstream: (request) => ({
-          status: /^claude-cli\/\S+ \(external, cli\)$/.test(request.header?.["User-Agent"] ?? "")
-            ? 200
-            : 429,
+          status: request.header?.["User-Agent"] === undefined ? 200 : 400,
           body: {
             cedar_ember: {
               eligible: true,
@@ -465,6 +472,25 @@ describe("CLIProxyAPI built-in management API", () => {
         );
         expect(error.detail).toBe(detail);
         expect(test.requests.some((request) => request.path.endsWith("/reset-quota"))).toBe(false);
+      }
+    }),
+  );
+
+  it.effect("waits longer for a redeem than for a read", () =>
+    Effect.gen(function* () {
+      const claude = { ...accounts[0]!, provider: "claude", organization_uuid: "org-1" };
+      for (const account of [accounts[0]!, claude]) {
+        const api = yield* fixture({
+          accounts: [account],
+          upstream: (request) => ({
+            status: 200,
+            body: request.url?.endsWith("/consume") ? { code: "reset" } : { result: "reset" },
+          }),
+          redeemDelay: "29 seconds",
+        }).api;
+        const redeem = yield* Effect.forkChild(api.consume(config, "first.json", "grant_a"));
+        yield* TestClock.adjust("29 seconds");
+        expect((yield* Fiber.join(redeem)).outcome).toBe("reset");
       }
     }),
   );

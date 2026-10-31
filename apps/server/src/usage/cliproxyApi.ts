@@ -9,6 +9,7 @@ import {
 import * as Cause from "effect/Cause";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as Option from "effect/Option";
@@ -183,6 +184,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     config: UsageLimitSourceConfig,
     path: string,
     body?: unknown,
+    timeout: Duration.Input = "15 seconds",
   ) {
     const url = yield* Effect.try({
       try: () =>
@@ -200,7 +202,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
       .pipe(
         Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap((response) => response.json),
-        Effect.timeout("15 seconds"),
+        Effect.timeout(timeout),
         Effect.mapError(
           (error) => new UsageLimitSourceError({ detail: describeManagementFailure(error) }),
         ),
@@ -240,16 +242,20 @@ export const makeCliproxyApi = Effect.gen(function* () {
         : {
             Authorization: "Bearer $TOKEN$",
             "anthropic-beta": "oauth-2025-04-20",
-            // Usage answers 429, and reset credits ineligible, without a Claude Code user agent.
-            "User-Agent": "claude-cli/2.1.273 (external, cli)",
           };
-    const raw = yield* management(config, "api-call", {
-      auth_index: account.auth_index,
-      method: data === undefined ? "GET" : "POST",
-      url,
-      header,
-      ...(data === undefined ? {} : { data: yield* encodeJson(data) }),
-    });
+    // A redeem waits on the hub's own upstream call, which can take longer than a read.
+    const raw = yield* management(
+      config,
+      "api-call",
+      {
+        auth_index: account.auth_index,
+        method: data === undefined ? "GET" : "POST",
+        url,
+        header,
+        ...(data === undefined ? {} : { data: yield* encodeJson(data) }),
+      },
+      data === undefined ? undefined : "30 seconds",
+    );
     return yield* decodeApiResponse(raw);
   });
 
