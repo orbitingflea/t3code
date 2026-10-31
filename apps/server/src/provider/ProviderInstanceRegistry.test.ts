@@ -590,6 +590,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
   const redeemClaudeReset = (claim: {
     result: string;
     usageFailsAfterClaim: boolean;
+    usageSourceOnly?: boolean;
     hub?: {
       accounts: ReadonlyArray<{ email: string; organization_uuid?: string }>;
       listStatus?: number;
@@ -679,6 +680,9 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
               { name: "T3_CLAUDE_RESET_MARKER", value: marker, sensitive: false },
               ...(claim.usageFailsAfterClaim
                 ? [{ name: "T3_CLAUDE_USAGE_FAILS_AFTER_CLAIM", value: "1", sensitive: false }]
+                : []),
+              ...(claim.usageSourceOnly
+                ? [{ name: "T3CODE_CLAUDE_USAGE_SOURCE_ONLY", value: "1", sensitive: false }]
                 : []),
             ],
             config: makeClaudeConfig({
@@ -772,6 +776,27 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
           "https://api.anthropic.com/api/organizations/fake-org/reset_rate_limits",
         );
         expect(viaHub).toContain("reset-quota");
+      }),
+  );
+
+  it.live.skipIf(windowsHost)(
+    "never reads Claude directly for a login no usage source holds when sources are required",
+    () =>
+      Effect.gen(function* () {
+        for (const hub of [undefined, { accounts: [{ email: "test@example.com" }] }]) {
+          const { before, outcome, direct } = yield* redeemClaudeReset({
+            result: "reset",
+            usageFailsAfterClaim: false,
+            usageSourceOnly: true,
+            ...(hub ? { hub } : {}),
+          });
+          expect(before.usageLimits?.unavailable).toMatchObject({
+            reason: "probeFailed",
+            message: "No usage source holds this Claude login.",
+          });
+          expect(outcome).toMatchObject({ _tag: "Success", success: "noCredit" });
+          expect(direct).toEqual([]);
+        }
       }),
   );
 

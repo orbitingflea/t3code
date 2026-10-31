@@ -205,16 +205,27 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     );
 
     // A login held by a usage source is read and redeemed only through that source.
+    // With T3CODE_CLAUDE_USAGE_SOURCE_ONLY=1 a login no source holds is never read directly.
+    const usageSourceOnly = processEnv.T3CODE_CLAUDE_USAGE_SOURCE_ONLY === "1";
     const findUsageSource = Effect.fn("ClaudeDriver.findUsageSource")(function* (
       login: Effect.Success<ReturnType<typeof ClaudeResetCredits.readClaudeLogin>>,
     ) {
-      if (Option.isNone(serverSettings)) return undefined;
-      const settings = yield* serverSettings.value.getSettings.pipe(
-        Effect.mapError(
-          () => new UsageLimitSourceError({ detail: "The usage sources could not be read." }),
-        ),
-      );
-      return yield* usageSources.findClaudeLogin(Object.values(settings.usageLimitSources), login);
+      const source = Option.isNone(serverSettings)
+        ? undefined
+        : yield* serverSettings.value.getSettings.pipe(
+            Effect.mapError(
+              () => new UsageLimitSourceError({ detail: "The usage sources could not be read." }),
+            ),
+            Effect.flatMap((settings) =>
+              usageSources.findClaudeLogin(Object.values(settings.usageLimitSources), login),
+            ),
+          );
+      if (!source && usageSourceOnly) {
+        return yield* new UsageLimitSourceError({
+          detail: "No usage source holds this Claude login.",
+        });
+      }
+      return source;
     });
 
     const probeCapabilities = Effect.fn("ClaudeDriver.probeCapabilities")(function* () {
