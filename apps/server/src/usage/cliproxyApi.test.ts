@@ -1,10 +1,12 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import type { UsageLimitSourceConfig } from "@t3tools/contracts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 
+import { isSettledClaudeResetCreditFailure } from "../provider/claudeResetCredits.ts";
 import { makeCliproxyApi } from "./cliproxyApi.ts";
 
 const config = {
@@ -318,11 +320,8 @@ describe("CLIProxyAPI built-in management API", () => {
       yield* TestClock.setTime(Date.parse("2026-10-31T12:00:00Z"));
       const test = fixture({
         accounts: [{ ...accounts[0]!, provider: "claude" }],
-        // Usage answers 429, and reset credits ineligible, without a Claude Code user agent.
-        upstream: (request) => ({
-          status: /^claude-cli\/\S+ \(external, cli\)$/.test(request.header?.["User-Agent"] ?? "")
-            ? 200
-            : 429,
+        upstream: () => ({
+          status: 200,
           body: {
             cedar_ember: {
               eligible: true,
@@ -437,6 +436,68 @@ describe("CLIProxyAPI built-in management API", () => {
         expect(test.requests.every((request) => request.path.endsWith("/auth-files"))).toBe(true);
       }
     }),
+  );
+
+  it.effect(
+    "finds a signed-in Claude login by email and organization and claims through the hub",
+    () =>
+      Effect.gen(function* () {
+        const claude = (id: string, organization_uuid: string, disabled = false) => ({
+          ...accounts[0]!,
+          id,
+          auth_index: id,
+          provider: "claude",
+          email: "Me@Example.com",
+          organization_uuid,
+          disabled,
+        });
+        let answer: unknown = { result: "reset" };
+        const test = fixture({
+          accounts: [
+            claude("personal.json", "org-1"),
+            claude("team.json", "org-2"),
+            claude("off.json", "org-3", true),
+          ],
+          upstream: () => ({ status: 200, body: answer }),
+        });
+        const api = yield* test.api;
+        const find = (
+          organizationId: string | undefined,
+          sources: ReadonlyArray<UsageLimitSourceConfig> = [config],
+        ) => api.findClaudeLogin(sources, { email: "me@example.com", organizationId });
+        const login = (yield* find("org-2"))!;
+        expect(login.account.id).toBe("team.json");
+        expect(yield* find(undefined)).toBeUndefined();
+        expect(yield* find("org-3")).toBeUndefined();
+        expect(yield* find("org-1", [{ ...config, enabled: false }])).toBeUndefined();
+
+        expect(yield* api.claimClaudeLogin(login.config, login.account, "grant_a", "r-1")).toBe(
+          "reset",
+        );
+        const claim = test.requests.find((request) => request.body?.url);
+        expect(claim?.body?.url).toBe(
+          "https://api.anthropic.com/api/organizations/org-2/reset_rate_limits",
+        );
+        expect(claim?.body?.data).toBe(
+          encodeJson({ program: "cedar_ember", grant_id: "grant_a", request_id: "r-1" }),
+        );
+        expect(
+          test.requests
+            .filter((request) => request.path.endsWith("/reset-quota"))
+            .map((request) => request.body?.auth_index),
+        ).toEqual(["team.json"]);
+
+        for (const [result, settled] of [
+          ["cooldown", true],
+          ["unavailable", false],
+        ] as const) {
+          answer = { result };
+          const error = yield* Effect.flip(
+            api.claimClaudeLogin(login.config, login.account, "grant_a", "r-1"),
+          );
+          expect(isSettledClaudeResetCreditFailure(error)).toBe(settled);
+        }
+      }),
   );
 
   it.effect("pins redemption to the displayed credit and clears only that account's cooldown", () =>

@@ -233,8 +233,8 @@ export const makeCliproxyApi = Effect.gen(function* () {
         : {
             Authorization: "Bearer $TOKEN$",
             "anthropic-beta": "oauth-2025-04-20",
-            // Usage answers 429, and reset credits ineligible, without a Claude Code user agent.
-            "User-Agent": "claude-cli/2.1.273 (external, cli)",
+            // The OAuth usage endpoint can return 429 without a Claude Code user agent.
+            "User-Agent": "claude-code/2.1.273",
           };
     const raw = yield* management(config, "api-call", {
       auth_index: account.auth_index,
@@ -275,6 +275,44 @@ export const makeCliproxyApi = Effect.gen(function* () {
       .toSorted((a, b) => Date.parse(a.expires_at) - Date.parse(b.expires_at));
   });
 
+  /** Usage in the Claude SDK's get_usage shape, plus reset credits. */
+  const claudeUsage = Effect.fn("CliproxyApi.claudeUsage")(function* (
+    config: UsageLimitSourceConfig,
+    account: typeof AuthFile.Type,
+  ) {
+    const body = yield* apiCall(
+      config,
+      account,
+      `${CLAUDE_BASE}/oauth/usage?cedar_ember=1&skip_spend=1`,
+    );
+    const usage = yield* decodeClaudeUsage(body);
+    const model_scoped = (usage.limits ?? []).flatMap((limit) =>
+      limit.kind === "weekly_scoped" && limit.scope?.model && typeof limit.percent === "number"
+        ? [
+            {
+              display_name: limit.scope.model.display_name,
+              utilization: limit.percent,
+              resets_at: limit.resets_at ?? null,
+            },
+          ]
+        : [],
+    );
+    return {
+      response: {
+        rate_limits_available: true,
+        rate_limits: {
+          five_hour: usage.five_hour ?? null,
+          seven_day: usage.seven_day ?? null,
+          model_scoped,
+        },
+      },
+      resetCredits: claudeResetCreditsToContract(
+        usage.cedar_ember,
+        DateTime.toEpochMillis(yield* DateTime.now),
+      ),
+    };
+  });
+
   const readAccount = Effect.fn("CliproxyApi.readAccount")(function* (
     config: UsageLimitSourceConfig,
     account: typeof AuthFile.Type,
@@ -290,42 +328,12 @@ export const makeCliproxyApi = Effect.gen(function* () {
     };
     const read = Effect.gen(function* () {
       if (account.provider === "claude") {
-        const body = yield* apiCall(
-          config,
-          account,
-          `${CLAUDE_BASE}/oauth/usage?cedar_ember=1&skip_spend=1`,
-        );
-        const usage = yield* decodeClaudeUsage(body);
-        const resetCredits = claudeResetCreditsToContract(
-          usage.cedar_ember,
-          DateTime.toEpochMillis(yield* DateTime.now),
-        );
-        const model_scoped = (usage.limits ?? []).flatMap((limit) =>
-          limit.kind === "weekly_scoped" && limit.scope?.model && typeof limit.percent === "number"
-            ? [
-                {
-                  display_name: limit.scope.model.display_name,
-                  utilization: limit.percent,
-                  resets_at: limit.resets_at ?? null,
-                },
-              ]
-            : [],
-        );
+        const { response, resetCredits } = yield* claudeUsage(config, account);
         return {
           ...base,
           plan: "Claude Subscription",
           usageLimits: {
-            ...claudeUsageResponseToLimits({
-              checkedAt,
-              response: {
-                rate_limits_available: true,
-                rate_limits: {
-                  five_hour: usage.five_hour ?? null,
-                  seven_day: usage.seven_day ?? null,
-                  model_scoped,
-                },
-              },
-            }).limits,
+            ...claudeUsageResponseToLimits({ checkedAt, response }).limits,
             ...(resetCredits ? { resetCredits } : {}),
           },
         };
@@ -406,36 +414,68 @@ export const makeCliproxyApi = Effect.gen(function* () {
     );
   });
 
-  const consumeClaude = Effect.fn("CliproxyApi.consumeClaude")(
-    function* (
-      config: UsageLimitSourceConfig,
-      account: typeof AuthFile.Type,
-      grantId: string,
-      requestId: string,
-    ) {
-      const claim = yield* claudeClaimBody(grantId, requestId);
-      const organization = account.organization_uuid?.trim();
-      if (!organization) {
-        return yield* new UsageLimitSourceError({
-          detail: "The hub does not know this Claude account's organization.",
-        });
-      }
-      const response = yield* apiResponse(
-        config,
-        account,
-        `${CLAUDE_BASE}/organizations/${encodeURIComponent(organization)}/reset_rate_limits`,
-        claim,
+  const claimClaude = Effect.fn("CliproxyApi.claimClaude")(function* (
+    config: UsageLimitSourceConfig,
+    account: typeof AuthFile.Type,
+    grantId: string,
+    requestId: string,
+  ) {
+    const claim = yield* claudeClaimBody(grantId, requestId);
+    const organization = account.organization_uuid?.trim();
+    if (!organization) {
+      return yield* new UsageLimitSourceError({
+        detail: "The hub does not know this Claude account's organization.",
+      });
+    }
+    const response = yield* apiResponse(
+      config,
+      account,
+      `${CLAUDE_BASE}/organizations/${encodeURIComponent(organization)}/reset_rate_limits`,
+      claim,
+    );
+    return yield* claudeClaimOutcome(
+      response.status_code,
+      Option.getOrUndefined(decodeJsonOption(response.body)),
+    );
+  });
+
+  const clearCooldown = (config: UsageLimitSourceConfig, account: typeof AuthFile.Type) =>
+    management(config, "reset-quota", { auth_index: account.auth_index });
+
+  /** The one enabled hub account holding a directly signed-in Claude login. */
+  const findClaudeLogin = Effect.fn("CliproxyApi.findClaudeLogin")(function* (
+    sources: ReadonlyArray<UsageLimitSourceConfig>,
+    login: { readonly email: string; readonly organizationId: string | undefined },
+  ) {
+    for (const config of sources) {
+      if (!config.enabled || !config.managementKey) continue;
+      const files = yield* authFiles(config).pipe(Effect.orElseSucceed(() => []));
+      const matches = files.filter(
+        (account) =>
+          account.provider === "claude" &&
+          !account.disabled &&
+          account.email?.toLowerCase() === login.email.toLowerCase() &&
+          (login.organizationId === undefined ||
+            account.organization_uuid === login.organizationId),
       );
-      return yield* claudeClaimOutcome(
-        response.status_code,
-        Option.getOrUndefined(decodeJsonOption(response.body)),
-      );
-    },
-    Effect.catchTags({
-      ClaudeResetCreditError: (error) =>
-        Effect.fail(new UsageLimitSourceError({ detail: error.message })),
-    }),
-  );
+      if (matches.length === 1) return { config, account: matches[0]! };
+    }
+    return undefined;
+  });
+
+  // Claim errors stay typed so the caller's coordinator keeps the request id for retries.
+  const claimClaudeLogin = Effect.fn("CliproxyApi.claimClaudeLogin")(function* (
+    config: UsageLimitSourceConfig,
+    account: typeof AuthFile.Type,
+    grantId: string,
+    requestId: string,
+  ) {
+    const outcome = yield* claimClaude(config, account, grantId, requestId);
+    if (outcome === "reset" || outcome === "alreadyRedeemed") {
+      yield* clearCooldown(config, account).pipe(Effect.ignore);
+    }
+    return outcome;
+  });
 
   const consume = Effect.fn("CliproxyApi.consume")(function* (
     config: UsageLimitSourceConfig,
@@ -459,7 +499,12 @@ export const makeCliproxyApi = Effect.gen(function* () {
       ).pipe(Effect.provideService(Crypto.Crypto, crypto));
       const outcome =
         account.provider === "claude"
-          ? yield* consumeClaude(config, account, creditId, requestId)
+          ? yield* claimClaude(config, account, creditId, requestId).pipe(
+              Effect.catchTags({
+                ClaudeResetCreditError: (error) =>
+                  Effect.fail(new UsageLimitSourceError({ detail: error.message })),
+              }),
+            )
           : CODEX_CLAIM_OUTCOMES[
               (yield* decodeConsumeResponse(
                 yield* apiCall(config, account, `${CREDIT_URL}/consume`, {
@@ -469,9 +514,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
               )).code
             ];
       if (outcome !== "reset" && outcome !== "alreadyRedeemed") return { outcome };
-      const cleared = yield* management(config, "reset-quota", {
-        auth_index: account.auth_index,
-      }).pipe(Effect.result);
+      const cleared = yield* clearCooldown(config, account).pipe(Effect.result);
       return {
         outcome,
         ...(cleared._tag === "Failure"
@@ -492,5 +535,5 @@ export const makeCliproxyApi = Effect.gen(function* () {
       ),
     );
   });
-  return { readAccounts, consume };
+  return { readAccounts, consume, findClaudeLogin, claudeUsage, claimClaudeLogin };
 });

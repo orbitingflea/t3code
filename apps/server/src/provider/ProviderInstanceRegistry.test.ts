@@ -17,6 +17,7 @@ import {
   SecretProviderId,
   SettingsSecretValue,
   type SecretReference,
+  UsageLimitSourceId,
 } from "@t3tools/contracts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -59,6 +60,62 @@ const layerTestHttpClient = Layer.succeed(
     Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ version: "0.0.0" }))),
   ),
 );
+
+const decodeHubCall = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Struct({ url: Schema.optional(Schema.String) })),
+);
+
+// A t3switch hub holding the mock CLI's login. Claude usage and claims only go through it.
+const claudeHub = (options: {
+  readonly accounts?: ReadonlyArray<{ readonly email: string; readonly organization_uuid: string }>;
+  readonly usage: Effect.Effect<{ readonly status: number; readonly body: unknown }>;
+  readonly claim?: Effect.Effect<unknown>;
+}) =>
+  HttpClient.make((request) =>
+    Effect.gen(function* () {
+      const json = (body: unknown) => HttpClientResponse.fromWeb(request, Response.json(body));
+      const path = new URL(request.url).pathname;
+      if (path.endsWith("/auth-files")) {
+        const accounts = options.accounts ?? [
+          { email: "test@example.com", organization_uuid: "fake-org" },
+        ];
+        return json({
+          files: accounts.map((account, index) => ({
+            id: `${index}.json`,
+            auth_index: `${index}`,
+            provider: "claude",
+            ...account,
+          })),
+        });
+      }
+      if (path.endsWith("/reset-quota")) return json({});
+      if (!path.endsWith("/api-call")) return json({ version: "0.0.0" });
+      const call = decodeHubCall(
+        request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "",
+      );
+      const upstream = call.url?.endsWith("/reset_rate_limits")
+        ? { status: 200, body: yield* options.claim ?? Effect.die("unexpected claim") }
+        : yield* options.usage;
+      return json({ status_code: upstream.status, body: JSON.stringify(upstream.body) });
+    }),
+  );
+
+const withClaudeHub = (hub: HttpClient.HttpClient) =>
+  Effect.provide(
+    Layer.mergeAll(
+      Layer.succeed(HttpClient.HttpClient, hub),
+      ServerSettings.layerTest({
+        usageLimitSources: {
+          [UsageLimitSourceId.make("hub")]: {
+            kind: "cliproxy",
+            url: "http://hub.test",
+            managementKey: "hub-key",
+            enabled: true,
+          },
+        },
+      }),
+    ),
+  );
 
 // The mock CLIs from makeTildeProviderFixtures are scripts Windows cannot execute.
 const windowsHost = HostProcess.Platform.defaultValue() === "win32";
@@ -486,13 +543,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
                 },
               });
             },
-            usage_EXPERIMENTAL_MAY_CHANGE_DO_NOT_RELY_ON_THIS_API_YET: async () => ({
-              rate_limits_available: true,
-              rate_limits: {
-                five_hour: { utilization: 12, resets_at: "2026-07-18T14:39:00Z" },
-              },
-            }),
-          }) as ReturnType<typeof ClaudeSdk.query>,
+          }) as unknown as ReturnType<typeof ClaudeSdk.query>,
       );
       yield* Effect.addFinalizer(() => Effect.sync(() => query.mockRestore()));
 
@@ -509,7 +560,20 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
             }),
           },
         },
-      });
+      }).pipe(
+        withClaudeHub(
+          claudeHub({
+            accounts: [
+              { email: "account-a@example.com", organization_uuid: "org-a" },
+              { email: "account-b@example.com", organization_uuid: "org-b" },
+            ],
+            usage: Effect.succeed({
+              status: 200,
+              body: { five_hour: { utilization: 12, resets_at: "2026-07-18T14:39:00Z" } },
+            }),
+          }),
+        ),
+      );
       const claude = yield* registry.getInstance(claudeId);
       expect(claude).toBeDefined();
 
@@ -587,36 +651,32 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const fixtures = yield* makeTildeProviderFixtures();
-      const marker = path.join(fixtures.claudeHomePath, "redeemed");
-      yield* fs.writeFileString(
-        path.join(fixtures.claudeHomePath, ".credentials.json"),
-        '{"claudeAiOauth":{"accessToken":"fake-token"}}',
-      );
+      let redeemed = false;
       yield* fs.writeFileString(
         path.join(fixtures.claudeHomePath, ".claude.json"),
         '{"oauthAccount":{"organizationUuid":"fake-org"}}',
       );
-      const client = HttpClient.make((request) =>
-        Effect.gen(function* () {
-          if (request.url.endsWith("/api/oauth/usage")) {
-            return HttpClientResponse.fromWeb(
-              request,
-              Response.json({
-                cedar_ember: {
-                  eligible: true,
-                  next_grant_id: "grant_a",
-                  grants: [{ id: "grant_a", resets_left: 1, usable_now: true }],
+      const hub = claudeHub({
+        usage: Effect.sync(() =>
+          redeemed && claim.usageFailsAfterClaim
+            ? { status: 503, body: {} }
+            : {
+                status: 200,
+                body: {
+                  five_hour: { utilization: redeemed ? 0 : 100, resets_at: null },
+                  cedar_ember: {
+                    eligible: true,
+                    next_grant_id: "grant_a",
+                    grants: [{ id: "grant_a", resets_left: 1, usable_now: true }],
+                  },
                 },
-              }),
-            );
-          }
-          if (request.url.endsWith("/reset_rate_limits")) {
-            yield* fs.writeFileString(marker, "redeemed").pipe(Effect.orDie);
-            return HttpClientResponse.fromWeb(request, Response.json({ result: claim.result }));
-          }
-          return HttpClientResponse.fromWeb(request, Response.json({ version: "0.0.0" }));
+              },
+        ),
+        claim: Effect.sync(() => {
+          redeemed = true;
+          return { result: claim.result };
         }),
-      );
+      });
       const instanceId = ProviderInstanceId.make("claude_reset");
       const { registry } = yield* makeProviderInstanceRegistry({
         drivers: [ClaudeDriver],
@@ -624,12 +684,6 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
           [instanceId]: {
             driver: ProviderDriverKind.make("claudeAgent"),
             enabled: true,
-            environment: [
-              { name: "T3_CLAUDE_RESET_MARKER", value: marker, sensitive: false },
-              ...(claim.usageFailsAfterClaim
-                ? [{ name: "T3_CLAUDE_USAGE_FAILS_AFTER_CLAIM", value: "1", sensitive: false }]
-                : []),
-            ],
             config: makeClaudeConfig({
               enabled: true,
               binaryPath: fixtures.claudeBinaryPath,
@@ -637,7 +691,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
             }),
           },
         },
-      }).pipe(Effect.provideService(HttpClient.HttpClient, client));
+      }).pipe(withClaudeHub(hub));
       const instance = yield* registry.getInstance(instanceId);
       expect(instance).toBeDefined();
       const before = yield* instance!.snapshot.refresh;
@@ -645,11 +699,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
       expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
       const outcome = yield* instance!.consumeResetCredit!().pipe(Effect.result);
       return { outcome, after: yield* instance!.snapshot.getSnapshot };
-    }).pipe(
-      // macOS logins live in the Keychain, where resets are never read.
-      Effect.provideService(HostProcess.Platform, "linux"),
-      Effect.provide(layerTest),
-    );
+    }).pipe(Effect.provide(layerTest));
 
   it.live.skipIf(windowsHost)("refreshes Claude usage after redeeming a reset", () =>
     Effect.gen(function* () {
@@ -691,18 +741,9 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
           enabled: true,
           environment: [
             { name: "T3_CLAUDE_PROBE_LOG", value: probeLog, sensitive: false },
-            ...(state === "ready"
-              ? []
-              : [
-                  {
-                    name:
-                      state === "signed-out"
-                        ? "T3_CLAUDE_LOGIN_MARKER"
-                        : "T3_CLAUDE_USAGE_FAILS_UNTIL",
-                    value: recovered,
-                    sensitive: false,
-                  },
-                ]),
+            ...(state === "signed-out"
+              ? [{ name: "T3_CLAUDE_LOGIN_MARKER", value: recovered, sensitive: false }]
+              : []),
           ],
           config: makeClaudeConfig({
             enabled: true,
@@ -711,7 +752,21 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
           }),
         },
       },
-    });
+    }).pipe(
+      withClaudeHub(
+        claudeHub({
+          accounts: [{ email: "test@example.com", organization_uuid: "" }],
+          usage: fs.exists(recovered).pipe(
+            Effect.orDie,
+            Effect.map((exists) =>
+              state === "usage-failed" && !exists
+                ? { status: 503, body: {} }
+                : { status: 200, body: { five_hour: { utilization: 10, resets_at: null } } },
+            ),
+          ),
+        }),
+      ),
+    );
     const instance = yield* registry.getInstance(instanceId);
     expect(instance).toBeDefined();
     return {

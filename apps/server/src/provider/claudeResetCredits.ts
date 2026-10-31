@@ -9,17 +9,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
-import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
-const API_BASE = "https://api.anthropic.com";
 const PROGRAM = "cedar_ember";
 const GRANT_ID = /^[a-z0-9_-]{1,40}$/;
 const REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COMPLETE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
-const Credentials = Schema.Struct({
-  claudeAiOauth: Schema.optional(Schema.Struct({ accessToken: Schema.optional(Schema.String) })),
-});
 const Config = Schema.Struct({
   oauthAccount: Schema.optional(
     Schema.Struct({ organizationUuid: Schema.optional(Schema.String) }),
@@ -38,9 +33,6 @@ const CedarEmber = Schema.Struct({
   grants: Schema.optional(Schema.Array(Schema.Unknown)),
   next_grant_id: Schema.optional(Schema.NullOr(Schema.String)),
 });
-const UsageResponse = Schema.Struct({
-  cedar_ember: Schema.optional(Schema.NullOr(Schema.Unknown)),
-});
 const decodeCedarEmber = Schema.decodeUnknownOption(CedarEmber);
 const ClaimResponse = Schema.Struct({
   result: Schema.Literals([
@@ -56,8 +48,6 @@ const decodeClaimResponse = Schema.decodeUnknownEffect(ClaimResponse);
 
 const RESET_CREDIT_FAILURES = {
   malformedCredit: "Claude returned a malformed reset credit.",
-  loginUnreadable: "Claude could not read its login.",
-  accountUnreadable: "Claude could not read its account.",
   signedOut: "Sign in to Claude again to redeem resets.",
   rateLimited: "Claude is rate limiting resets. Try again soon.",
   coolingDown: "Claude resets are cooling down. Try again later.",
@@ -135,44 +125,6 @@ const readJson = Effect.fn("claudeResetCredits.readJson")(function* <S extends S
   );
 });
 
-const readAccessToken = Effect.fn("claudeResetCredits.readAccessToken")(function* (
-  configDir: string,
-) {
-  if ((yield* HostProcess.Platform) === "darwin") return undefined;
-  const path = yield* Path.Path;
-  const credentials = yield* readJson(Credentials, path.join(configDir, ".credentials.json"));
-  return credentials.claudeAiOauth?.accessToken?.trim() || undefined;
-});
-
-const withClaudeHeaders = (token: string, version: string) =>
-  HttpClientRequest.setHeaders({
-    authorization: `Bearer ${token}`,
-    "anthropic-beta": "oauth-2025-04-20",
-    "user-agent": `claude-cli/${version} (external, cli)`,
-  });
-
-export const readClaudeResetCredits = Effect.fn("readClaudeResetCredits")(
-  function* (configDir: string, version: string) {
-    const token = yield* readAccessToken(configDir);
-    if (!token) return undefined;
-    const client = yield* HttpClient.HttpClient;
-    const response = yield* client.execute(
-      HttpClientRequest.get(`${API_BASE}/api/oauth/usage`, {
-        urlParams: { cedar_ember: "1", skip_spend: "1" },
-      }).pipe(withClaudeHeaders(token, version)),
-    );
-    const body = yield* HttpClientResponse.schemaBodyJson(UsageResponse)(
-      yield* HttpClientResponse.filterStatusOk(response),
-    );
-    return claudeResetCreditsToContract(
-      body.cedar_ember,
-      DateTime.toEpochMillis(yield* DateTime.now),
-    );
-  },
-  Effect.timeout("10 seconds"),
-  Effect.orElseSucceed(() => undefined),
-);
-
 export const readClaudeOrganizationId = (accountConfigPath: string) =>
   readJson(Config, accountConfigPath).pipe(
     Effect.map((config) => config.oauthAccount?.organizationUuid?.trim() || undefined),
@@ -226,48 +178,4 @@ export const claudeClaimOutcome = Effect.fn("claudeClaimOutcome")(function* (
     return yield* new ClaudeResetCreditError({ reason: "unconfirmed" });
   }
   return CLAIM_OUTCOMES[claim.result];
-});
-
-export const consumeClaudeResetCredit = Effect.fn("consumeClaudeResetCredit")(function* (input: {
-  readonly configDir: string;
-  readonly accountConfigPath: string;
-  readonly version: string;
-  readonly grantId: string;
-  readonly requestId: string;
-}) {
-  const claim = yield* claudeClaimBody(input.grantId, input.requestId);
-  const token = yield* readAccessToken(input.configDir).pipe(
-    Effect.mapError((cause) => new ClaudeResetCreditError({ reason: "loginUnreadable", cause })),
-  );
-  const config = yield* readJson(Config, input.accountConfigPath).pipe(
-    Effect.mapError((cause) => new ClaudeResetCreditError({ reason: "accountUnreadable", cause })),
-  );
-  const organization = config.oauthAccount?.organizationUuid?.trim();
-  if (!token || !organization) {
-    return yield* new ClaudeResetCreditError({ reason: "signedOut" });
-  }
-  const client = yield* HttpClient.HttpClient;
-  const response = yield* client
-    .execute(
-      HttpClientRequest.post(
-        new URL(
-          `/api/organizations/${encodeURIComponent(organization)}/reset_rate_limits`,
-          API_BASE,
-        ),
-      ).pipe(withClaudeHeaders(token, input.version), HttpClientRequest.bodyJsonUnsafe(claim)),
-    )
-    .pipe(
-      Effect.timeout("25 seconds"),
-      Effect.mapError((cause) => new ClaudeResetCreditError({ reason: "requestFailed", cause })),
-    );
-  const body =
-    response.status >= 200 && response.status < 300
-      ? yield* response.json.pipe(
-          Effect.timeout("25 seconds"),
-          Effect.mapError(
-            (cause) => new ClaudeResetCreditError({ reason: "requestFailed", cause }),
-          ),
-        )
-      : undefined;
-  return yield* claudeClaimOutcome(response.status, body);
 });
