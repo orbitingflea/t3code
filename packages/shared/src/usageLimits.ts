@@ -290,7 +290,9 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
     const creditSource = creditSources.get(key);
     accounts.set(key, {
       ...previous,
-      displayName: previous.displayName ?? next.displayName,
+      // A hub names the login itself; a native instance name such as "Claude" does not.
+      displayName:
+        (next.sourceLabel && next.displayName) || previous.displayName || next.displayName,
       plan: previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
@@ -344,7 +346,11 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         merge(resolveKey(account) ?? key, {
           key,
           driver: account.driver,
-          displayName: account.email ? null : account.id.replace(/\.json$/i, ""),
+          // CLIProxyAPI auth file ids repeat the email; other hub ids (t3switch slugs) name the login.
+          displayName:
+            account.email && /\.json$/i.test(account.id)
+              ? null
+              : account.id.replace(/\.json$/i, ""),
           email: account.email,
           plan: account.plan,
           accentColor: undefined,
