@@ -465,21 +465,28 @@ export function collectLimitPools(
     else byDriver.set(account.driver, [account]);
   }
   return [...byDriver].map(([driver, members]) => {
-    const orderWindow = members
-      .flatMap((account) => account.limits.windows)
-      .sort((left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind])[0];
-    const orderReset = (account: LimitAccount) => {
-      const window = account.limits.windows.find(
-        (window) => orderWindow && poolKey(driver, window) === poolKey(driver, orderWindow),
-      );
-      return (
-        (window ? resetMillis(poolMember(account, window, now).window) : null) ??
-        Number.POSITIVE_INFINITY
-      );
-    };
+    const windows = members.flatMap((account) => account.limits.windows);
+    const resetOf =
+      (orderWindow: ServerProviderUsageWindow | undefined) => (account: LimitAccount) => {
+        const window = account.limits.windows.find(
+          (window) => orderWindow && poolKey(driver, window) === poolKey(driver, orderWindow),
+        );
+        return (
+          (window ? resetMillis(poolMember(account, window, now).window) : null) ??
+          Number.POSITIVE_INFINITY
+        );
+      };
+    // The weekly reset keeps the order stable; the session reset would reshuffle it every few hours.
+    const weeklyReset = resetOf(windows.find((window) => window.kind === "weekly"));
+    const firstReset = resetOf(
+      windows.sort(
+        (left, right) => WINDOW_KIND_ORDER[left.kind] - WINDOW_KIND_ORDER[right.kind],
+      )[0],
+    );
     const sorted = [...members].sort(
       (left, right) =>
-        orderReset(left) - orderReset(right) ||
+        weeklyReset(left) - weeklyReset(right) ||
+        firstReset(left) - firstReset(right) ||
         accountSortName(left).localeCompare(accountSortName(right)) ||
         left.key.localeCompare(right.key),
     );

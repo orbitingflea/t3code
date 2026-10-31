@@ -725,6 +725,50 @@ describe("pools", () => {
     ).toEqual(["weekly", "weekly:secondary"]);
   });
 
+  it("orders accounts by weekly reset, then by the first window for accounts without one", () => {
+    const account = (id: string, sessionReset: string, weeklyReset?: string) => ({
+      id,
+      driver: claude,
+      email: `${id}@example.com`,
+      usageLimits: {
+        checkedAt,
+        windows: [
+          { ...window, resetsAt: sessionReset },
+          ...(weeklyReset ? [{ ...weekly, usedPercent: 20, resetsAt: weeklyReset }] : []),
+        ],
+      },
+    });
+    const input = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          ...laptop,
+          serverConfig: {
+            providers: [],
+            usageLimitSources: [
+              {
+                ...source,
+                accounts: [
+                  account("late-week", "2026-09-03T12:30:00.000Z", "2026-09-08T12:00:00.000Z"),
+                  account("no-week-late", "2026-09-03T16:00:00.000Z"),
+                  account("early-week", "2026-09-03T15:00:00.000Z", "2026-09-04T12:00:00.000Z"),
+                  account("no-week-early", "2026-09-03T13:00:00.000Z"),
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const [pool] = collectLimitPools(collectLimitAccounts(input), now);
+    expect(pool?.accounts.map((account) => account.displayName)).toEqual([
+      "early-week",
+      "late-week",
+      "no-week-early",
+      "no-week-late",
+    ]);
+  });
+
   it("pools windows by id across accounts and orders resets by when they land", () => {
     const input = new Map([
       [
@@ -947,10 +991,10 @@ describe("pooled account columns", () => {
       ]),
     ];
     const [pool] = collectLimitPools(accounts, now);
-    expect(pool!.accounts.map((account) => account.key)).toEqual(["b", "a"]);
+    expect(pool!.accounts.map((account) => account.key)).toEqual(["a", "b"]);
     expect(keys(pool!)).toEqual([
-      ["b", "a"],
-      ["b", "a"],
+      ["a", "b"],
+      ["a", "b"],
     ]);
     expect(pool!.windows[1]!.resets.map((reset) => reset.member.account.key)).toEqual(["a", "b"]);
     expect(pool!.windows[1]!.remainingPercent).toBe(50);
@@ -978,14 +1022,14 @@ describe("pooled account columns", () => {
     },
   );
 
-  it("orders by usable session refill and clears suppression after a fresh weekly reading", () => {
+  it("clears session suppression after a fresh weekly reading", () => {
     const blocked = account("blocked", [
       { ...window, resetsAt: "2026-09-03T13:00:00.000Z" },
       { ...weekly, usedPercent: 100, resetsAt: "2026-09-03T15:00:00.000Z" },
     ]);
     const available = account("available", [window]);
     const [before] = collectLimitPools([blocked, available], now);
-    expect(before!.accounts.map((account) => account.key)).toEqual(["available", "blocked"]);
+    expect(before!.accounts.map((account) => account.key)).toEqual(["blocked", "available"]);
     expect(before!.windows[0]!.remainingPercent).toBe(30);
     const refreshed = {
       ...blocked,
@@ -1016,8 +1060,8 @@ describe("pooled account columns", () => {
       now,
     );
     expect(keys(pool!)).toEqual([
-      ["a", "b", null],
-      [null, "b", "c"],
+      ["b", null, "a"],
+      ["b", "c", null],
     ]);
     expect(pool!.windows[1]!.members.map((member) => member.account.key)).toEqual(["b", "c"]);
     expect(pool!.windows[1]!.remainingPercent).toBe(40);
