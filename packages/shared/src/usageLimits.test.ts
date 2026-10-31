@@ -632,6 +632,60 @@ describe("pools", () => {
     expect(accounts[0]?.displayName).toBe("claude-team-seat");
   });
 
+  it("names hub accounts by their id over the native instance name, one row per login", () => {
+    const codex = ProviderDriverKind.make("codex");
+    const hubAccount = (id: string, driver: typeof claude, email: string) => ({
+      id,
+      driver,
+      email,
+      ...(driver === codex ? { workspaceId: "ws" } : {}),
+      usageLimits: { checkedAt, windows: [window] },
+    });
+    const input = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          ...laptop,
+          serverConfig: {
+            providers: [
+              provider({
+                driver: claude,
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                displayName: "Claude",
+                auth: { status: "authenticated", email: "a@example.com" },
+                usageLimits: { checkedAt, windows: [window] },
+              }),
+              provider({
+                displayName: "Codex",
+                auth: { status: "authenticated", email: "a@example.com", workspaceId: "ws" },
+                usageLimits: { checkedAt, windows: [window] },
+              }),
+            ],
+            usageLimitSources: [
+              {
+                ...source,
+                accounts: [
+                  hubAccount("orbitingflea", claude, "a@example.com"),
+                  hubAccount("renfeiz", claude, "b@example.com"),
+                  hubAccount("orbitingflea", codex, "a@example.com"),
+                  hubAccount("claude-c@example.com.json", claude, "c@example.com"),
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    expect(
+      collectLimitAccounts(input).map((account) => [account.driver, account.displayName]),
+    ).toEqual([
+      ["claudeAgent", "orbitingflea"],
+      ["codex", "orbitingflea"],
+      ["claudeAgent", "renfeiz"],
+      ["claudeAgent", null],
+    ]);
+  });
+
   it("pools Codex windows by kind, whichever slot reported them", () => {
     const codexAccount = (id: string, slots: readonly string[]) => ({
       id,
