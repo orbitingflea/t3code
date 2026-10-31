@@ -1,15 +1,12 @@
 # T3 Code
 
-## About this fork
-
-This is a fork of T3 Code that merges upstream regularly and adds a few features. The rest of this README is upstream's.
-
-- **Whiteboard:** a tldraw whiteboard side by side with T3 Code. You and your agents (and other users, if any) work together by editing the board and pointing at parts of it; both you and the agents can write links to a rectangular region of the board. See fork/whiteboard/README.md.
-- **Better support for switching accounts manually mid-session:**
-  - After a usage limit, a thread also retries after 2 and 30 minutes, on top of T3 Code's default retry, so it recovers sooner if you switch accounts.
-  - New Codex/Antigravity logins are picked up without a full restart.
-- **Math rendering on by default.**
-- **Other small fixes.**
+This is a fork of T3 Code that integrates a few additional features, including:
+- **Whiteboard:** A tldraw whiteboard that sits side-by-side with T3 Code, allowing users to interact with agents (or other users) by editing and pointing to the whiteboard. Both the user and the agents can conveniently write links that point to a rectangular region on the whiteboard.
+- **Better support for manually switching accounts mid-session:**
+  - After hitting the usage limit of an account, the thread now retries after 2 minutes and 30 minutes in addition to the default retry behavior of T3 Code. This allows the thread to recover earlier if the user manually switches the account.
+  - New Codex/Antigravity logins are picked up mid-session without a full restart.
+- Enabling math rendering by default.
+- Other small fixes.
 
 **The following is the README from upstream.**
 
