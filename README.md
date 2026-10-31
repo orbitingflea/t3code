@@ -2,14 +2,14 @@
 
 ## About this fork
 
-This is [orbitingflea/t3code](https://github.com/orbitingflea/t3code), a fork of [T3 Code](https://github.com/pingdotgg/t3code) that merges upstream regularly. The rest of this README is upstream's. The fork adds:
+This is a fork of T3 Code that merges upstream regularly and adds a few features. The rest of this README is upstream's.
 
-- **Whiteboard.** A research whiteboard: a tldraw canvas with a T3 Code chat in a side panel, for Claude Code and Codex threads. Messages and the composer can link to items on the board (`board://` links). The whiteboard's own agent skills load in Claude threads as a local plugin (`T3CODE_CLAUDE_PLUGIN_ROOT`) and in Codex threads as an extra skill folder (`T3CODE_CODEX_SKILL_ROOT`). The embedded instance can run without login behind `T3CODE_UNSAFE_NO_AUTH=1`. See [fork/whiteboard](fork/whiteboard/README.md).
-- **Earlier retries after a usage limit.** A limit can clear before its reported reset, so a thread set to resume automatically retries about 2 and 30 minutes after the limit, then waits for the reset.
-- **A new login is picked up without a restart.** When the Codex or Antigravity login on disk changes to another account (for example after `codex login`), the idle provider process restarts at the next turn and resumes the thread on the new account. A token refresh on the same account does not restart it.
-- **Approvals follow provider cancels.** When the Claude Agent SDK cancels a pending approval or question, for example because a hook answered it first, the card closes and the composer unlocks. A provider cancel no longer erases an answer the user already gave.
-- **Math on by default.** The existing **Render math** setting (**Settings → Appearance**) defaults to on in this fork; upstream defaults it to off. Turning it off still works.
-- **Bold next to CJK punctuation.** `**…**` renders as bold when it touches Chinese or Japanese punctuation.
+- **Whiteboard:** a tldraw whiteboard side by side with T3 Code. You and your agents (and other users, if any) work together by editing the board and pointing at parts of it; both you and the agents can write links to a rectangular region of the board. See fork/whiteboard/README.md.
+- **Better support for switching accounts manually mid-session:**
+  - After a usage limit, a thread also retries after 2 and 30 minutes, on top of T3 Code's default retry, so it recovers sooner if you switch accounts.
+  - New Codex/Antigravity logins are picked up without a full restart.
+- **Math rendering on by default.**
+- **Other small fixes.**
 
 T3 Code is an "agent harness control surface". It enables control of the agents on your machine with a best-in-class mobile app ([iOS](https://apps.apple.com/us/app/t3-code-remote-claude-more/id6787819824), [Android](https://play.google.com/store/apps/details?id=com.t3tools.t3code)), [web app](https://app.t3.codes) and [Electron-based desktop app](https://t3.codes).
 
