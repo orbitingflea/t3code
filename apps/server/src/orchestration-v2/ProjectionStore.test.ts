@@ -4370,6 +4370,8 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
             lastErrorClass: sqlShell.lastErrorClass,
             usageLimitResetAt: sqlShell.usageLimitResetAt,
             latestRunId: sqlShell.latestRunId,
+            latestRunMessageId: projection.runs.find((run) => run.id === sqlShell.latestRunId)!
+              .userMessageId,
             latestRunCompletedAt: sqlShell.latestRunCompletedAt,
             updatedAt: sqlShell.updatedAt,
             archivedAt: sqlShell.archivedAt,
@@ -4544,7 +4546,8 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
       yield* sql`UPDATE orchestration_v2_projection_threads
         SET payload_json = json_set(payload_json, '$.limitRecovery', json(${encodeUnknownJsonString(recovery)}))
         WHERE thread_id = ${threadId}`;
-      assert.isUndefined(
+      // Armed threads stay candidates before the reset so the worker can retry early.
+      assert.isDefined(
         (yield* store.getLimitRecoveryCandidates({ ...recoveryOptions, autoResume: true })).find(
           (row) => row.id === threadId,
         ),

@@ -1,5 +1,5 @@
 import { assert, it } from "@effect/vitest";
-import type { OrchestrationV2DomainEvent } from "@t3tools/contracts";
+import { MessageId, RunId, ThreadId, type OrchestrationV2DomainEvent } from "@t3tools/contracts";
 import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -67,4 +67,46 @@ it.effect("idle sweeps skip SQL until the next wake time or a relevant event", (
       assert.equal(yield* Queue.take(queries), 95_000);
     }).pipe(Effect.provide(layer));
   }),
+);
+
+it.each([
+  ["user-message", 1, null],
+  ["user-message", 2, "limit-retry:0"],
+  ["limit-retry:0:thread:run", 27, null],
+  ["limit-retry:0:thread:run", 28, "limit-retry:1"],
+  ["limit-retry:1:thread:run", 299, null],
+  ["limit-retry:1:thread:run", 300, "limit-resume"],
+  ["limit-resume:thread:run", 2, "limit-retry:0"],
+] as const)(
+  "a run from %s limited at 09:00 retries at +%i minutes: %s",
+  (message, minutes, kind) => {
+    const failedAt = DateTime.makeUnsafe("2026-07-01T09:00:00.000Z");
+    const resetAt = "2026-07-01T14:00:00.000Z";
+    const runId = RunId.make("run");
+    const command = UsageLimitRecoveryWorker.limitRecoveryCommand(
+      {
+        id: ThreadId.make("thread"),
+        status: "failed",
+        lastErrorClass: "usage_limit",
+        latestRunId: runId,
+        latestRunMessageId: MessageId.make(message),
+        latestRunCompletedAt: failedAt,
+        usageLimitResetAt: resetAt,
+        updatedAt: failedAt,
+        archivedAt: null,
+        settledOverride: null,
+        pendingRuntimeRequest: null,
+        limitRecovery: { runId, resetAt, autoResume: true },
+        snoozedUntil: null,
+      },
+      true,
+      DateTime.toEpochMillis(failedAt) + minutes * 60_000,
+    );
+    if (kind === null) assert.isNull(command);
+    else
+      assert.include(
+        command?.type === "message.dispatch" ? command.messageId : "",
+        `${kind}:thread:`,
+      );
+  },
 );

@@ -7387,6 +7387,7 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
 
   it.effect.each([
     "resume",
+    "early-retry",
     "queued-resume",
     "rearm",
     "snooze-race",
@@ -7458,10 +7459,9 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
       const resetAt =
         scenario === "invalid-snooze"
           ? "not-a-date"
-          : DateTime.formatIso(DateTime.add(now, { minutes: 1 })).replace(
-              "Z",
-              scenario === "wake" ? "+00:00" : "Z",
-            );
+          : DateTime.formatIso(
+              DateTime.add(now, { minutes: scenario === "early-retry" ? 60 : 1 }),
+            ).replace("Z", scenario === "wake" ? "+00:00" : "Z");
       yield* events.write({
         commandId: CommandId.make(`recovery:failure:${scenario}`),
         events: [
@@ -7624,6 +7624,87 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
       });
       if (snooze)
         assert.equal(DateTime.toEpochMillis(armedShell.snoozedUntil!), Date.parse(resetAt));
+      if (scenario === "early-retry") {
+        const projections = yield* ProjectionStore.ProjectionStoreV2;
+        const sweep = Effect.gen(function* () {
+          const now = yield* DateTime.now;
+          // Only this thread chose auto-resume; the global setting is off.
+          const candidates = yield* projections.getLimitRecoveryCandidates({
+            now,
+            autoResume: false,
+            snooze: false,
+          });
+          const candidate = candidates.find((row) => row.id === threadId)!;
+          return limitRecoveryCommand(candidate, false, DateTime.toEpochMillis(now));
+        });
+        yield* TestClock.adjust("1 minute");
+        assert.isNull(yield* sweep);
+        yield* TestClock.adjust("1 minute");
+        const retry = yield* sweep;
+        assert(retry?.type === "message.dispatch");
+        assert.isTrue(retry.messageId.startsWith("limit-retry:0:"));
+        yield* orchestrator.dispatch(retry);
+        const retryRun = (yield* orchestrator.getThreadProjection(threadId)).runs[1]!;
+        const failedAt = yield* DateTime.now;
+        yield* events.write({
+          events: [
+            {
+              id: EventId.make("recovery:retry-failed:early-retry"),
+              type: "run.updated",
+              threadId,
+              occurredAt: failedAt,
+              payload: { ...retryRun, status: "failed", completedAt: failedAt },
+            },
+            {
+              id: EventId.make("recovery:retry-error:early-retry"),
+              type: "turn-item.updated",
+              threadId,
+              occurredAt: failedAt,
+              payload: {
+                id: TurnItemId.make("recovery:retry-error:early-retry"),
+                type: "error",
+                threadId,
+                runId: retryRun.id,
+                nodeId: retryRun.rootNodeId,
+                providerThreadId: null,
+                providerTurnId: null,
+                nativeItemRef: null,
+                parentItemId: null,
+                ordinal: 3,
+                status: "failed",
+                title: "Usage limit reached",
+                startedAt: failedAt,
+                completedAt: failedAt,
+                updatedAt: failedAt,
+                failure: {
+                  class: "usage_limit",
+                  message: "Plan limit reached.",
+                  code: "usageLimitExceeded",
+                  retryable: null,
+                  resetAt,
+                },
+              },
+            },
+          ],
+        });
+        const rearm = yield* sweep;
+        assert(rearm?.type === "thread.metadata.update" && rearm.limitRecovery != null);
+        assert.isTrue(rearm.limitRecovery.autoResume);
+        yield* orchestrator.autoArmLimitRecovery({
+          commandId: rearm.commandId,
+          threadId,
+          limitRecovery: rearm.limitRecovery,
+        });
+        yield* TestClock.adjust("27 minutes");
+        assert.isNull(yield* sweep);
+        yield* TestClock.adjust("1 minute");
+        const secondRetry = yield* sweep;
+        assert(secondRetry?.type === "message.dispatch");
+        assert.isTrue(secondRetry.messageId.startsWith("limit-retry:1:"));
+        yield* orchestrator.dispatch(secondRetry);
+        assert.lengthOf((yield* orchestrator.getThreadProjection(threadId)).runs, 3);
+        return;
+      }
       if (scenario === "cancel-resume-keep-snooze") {
         yield* TestClock.adjust("10 seconds");
         yield* orchestrator.dispatch({
