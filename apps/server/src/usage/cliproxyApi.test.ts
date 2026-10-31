@@ -431,17 +431,23 @@ describe("CLIProxyAPI built-in management API", () => {
           "https://api.anthropic.com/api/organizations/org-1/reset_rate_limits",
         );
         expect(redemption?.body?.method).toBe("POST");
-        expect(redemption?.body?.data).toBe(
-          encodeJson({
-            program: "cedar_ember",
-            grant_id: "grant_a",
-            request_id: "2493d13b-1b9d-5e0f-96a6-a8113a4dd7f4",
-          }),
-        );
+        expect(JSON.parse(redemption?.body?.data ?? "")).toEqual({
+          program: "cedar_ember",
+          grant_id: "grant_a",
+          request_id: expect.stringMatching(/^[0-9a-f-]{36}$/),
+        });
         expect(test.requests.some((request) => request.path.endsWith("/reset-quota"))).toBe(
           clearsCooldown,
         );
       }
+      const twice = answer(200, { result: "reset" });
+      const api = yield* twice.api;
+      yield* api.consume(config, "first.json", "grant_a");
+      yield* api.consume(config, "first.json", "grant_a");
+      const requestIds = twice.requests.flatMap((request) =>
+        request.body?.data ? [JSON.parse(request.body.data).request_id] : [],
+      );
+      expect(new Set(requestIds).size).toBe(2);
       for (const [status, body, detail] of [
         [200, { result: "cooldown" }, "Claude resets are cooling down. Try again later."],
         [

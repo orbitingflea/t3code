@@ -498,13 +498,10 @@ export const makeCliproxyApi = Effect.gen(function* () {
           detail: "The hub account is missing or disabled.",
         });
       }
-      const requestId = yield* creditRedeemRequestId(
-        account.id_token?.chatgpt_account_id ?? account.id,
-        creditId,
-      ).pipe(Effect.provideService(Crypto.Crypto, crypto));
       const outcome =
         account.provider === "claude"
-          ? yield* claimClaude(config, account, creditId, requestId).pipe(
+          ? // A Claude grant can hold several resets, so each claim needs its own request id.
+            yield* claimClaude(config, account, creditId, yield* crypto.randomUUIDv4()).pipe(
               Effect.catchTags({
                 ClaudeResetCreditError: (error) =>
                   Effect.fail(new UsageLimitSourceError({ detail: error.message })),
@@ -513,7 +510,10 @@ export const makeCliproxyApi = Effect.gen(function* () {
           : CODEX_CLAIM_OUTCOMES[
               (yield* decodeConsumeResponse(
                 yield* apiCall(config, account, `${CREDIT_URL}/consume`, {
-                  redeem_request_id: requestId,
+                  redeem_request_id: yield* creditRedeemRequestId(
+                    account.id_token?.chatgpt_account_id ?? account.id,
+                    creditId,
+                  ).pipe(Effect.provideService(Crypto.Crypto, crypto)),
                   credit_id: creditId,
                 }),
               )).code
