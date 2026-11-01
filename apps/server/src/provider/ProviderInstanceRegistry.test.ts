@@ -17,7 +17,6 @@ import {
   SecretProviderId,
   SettingsSecretValue,
   type SecretReference,
-  UsageLimitSourceId,
 } from "@t3tools/contracts";
 import * as ProviderLatestVersions from "@t3tools/provider-core/server/ProviderLatestVersions";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -59,10 +58,6 @@ const layerTestHttpClient = Layer.succeed(
   HttpClient.make((request) =>
     Effect.succeed(HttpClientResponse.fromWeb(request, Response.json({ version: "0.0.0" }))),
   ),
-);
-
-const decodeHubCall = Schema.decodeUnknownSync(
-  Schema.fromJsonString(Schema.Struct({ url: Schema.String })),
 );
 
 // The mock CLIs from makeTildeProviderFixtures are scripts Windows cannot execute.
@@ -587,16 +582,7 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
     }).pipe(Effect.provide(layerTest)),
   );
 
-  const redeemClaudeReset = (claim: {
-    result: string;
-    usageFailsAfterClaim: boolean;
-    usageSourceOnly?: boolean;
-    hub?: {
-      accounts: ReadonlyArray<{ email: string; organization_uuid?: string }>;
-      listStatus?: number;
-      usageStatus?: number;
-    };
-  }) =>
+  const redeemClaudeReset = (claim: { result: string; usageFailsAfterClaim: boolean }) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -608,65 +594,27 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
       );
       yield* fs.writeFileString(
         path.join(fixtures.claudeHomePath, ".claude.json"),
-        '{"oauthAccount":{"emailAddress":"test@example.com","organizationUuid":"fake-org"}}',
+        '{"oauthAccount":{"organizationUuid":"fake-org"}}',
       );
-      const direct: Array<string> = [];
-      const viaHub: Array<string> = [];
-      let hubRedeemed = false;
-      const credits = {
-        eligible: true,
-        next_grant_id: "grant_a",
-        grants: [{ id: "grant_a", resets_left: 1, usable_now: true }],
-      };
       const client = HttpClient.make((request) =>
         Effect.gen(function* () {
-          const json = (body: unknown, status = 200) =>
-            HttpClientResponse.fromWeb(request, Response.json(body, { status }));
-          const url = new URL(request.url);
-          if (claim.hub && url.host === "hub.test") {
-            if (url.pathname.endsWith("/auth-files")) {
-              viaHub.push("auth-files");
-              return json(
-                {
-                  files: claim.hub.accounts.map((account, index) => ({
-                    id: `${index}.json`,
-                    auth_index: `${index}`,
-                    provider: "claude",
-                    ...account,
-                  })),
-                },
-                claim.hub.listStatus,
-              );
-            }
-            if (url.pathname.endsWith("/reset-quota")) {
-              viaHub.push("reset-quota");
-              return json({});
-            }
-            const call = decodeHubCall(
-              request.body._tag === "Uint8Array" ? new TextDecoder().decode(request.body.body) : "",
-            );
-            viaHub.push(call.url);
-            if (call.url.endsWith("/reset_rate_limits")) {
-              hubRedeemed = true;
-              return json({ status_code: 200, body: JSON.stringify({ result: claim.result }) });
-            }
-            return json({
-              status_code: claim.hub.usageStatus ?? 200,
-              body: JSON.stringify({
-                five_hour: { utilization: hubRedeemed ? 0 : 100, resets_at: null },
-                cedar_ember: credits,
-              }),
-            });
-          }
-          if (url.host === "api.anthropic.com") direct.push(url.pathname);
           if (request.url.endsWith("/api/oauth/usage")) {
-            return json({ cedar_ember: credits });
+            return HttpClientResponse.fromWeb(
+              request,
+              Response.json({
+                cedar_ember: {
+                  eligible: true,
+                  next_grant_id: "grant_a",
+                  grants: [{ id: "grant_a", resets_left: 1, usable_now: true }],
+                },
+              }),
+            );
           }
           if (request.url.endsWith("/reset_rate_limits")) {
             yield* fs.writeFileString(marker, "redeemed").pipe(Effect.orDie);
-            return json({ result: claim.result });
+            return HttpClientResponse.fromWeb(request, Response.json({ result: claim.result }));
           }
-          return json({ version: "0.0.0" });
+          return HttpClientResponse.fromWeb(request, Response.json({ version: "0.0.0" }));
         }),
       );
       const instanceId = ProviderInstanceId.make("claude_reset");
@@ -681,9 +629,6 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
               ...(claim.usageFailsAfterClaim
                 ? [{ name: "T3_CLAUDE_USAGE_FAILS_AFTER_CLAIM", value: "1", sensitive: false }]
                 : []),
-              ...(claim.usageSourceOnly
-                ? [{ name: "T3CODE_CLAUDE_USAGE_SOURCE_ONLY", value: "1", sensitive: false }]
-                : []),
             ],
             config: makeClaudeConfig({
               enabled: true,
@@ -692,30 +637,14 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
             }),
           },
         },
-      }).pipe(
-        Effect.provideService(HttpClient.HttpClient, client),
-        Effect.provide(
-          ServerSettings.layerTest(
-            claim.hub
-              ? {
-                  usageLimitSources: {
-                    [UsageLimitSourceId.make("hub")]: {
-                      kind: "cliproxy",
-                      url: "http://hub.test",
-                      managementKey: "hub-key",
-                      enabled: true,
-                    },
-                  },
-                }
-              : {},
-          ),
-        ),
-      );
+      }).pipe(Effect.provideService(HttpClient.HttpClient, client));
       const instance = yield* registry.getInstance(instanceId);
       expect(instance).toBeDefined();
       const before = yield* instance!.snapshot.refresh;
+      expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
+      expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
       const outcome = yield* instance!.consumeResetCredit!().pipe(Effect.result);
-      return { before, outcome, after: yield* instance!.snapshot.getSnapshot, direct, viaHub };
+      return { outcome, after: yield* instance!.snapshot.getSnapshot };
     }).pipe(
       // macOS logins live in the Keychain, where resets are never read.
       Effect.provideService(HostProcess.Platform, "linux"),
@@ -724,25 +653,12 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
 
   it.live.skipIf(windowsHost)("refreshes Claude usage after redeeming a reset", () =>
     Effect.gen(function* () {
-      for (const accounts of [
-        [],
-        [
-          { email: "test@example.com", organization_uuid: "other-org" },
-          { email: "test@example.com" },
-        ],
-      ]) {
-        const { before, outcome, after, direct, viaHub } = yield* redeemClaudeReset({
-          result: "reset",
-          usageFailsAfterClaim: false,
-          hub: { accounts },
-        });
-        expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
-        expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
-        expect(outcome).toMatchObject({ _tag: "Success", success: "reset" });
-        expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);
-        expect(direct).toContain("/api/organizations/fake-org/reset_rate_limits");
-        expect(viaHub.every((call) => call === "auth-files")).toBe(true);
-      }
+      const { outcome, after } = yield* redeemClaudeReset({
+        result: "reset",
+        usageFailsAfterClaim: false,
+      });
+      expect(outcome).toMatchObject({ _tag: "Success", success: "reset" });
+      expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);
     }),
   );
 
@@ -755,72 +671,6 @@ describe("ProviderInstanceRegistry — multi-instance codex slice", () => {
           usageFailsAfterClaim: true,
         });
         expect(outcome).toMatchObject({ _tag: "Success", success: "alreadyRedeemed" });
-      }),
-  );
-
-  it.live.skipIf(windowsHost)(
-    "reads and redeems a Claude login only through the usage source holding it",
-    () =>
-      Effect.gen(function* () {
-        const { before, outcome, after, direct, viaHub } = yield* redeemClaudeReset({
-          result: "reset",
-          usageFailsAfterClaim: false,
-          hub: { accounts: [{ email: "TEST@example.com", organization_uuid: "fake-org" }] },
-        });
-        expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
-        expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
-        expect(outcome).toMatchObject({ _tag: "Success", success: "reset" });
-        expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);
-        expect(direct).toEqual([]);
-        expect(viaHub).toContain(
-          "https://api.anthropic.com/api/organizations/fake-org/reset_rate_limits",
-        );
-        expect(viaHub).toContain("reset-quota");
-      }),
-  );
-
-  it.live.skipIf(windowsHost)(
-    "never reads Claude directly for a login no usage source holds when sources are required",
-    () =>
-      Effect.gen(function* () {
-        for (const hub of [undefined, { accounts: [{ email: "test@example.com" }] }]) {
-          const { before, outcome, direct } = yield* redeemClaudeReset({
-            result: "reset",
-            usageFailsAfterClaim: false,
-            usageSourceOnly: true,
-            ...(hub ? { hub } : {}),
-          });
-          expect(before.usageLimits?.unavailable).toMatchObject({
-            reason: "probeFailed",
-            message: "No usage source holds this Claude login.",
-          });
-          expect(outcome).toMatchObject({ _tag: "Success", success: "noCredit" });
-          expect(direct).toEqual([]);
-        }
-      }),
-  );
-
-  it.live.skipIf(windowsHost)(
-    "shows a usage source failure instead of reading Claude directly",
-    () =>
-      Effect.gen(function* () {
-        for (const failure of [{ usageStatus: 503 }, { listStatus: 500 }]) {
-          const { before, outcome, direct } = yield* redeemClaudeReset({
-            result: "reset",
-            usageFailsAfterClaim: false,
-            hub: {
-              accounts: [{ email: "test@example.com", organization_uuid: "fake-org" }],
-              ...failure,
-            },
-          });
-          expect(before.usageLimits?.unavailable).toMatchObject({
-            reason: "probeFailed",
-            message: expect.any(String),
-          });
-          expect(before.usageLimits?.resetCredits).toBeUndefined();
-          expect(outcome).toMatchObject({ _tag: "Success", success: "noCredit" });
-          expect(direct).toEqual([]);
-        }
       }),
   );
 
