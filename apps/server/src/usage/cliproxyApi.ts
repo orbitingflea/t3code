@@ -17,6 +17,7 @@ import { codexPlanLabel } from "../provider/CodexProvider.ts";
 import { codexRateLimitsToLimits } from "../provider/codexUsageLimits.ts";
 import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import * as ClaudeHub from "../fork/claudeUsageSource/claudeHub.ts";
 
 const AuthFile = Schema.Struct({
   id: Schema.String,
@@ -25,6 +26,7 @@ const AuthFile = Schema.Struct({
   label: Schema.optional(Schema.String),
   email: Schema.optional(Schema.String),
   disabled: Schema.optional(Schema.Boolean),
+  organization_uuid: Schema.optional(Schema.String),
   id_token: Schema.optional(
     Schema.Struct({
       chatgpt_account_id: Schema.optional(Schema.String),
@@ -194,7 +196,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
       .pipe(
         Effect.flatMap(HttpClientResponse.filterStatusOk),
         Effect.flatMap((response) => response.json),
-        Effect.timeout("15 seconds"),
+        Effect.timeout(ClaudeHub.managementTimeout(body)),
         Effect.mapError(
           (error) => new UsageLimitSourceError({ detail: describeManagementFailure(error) }),
         ),
@@ -206,6 +208,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     const response = yield* management(config, "auth-files");
     return (yield* decodeAuthFiles(response)).files;
   });
+  const claude = yield* ClaudeHub.makeClaudeHub(management, authFiles);
 
   const apiCall = Effect.fn("CliproxyApi.apiCall")(function* (
     config: UsageLimitSourceConfig,
@@ -227,8 +230,6 @@ export const makeCliproxyApi = Effect.gen(function* () {
         : {
             Authorization: "Bearer $TOKEN$",
             "anthropic-beta": "oauth-2025-04-20",
-            // The OAuth usage endpoint can return 429 without a Claude Code user agent.
-            "User-Agent": "claude-code/2.1.273",
           };
     const raw = yield* management(config, "api-call", {
       auth_index: account.auth_index,
@@ -279,7 +280,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     };
     const read = Effect.gen(function* () {
       if (account.provider === "claude") {
-        const body = yield* apiCall(config, account, "https://api.anthropic.com/api/oauth/usage");
+        const body = yield* apiCall(config, account, ClaudeHub.CLAUDE_USAGE_URL);
         const usage = yield* decodeClaudeUsage(body);
         const model_scoped = (usage.limits ?? []).flatMap((limit) =>
           limit.kind === "weekly_scoped" && limit.scope?.model && typeof limit.percent === "number"
@@ -299,7 +300,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
           spend: usage.spend,
           extra_usage: usage.extra_usage ?? null,
         };
-        return {
+        return yield* claude.withResetCredits(body, {
           ...base,
           plan: "Claude Subscription",
           usageLimits: claudeUsageResponseToLimits({
@@ -309,7 +310,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
               rate_limits: rateLimits,
             },
           }).limits,
-        };
+        });
       }
       const body = yield* apiCall(config, account, `${CODEX_BASE}/usage`);
       const usage = yield* decodeCodexUsage(body);
@@ -394,9 +395,10 @@ export const makeCliproxyApi = Effect.gen(function* () {
   ): Effect.fn.Return<ProviderConsumeResetCreditResult, UsageLimitSourceError> {
     const operation = Effect.gen(function* () {
       const account = (yield* authFiles(config)).find((account) => account.id === accountId);
+      if (account?.provider === "claude") return yield* claude.consume(config, account, creditId);
       if (!account || account.disabled || account.provider !== "codex") {
         return yield* new UsageLimitSourceError({
-          detail: "The Codex hub account is missing or disabled.",
+          detail: "The hub account is missing or disabled.",
         });
       }
       const body = yield* apiCall(config, account, `${CREDIT_URL}/consume`, {
@@ -439,5 +441,5 @@ export const makeCliproxyApi = Effect.gen(function* () {
       ),
     );
   });
-  return { readAccounts, consume };
+  return { readAccounts, consume, claude };
 });

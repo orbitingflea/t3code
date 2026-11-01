@@ -12,9 +12,9 @@ import * as Schema from "effect/Schema";
 import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 
 const API_BASE = "https://api.anthropic.com";
-const PROGRAM = "cedar_ember";
-const GRANT_ID = /^[a-z0-9_-]{1,40}$/;
-const REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
+export const PROGRAM = "cedar_ember";
+export const GRANT_ID = /^[a-z0-9_-]{1,40}$/;
+export const REQUEST_ID = /^[A-Za-z0-9_-]{1,64}$/;
 const COMPLETE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
 
 const Credentials = Schema.Struct({
@@ -42,7 +42,7 @@ const UsageResponse = Schema.Struct({
   cedar_ember: Schema.optional(Schema.NullOr(Schema.Unknown)),
 });
 const decodeCedarEmber = Schema.decodeUnknownOption(CedarEmber);
-const ClaimResponse = Schema.Struct({
+export const ClaimResponse = Schema.Struct({
   result: Schema.Literals([
     "reset",
     "already_used",
@@ -65,7 +65,7 @@ const RESET_CREDIT_FAILURES = {
   requestFailed: "Claude could not redeem the reset.",
 } as const;
 
-class ClaudeResetCreditError extends Schema.TaggedError<ClaudeResetCreditError>()(
+export class ClaudeResetCreditError extends Schema.TaggedError<ClaudeResetCreditError>()(
   "ClaudeResetCreditError",
   {
     reason: Schema.Literals(
@@ -187,7 +187,7 @@ export const claudeAccountConfigPath = Effect.fn("claudeAccountConfigPath")(func
     : path.join(yield* HostProcess.HomeDirectory, ".claude.json");
 });
 
-const CLAIM_OUTCOMES = {
+export const CLAIM_OUTCOMES = {
   reset: "reset",
   not_limited: "nothingToReset",
   already_used: "alreadyRedeemed",

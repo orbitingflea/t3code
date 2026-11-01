@@ -318,9 +318,9 @@ describe("CLIProxyAPI built-in management API", () => {
     Effect.gen(function* () {
       const test = fixture({
         accounts: [{ ...accounts[0]!, provider: "claude" }],
-        // The usage endpoint answers 429 to requests without a Claude Code user agent.
+        // The hub sets its own client headers.
         upstream: (request) => ({
-          status: request.header?.["User-Agent"]?.startsWith("claude-code/") ? 200 : 429,
+          status: request.header?.["User-Agent"] === undefined ? 200 : 400,
           body: {
             five_hour: { utilization: 10, resets_at: null },
             seven_day: { utilization: 50, resets_at: "2099-01-01T00:00:00Z" },

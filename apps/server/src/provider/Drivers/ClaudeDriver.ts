@@ -26,10 +26,10 @@ import { claudeUsageReader } from "./claudeUsage.ts";
 import { makeClaudeScopedLimitNames } from "../claudeUsageLimits.ts";
 import * as ClaudeResetCredits from "../claudeResetCredits.ts";
 import * as ResetCreditCoordinator from "../resetCreditCoordinator.ts";
+import { makeClaudeLoginSource } from "../../fork/claudeUsageSource/claudeLoginSource.ts";
 import {
   checkClaudeProviderStatus,
   makePendingClaudeProvider,
-  probeClaudeCapabilities,
   probeClaudeWorkspaceSnapshot,
   type ClaudeCapabilitiesProbe,
 } from "../ClaudeProvider.ts";
@@ -161,6 +161,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         ? configDir
         : undefined,
     );
+    const claudeSource = yield* makeClaudeLoginSource(accountConfigPath, processEnv);
     const stampIdentity = withInstanceIdentity({
       instanceId,
       driverKind: DRIVER_KIND,
@@ -203,7 +204,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
     const lastGoodCapabilities = yield* Ref.make<ClaudeCapabilitiesProbe | undefined>(undefined);
     const capabilitiesProbeCache = yield* Cache.makeWith(
       () =>
-        probeClaudeCapabilities(effectiveConfig, processEnv, stateDir).pipe(
+        claudeSource.probe(effectiveConfig, processEnv, stateDir).pipe(
           Effect.flatMap((capabilities) =>
             ClaudeResetCredits.readClaudeOrganizationId(accountConfigPath).pipe(
               Effect.map((workspaceId) => ({
@@ -271,6 +272,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
                   Effect.provideService(HttpClient.HttpClient, httpClient),
                   Effect.provideService(FileSystem.FileSystem, fileSystem),
                   Effect.provideService(Path.Path, path),
+                  claudeSource.resetCredits,
                 ),
             ),
           ),
@@ -334,6 +336,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
         const grantId = current.usageLimits?.resetCredits?.nextCreditId;
         if (!grantId || !current.version) return "noCredit" as const;
         const version = current.version;
+        const viaSource = yield* claudeSource.claimRoute(grantId);
         return yield* resetCreditCoordinator.redeem(
           configDir,
           (requestId) =>
@@ -343,7 +346,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
               version,
               grantId,
               requestId,
-            }),
+            }).pipe(viaSource(requestId)),
           ClaudeResetCredits.isSettledClaudeResetCreditFailure,
         );
       },
@@ -356,7 +359,7 @@ export const ClaudeDriver: ProviderDriver<ClaudeSettings, ClaudeDriverEnv, Path.
             driver: DRIVER_KIND,
             instanceId,
             detail:
-              cause._tag === "ClaudeResetCreditError"
+              cause._tag === "ClaudeResetCreditError" || cause._tag === "UsageLimitSourceError"
                 ? cause.message
                 : "Claude could not redeem the reset.",
             cause,
