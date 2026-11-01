@@ -150,6 +150,11 @@ const redeemClaudeReset = (claim: {
             status_code: claim.hub.usageStatus ?? 200,
             body: JSON.stringify({
               five_hour: { utilization: hubRedeemed ? 0 : 100, resets_at: null },
+              spend: {
+                enabled: true,
+                used: { amount_minor: 4_631, currency: "USD", exponent: 2 },
+                limit: { amount_minor: 50_000, currency: "USD", exponent: 2 },
+              },
               cedar_ember: credits,
             }),
           });
@@ -243,6 +248,7 @@ describe("Claude logins held by a usage source", () => {
         hub: { accounts: [{ email: "TEST@example.com", organization_uuid: "fake-org" }] },
       });
       expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
+      expect(before.usageLimits?.windows.map((window) => window.id)).toContain("monthly_spend");
       expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
       expect(outcome).toMatchObject({ _tag: "Success", success: "reset" });
       expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);

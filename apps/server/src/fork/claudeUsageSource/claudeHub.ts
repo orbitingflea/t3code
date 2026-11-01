@@ -35,6 +35,17 @@ const ClaudeUsage = Schema.Struct({
   cedar_ember: Schema.optional(Schema.NullOr(Schema.Unknown)),
   five_hour: Schema.optional(Schema.NullOr(ClaudeWindow)),
   seven_day: Schema.optional(Schema.NullOr(ClaudeWindow)),
+  spend: Schema.optional(Schema.Unknown),
+  extra_usage: Schema.optional(
+    Schema.NullOr(
+      Schema.Struct({
+        is_enabled: Schema.Boolean,
+        monthly_limit: Schema.NullOr(Schema.Number),
+        used_credits: Schema.NullOr(Schema.Number),
+        utilization: Schema.NullOr(Schema.Number),
+      }),
+    ),
+  ),
   limits: Schema.optional(
     Schema.Array(
       Schema.Struct({
@@ -61,7 +72,7 @@ const encodeJson = Schema.encodeEffect(Schema.fromJsonString(Schema.Unknown));
 const isUsageLimitSourceError = Schema.is(UsageLimitSourceError);
 
 const CLAUDE_API = "https://api.anthropic.com/api";
-export const CLAUDE_USAGE_URL = `${CLAUDE_API}/oauth/usage?cedar_ember=1&skip_spend=1`;
+export const CLAUDE_USAGE_URL = `${CLAUDE_API}/oauth/usage?cedar_ember=1`;
 
 /** A redeem waits on the hub's own call to the provider, which can take longer than a read. */
 export const managementTimeout = (body: unknown) =>
@@ -147,6 +158,8 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
             five_hour: usage.five_hour ?? null,
             seven_day: usage.seven_day ?? null,
             model_scoped,
+            spend: usage.spend,
+            extra_usage: usage.extra_usage ?? null,
           },
         },
         resetCredits: yield* resetCredits(usage),

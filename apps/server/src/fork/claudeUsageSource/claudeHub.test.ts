@@ -111,7 +111,7 @@ describe("Claude through a CLIProxyAPI hub", () => {
         nextExpiresAt: "2099-01-01T00:00:00.000Z",
       });
       expect(test.requests.find((request) => request.body?.url)?.body?.url).toBe(
-        "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1",
+        "https://api.anthropic.com/api/oauth/usage?cedar_ember=1",
       );
     }),
   );
