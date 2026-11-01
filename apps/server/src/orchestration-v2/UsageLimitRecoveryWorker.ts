@@ -12,6 +12,8 @@ import * as ProjectionStore from "./ProjectionStore.ts";
 import * as Orchestrator from "./Orchestrator.ts";
 import * as ThreadManagement from "./ThreadManagementService.ts";
 
+const MAX_OVERDUE_ARM_MS = 24 * 60 * 60 * 1000;
+
 const nextRetry = (thread: ProjectionStore.ProjectionLimitRecoveryCandidate) =>
   Orchestrator.nextLimitRetry(
     DateTime.toEpochMillis(thread.latestRunCompletedAt ?? thread.updatedAt),
@@ -45,6 +47,7 @@ export function limitRecoveryCommand(
   const identity = `${thread.id}:${thread.latestRunId}:${resetMs}`;
   const recovery = thread.limitRecovery;
   if (recovery?.runId !== thread.latestRunId || recovery.resetAt !== thread.usageLimitResetAt) {
+    if (nowMs - resetMs > MAX_OVERDUE_ARM_MS) return null;
     // An early retry that hits the limit again keeps the thread's auto-resume choice.
     const resume =
       autoResume ||
