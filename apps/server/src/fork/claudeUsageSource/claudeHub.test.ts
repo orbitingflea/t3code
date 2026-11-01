@@ -181,6 +181,7 @@ describe("Claude through a CLIProxyAPI hub", () => {
           "https://api.anthropic.com/api/organizations/org-1/reset_rate_limits",
         );
         expect(redemption?.body?.method).toBe("POST");
+        expect(redemption?.body?.header?.["Content-Type"]).toBe("application/json");
         expect(JSON.parse(redemption?.body?.data ?? "")).toEqual({
           program: "cedar_ember",
           grant_id: "grant_a",

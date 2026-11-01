@@ -90,7 +90,11 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
       auth_index: account.auth_index,
       method: data === undefined ? "GET" : "POST",
       url,
-      header: { Authorization: "Bearer $TOKEN$", "anthropic-beta": "oauth-2025-04-20" },
+      header: {
+        Authorization: "Bearer $TOKEN$",
+        "anthropic-beta": "oauth-2025-04-20",
+        ...(data === undefined ? {} : { "Content-Type": "application/json" }),
+      },
       ...(data === undefined ? {} : { data: yield* encodeJson(data) }),
     });
     return yield* decodeApiResponse(raw);
@@ -201,7 +205,10 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
   const clearCooldown = (config: UsageLimitSourceConfig, account: HubAccount) =>
     management(config, "reset-quota", { auth_index: account.auth_index });
 
-  /** The source account holding a directly signed-in Claude login, if exactly one source has it. */
+  /**
+   * The source account holding a directly signed-in Claude login, if exactly one source has it.
+   * A source that cannot list its accounts fails the lookup; it never counts as no match.
+   */
   const findLogin = Effect.fn("ClaudeHub.findLogin")(function* (
     sources: ReadonlyArray<UsageLimitSourceConfig>,
     login: ClaudeLogin,
