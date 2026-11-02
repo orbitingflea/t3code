@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Starts, checks and stops a disposable whiteboard (sync server, web server, optional embedded T3)
-# for this checkout. Every run lives in <repo>/.t3/wb-verify/<run>/ and never touches ~/.whiteboard.
+# for this checkout. Every run lives in <repo>/.t3/wb-verify/<run>/ and never writes to ~/.whiteboard.
 set -euo pipefail
 
 REPO=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/../../../.." && pwd)
@@ -92,7 +92,7 @@ EOF
   (cd "$WB" && start "$run" sync env HOME="$home" node --import tsx server/main.ts)
   (cd "$WB" && start "$run" web env HOME="$home" node node_modules/vite/bin/vite.js)
   if ((chat)); then
-    # A repository of its own, so agents in the chat cannot reach this checkout through git.
+    # A repository of its own for the project the chat adds, so the chat does not show this checkout's branch.
     git init -q "$run/project"
     # The private HOME also points any agent's `wb` at this run's board instead of the live one.
     (cd "$REPO" && start "$run" chat env HOME="$home" T3_PORT="$chat_port" T3_DATA="$run/t3-userdata" \

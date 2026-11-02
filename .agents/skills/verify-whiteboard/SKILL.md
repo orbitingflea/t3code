@@ -35,7 +35,7 @@ Pick a seed from `ls ~/.whiteboard/data`. An empty room fails `board-reference.m
 wb-verify.sh doctor <run>
 ```
 
-It is read-only and checks that each started process is alive, the sync API answers, the page is served, the page's `/sync` proxy reaches the sync server, and with `--chat` that `/chat/` serves T3's whiteboard build. Run it first whenever something looks off. A failing line names the log to read in `<run>/logs/`.
+It is read-only and checks that each started process is alive, the sync API answers, the page is served, the page's `/sync` proxy reaches the sync server, and with `--chat` that `/chat/` serves T3's whiteboard build. Run it first whenever something looks off. A dead process names its log in `<run>/logs/`; a failing HTTP check names its URL.
 
 ## Drive
 
