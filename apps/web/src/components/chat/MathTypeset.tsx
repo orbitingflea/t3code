@@ -2,6 +2,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import type { ReactNode } from "react";
 
+import { mathMacros } from "../../fork/mathMacros";
 import { LRUCache } from "../../lib/lruCache";
 
 // Virtualized threads remount messages while scrolling; cached markup keeps
@@ -23,7 +24,7 @@ function typeset(tex: string, display: boolean): string {
       strict: "ignore",
       maxSize: 20,
       maxExpand: 1000,
-      macros: { "\\eps": "\\varepsilon" },
+      macros: mathMacros(),
     });
   } catch {
     // Unfinished or unsupported TeX stays readable as its source.

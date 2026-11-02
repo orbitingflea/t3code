@@ -2,6 +2,7 @@ import DOMPurify from "dompurify";
 import type { DiagramType, MathResolver } from "pele/lazy";
 import { use, useState } from "react";
 
+import { mathMacros } from "../../fork/mathMacros";
 import { serializeCodeBlockToMarkdown } from "../../markdown-clipboard";
 import { Button } from "../ui/button";
 
@@ -72,6 +73,7 @@ function loadMath(): Promise<MathResolver | null> {
             strict: "ignore",
             maxSize: 20,
             maxExpand: 1000,
+            macros: mathMacros(),
           });
           const expression = probe.querySelector("math");
           // The annotation repeats the TeX source; the sanitizer would keep its text.
