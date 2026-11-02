@@ -1100,6 +1100,7 @@ describe("AntigravityAdapterV2 runtime mode ceiling", () => {
       const instanceId = ProviderInstanceId.make("antigravity-ceiling-test");
       const adapter = yield* makeAntigravityAdapterV2({
         instanceId,
+        profileDirectory: unusedProfileDirectory,
         selfInvocation: yield* resolveSelfInvocation(),
         makeRuntime: (input) =>
           makeAntigravityAcpRuntime({
