@@ -5,7 +5,7 @@ A person types text with `$...$` on the board and sees the formula typeset with 
 ## Sub-features
 
 - `math-edit` typesets a formula while the text is being edited.
-- `math-commit` keeps the typeset formula after Escape, and stores the raw `$...$` text.
+- `math-commit` keeps the typeset formula after Escape.
 - `math-zoom` stays correct at 90% and 51% zoom.
 - `math-first-click` the first double-click after a hard reload starts text editing.
 - `math-cli` a `wb write --text '$...$'` shape renders typeset.

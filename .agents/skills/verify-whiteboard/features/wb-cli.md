@@ -27,11 +27,11 @@ Preconditions: a run from `up --seed <slug>` with a non-empty room; env loaded.
 - **Edit.** `wb write --id <rect id> --text 'verify box edited'`. Same id, same geometry.
 - **Read a region.** `wb read board://r/80,1080,600,200`. Both new shapes, with the edited text. Seeded shapes in that area appear too.
 - **Picture.** `wb shot board://r/80,1080,600,200 --out $WB_VERIFY_RUN/evidence/region.png`. Open it: a yellow note with the formula typeset, and a blue box reading `verify box edited`.
-- **Stored.** `curl -s "$WHITEBOARD_API_URL/api/board?room=main" | jq '[.[] | select(.id | startswith("shape:wb-"))]'`. The two shapes are stored.
+- **Stored.** `curl -s "$WHITEBOARD_API_URL/api/board?room=main" | jq '[.[] | select(.id | startswith("shape:wb-"))]'`. Both new ids are in the list.
 - **Delete.** `wb delete <note id> <rect id>`. Prints both under `deleted`; `wb read` is back to the count in `read-before.json`.
 
 ## Gotchas
 
 - `--id` edits; it does not name a new shape. `write --id <new name> --type note` fails with "--type cannot be changed on an existing shape".
 - `shot` drives Chrome through the run's page (`webPort`) and takes about 5 s.
-- Without `wb-verify.sh wb`, `wb` uses the real HOME's config and the room of the current directory: the live board.
+- Without `wb-verify.sh wb`, `wb` uses the real HOME's config, so it writes to the live board, in the room of this checkout's main folder.

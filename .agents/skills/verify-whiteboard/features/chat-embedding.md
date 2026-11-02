@@ -20,7 +20,7 @@ The board page shows this repository's T3 Code in a panel beside the board, load
 
 Preconditions: `vp i` and the whiteboard build of `apps/web` (see the skill's Launch); a run from `up --chat`; doctor passes, including the `/chat/` line.
 
-- **Journey.** `node .agents/skills/verify-whiteboard/scripts/chat-journey.mjs <run>`. Exit 0, and the printed `steps` list all five sub-features. On a fresh run it first dismisses T3's setup dialog and adds `<run>/project` through Add project, Local folder.
+- **Journey.** `node .agents/skills/verify-whiteboard/scripts/chat-journey.mjs <run>`. Exit 0, and the printed `steps` have a line for each of the five sub-features. On a fresh run it first dismisses T3's setup dialog and adds `<run>/project` through Add project, Local folder.
 - **Proof.** Open `<run>/evidence/chat-*.png`: the loaded chat, a `wb`-written note on the project's board, the `Area 1` chip in the composer, each collapsed state with its button, and the restored layout.
 - **T3 screens.** For anything inside the chat beyond these steps, follow [test-t3-app](../../test-t3-app/SKILL.md) against the run's `/chat/` URL.
 

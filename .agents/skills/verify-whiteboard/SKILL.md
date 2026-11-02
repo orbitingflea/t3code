@@ -25,7 +25,7 @@ wb-verify.sh up --seed <slug>        # board only, room "main" starts as a copy 
 wb-verify.sh up --chat [--seed ...]  # also the embedded T3 Code chat
 ```
 
-`up` prints the run directory once the checks in Doctor below pass, and fails with the logs' location after 120 failed checks, about two minutes or more. A run gets free ports and its own `HOME` folder in `.t3/wb-verify/<run>/`. It never writes to `~/.whiteboard` and reads it only for the seed copy. Several runs can live side by side. `<run>/env` holds `WHITEBOARD_URL` (the page), `WHITEBOARD_API_URL` (the sync server), `WB_VERIFY_HOME`, and `WB_VERIFY_RUN`. Load it with `set -a; source <run>/env; set +a`.
+`up` prints the run directory once the checks in Doctor below pass. After 120 failed checks, about two minutes or more, it fails and prints where the logs are. A run gets free ports and its own `HOME` folder in `.t3/wb-verify/<run>/`. It never writes to `~/.whiteboard` and reads it only for the seed copy. Several runs can live side by side. `<run>/env` holds `WHITEBOARD_URL` (the page), `WHITEBOARD_API_URL` (the sync server), `WB_VERIFY_HOME`, `WB_VERIFY_RUN`, `WB_VERIFY_CHAT` (1 for a `--chat` run, else 0), and `WB_VERIFY_CHAT_URL` (the chat's T3 server, running only with `--chat`). Load it with `set -a; source <run>/env; set +a`.
 
 Pick a seed from `ls ~/.whiteboard/data`. An empty room fails `board-reference.mjs`, which needs a visible shape.
 

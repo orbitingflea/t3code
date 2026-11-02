@@ -20,7 +20,7 @@ A person marks a rectangle of the board and sends it to the chat as `[Area N](bo
 Preconditions: a run from `up --seed <slug>` whose room `main` shows at least one shape in the initial view; env loaded.
 
 - **Hover and offscreen.** `WHITEBOARD_PROBE_SCREENSHOT=$WB_VERIFY_RUN/evidence/board-reference.png WHITEBOARD_PROBE_OFFSCREEN_SCREENSHOT=$WB_VERIFY_RUN/evidence/board-reference-offscreen.png node fork/whiteboard/probes/board-reference.mjs`. Exit 0. Open both PNGs: a highlighted rectangle with one arrow to it, and an edge arrow over the board.
-- **Tool to chat.** Run the region step of [chat-embedding](./chat-embedding.md): the composer gets an `Area 1` chip whose preview is the dragged rectangle.
+- **Tool to chat.** Run the region step of [chat-embedding](./chat-embedding.md): the composer gets an `Area 1` chip.
 - **CLI.** The region steps of [wb-cli](./wb-cli.md).
 
 ## Gotchas
