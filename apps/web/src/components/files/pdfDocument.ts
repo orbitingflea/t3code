@@ -1,6 +1,7 @@
-import { getDocument, GlobalWorkerOptions } from "pdfjs-dist";
+import { GlobalWorkerOptions } from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import fallbackUrl from "pdfjs-dist/wasm/openjpeg_nowasm_fallback.js?url";
+import { getDocumentOnSharedWorker } from "~/fork/pdfWorker";
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -32,7 +33,7 @@ export class BinaryDataFactory {
 }
 
 export function openPdf(bytes: ArrayBuffer) {
-  return getDocument({
+  return getDocumentOnSharedWorker({
     data: new Uint8Array(bytes),
     useSystemFonts: true,
     useWorkerFetch: false,
