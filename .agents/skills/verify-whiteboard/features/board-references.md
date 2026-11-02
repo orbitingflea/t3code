@@ -25,5 +25,5 @@ Preconditions: a run from `up --seed <slug>` whose room `main` shows at least on
 
 ## Gotchas
 
-- The probe calls the page's bridge module directly to start the hover, so it proves the drawing, not the chat's hover message. The chat's `wb-hover` and `wb-highlight` messages need a real assistant message with a link, which needs a provider turn and is not mapped yet.
+- The probe calls the page's bridge module directly to start the hover, so it proves the drawing, not the chat's hover message. The chat sends `wb-hover` when an `Area N` chip in the composer is hovered, which the chat journey does not do yet. Links in an assistant message, which also send `wb-highlight` on click, need a provider turn and are not mapped yet.
 - `Area N` numbers restart at 1 on each page load.
