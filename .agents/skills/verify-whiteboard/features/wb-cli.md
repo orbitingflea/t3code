@@ -22,7 +22,7 @@ Agents read and draw on a project's board with `wb`. Each command prints one JSO
 Preconditions: a run from `up --seed <slug>` with a non-empty room; env loaded.
 
 - **List.** `wb pages`. Exit 0 and at least one page with a `shapes` count.
-- **Read.** `wb read > $WB_VERIFY_RUN/evidence/read-before.json`. One entry per shape with `id`, `type`, `x`, `y`, `w`, `h`.
+- **Read.** `wb read > $WB_VERIFY_RUN/evidence/read-before.json`. One entry per shape with `id`, `type`, `x`, `y`, and `w`, `h` where the shape stores a size.
 - **Create.** Below the existing shapes, `wb write --type note --at 100,1100 --text 'verify: $a^2+b^2=c^2$'` and `wb write --type rect --at 400,1100 --size 240,120 --text 'verify box' --color blue`. Each prints a new `shape:wb-*` id.
 - **Edit.** `wb write --id <rect id> --text 'verify box edited'`. Same id, same geometry.
 - **Read a region.** `wb read board://r/80,1080,600,200`. Exactly the two new shapes, with the edited text.
