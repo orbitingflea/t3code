@@ -9711,29 +9711,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           yield* handleRoutedSdkMessage(input);
         });
 
-        // No user response will close a request the SDK aborted, such as one a hook answered.
-        const cancelRuntimeRequest = Effect.fn("ClaudeAdapterV2.cancelRuntimeRequest")(function* (
-          artifacts: Effect.Success<ReturnType<typeof buildApprovalRequestArtifacts>>,
-        ) {
-          const now = yield* DateTime.now;
-          const cancelled = { status: "cancelled", completedAt: now } as const;
-          yield* emitProviderEvent({
-            type: "node.updated",
-            driver: CLAUDE_PROVIDER,
-            node: { ...artifacts.node, ...cancelled },
-          });
-          yield* emitProviderEvent({
-            type: "runtime_request.updated",
-            driver: CLAUDE_PROVIDER,
-            runtimeRequest: { ...artifacts.request, status: "cancelled", resolvedAt: now },
-          });
-          yield* emitProviderEvent({
-            type: "turn_item.updated",
-            driver: CLAUDE_PROVIDER,
-            turnItem: { ...artifacts.turnItem, ...cancelled, updatedAt: now },
-          });
-        });
-
         const canUseToolEffect = Effect.fn("ClaudeAdapterV2.canUseTool")(function* (
           toolName: Parameters<CanUseTool>[0],
           toolInput: Parameters<CanUseTool>[1],
@@ -9844,11 +9821,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               ),
             );
-<<<<<<< origin/main
-            if (!(yield* Deferred.isDone(answers))) yield* cancelRuntimeRequest(artifacts);
-=======
             if (!(yield* Deferred.isDone(answers))) yield* cancelWithdrawnRequest(artifacts);
->>>>>>> upstream/main
             return callbackOptions.signal.aborted
               ? ({
                   behavior: "deny",
@@ -9989,11 +9962,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               }),
             ),
           );
-<<<<<<< origin/main
-          if (!(yield* Deferred.isDone(decision))) yield* cancelRuntimeRequest(artifacts);
-=======
           if (!(yield* Deferred.isDone(decision))) yield* cancelWithdrawnRequest(artifacts);
->>>>>>> upstream/main
 
           return permissionResultFromDecision({
             toolName,
