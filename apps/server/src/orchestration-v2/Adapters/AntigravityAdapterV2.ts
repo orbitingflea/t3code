@@ -22,6 +22,7 @@ import type { AntigravityAuth } from "../../provider/AntigravityAuth.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
   antigravityPermissionMode,
+  antigravityRuntimeModeForSessionMode,
   applyAntigravityAcpModelSelection,
   buildAntigravityPrompt,
   type AntigravityAcpRuntimeInput,
@@ -245,6 +246,7 @@ export function makeAntigravityAcpAdapterFlavor(
       });
     }),
     sessionModeForPolicy: (policy) => antigravityPermissionMode(policy.runtimeMode),
+    runtimeModeForSessionMode: antigravityRuntimeModeForSessionMode,
     clientFileSystem: {
       readTextFile: (request, cwd) =>
         readAntigravityClientTextFile({
