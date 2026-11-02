@@ -25,7 +25,7 @@ Preconditions: a run from `up --seed <slug>` with a non-empty room; env loaded.
 - **Read.** `wb read > $WB_VERIFY_RUN/evidence/read-before.json`. One entry per shape with `id`, `type`, `x`, `y`, and `w`, `h` where the shape stores a size.
 - **Create.** Below the existing shapes, `wb write --type note --at 100,1100 --text 'verify: $a^2+b^2=c^2$'` and `wb write --type rect --at 400,1100 --size 240,120 --text 'verify box' --color blue`. Each prints a new `shape:wb-*` id.
 - **Edit.** `wb write --id <rect id> --text 'verify box edited'`. Same id, same geometry.
-- **Read a region.** `wb read board://r/80,1080,600,200`. Exactly the two new shapes, with the edited text.
+- **Read a region.** `wb read board://r/80,1080,600,200`. Both new shapes, with the edited text. Seeded shapes in that area appear too.
 - **Picture.** `wb shot board://r/80,1080,600,200 --out $WB_VERIFY_RUN/evidence/region.png`. Open it: a yellow note with the formula typeset, and a blue box reading `verify box edited`.
 - **Stored.** `curl -s "$WHITEBOARD_API_URL/api/board?room=main" | jq '[.[] | select(.id | startswith("shape:wb-"))]'`. The two shapes are stored.
 - **Delete.** `wb delete <note id> <rect id>`. Prints both under `deleted`; `wb read` is back to the count in `read-before.json`.
