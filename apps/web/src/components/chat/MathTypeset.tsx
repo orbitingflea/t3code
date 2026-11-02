@@ -23,6 +23,7 @@ function typeset(tex: string, display: boolean): string {
       strict: "ignore",
       maxSize: 20,
       maxExpand: 1000,
+      macros: { "\\eps": "\\varepsilon" },
     });
   } catch {
     // Unfinished or unsupported TeX stays readable as its source.
