@@ -9,6 +9,8 @@ import { tipTapDefaultExtensions, type TldrawOptions } from "tldraw";
 import { findMathInputRule, findMathPasteRule } from "./mathsplit";
 
 const KATEX_OPTIONS = { throwOnError: false, displayMode: false } as const;
+// KaTeX writes \gdef definitions into the macros object it is given, so formulas must not share one.
+const katexOptions = () => ({ ...KATEX_OPTIONS, macros: { "\\eps": "\\varepsilon" } });
 const mathRuleHandler =
   (type: NodeType) =>
   ({ state, range, match }: Parameters<InputRule["handler"]>[0]) => {
@@ -94,7 +96,7 @@ export const InlineMath = Node.create({
     dom.dataset.type = "inline-math";
     dom.dataset.latex = latex;
     const rendered = document.createElement("span");
-    katex.render(latex, rendered, KATEX_OPTIONS);
+    katex.render(latex, rendered, katexOptions());
     const source = document.createElement("span");
     source.dataset.mathSource = "";
     source.hidden = true;
@@ -114,7 +116,7 @@ export const InlineMath = Node.create({
                 node,
                 view,
                 getPos as () => number,
-                { katexOptions: KATEX_OPTIONS },
+                { katexOptions: katexOptions() },
                 mathPlugin as never,
               );
               mathView.tiptap = editor;
