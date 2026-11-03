@@ -893,6 +893,42 @@ it.live("a viewer that reconnects behind a stuck click still connects with contr
   ).pipe(Effect.provide(layer));
 });
 
+it.live("a viewer whose connect never finishes does not hold control", () => {
+  const started = Promise.withResolvers<void>();
+  const frozen = Promise.withResolvers<Record<string, unknown>>();
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const manager = yield* Manager.PreviewManager;
+      yield* Effect.yieldNow;
+      const { tabId } = yield* manager.open({ threadId: scope.thread.threadId, runtime: "server" });
+      yield* browser.attachViewer(viewerInput(tabId, false));
+      const context = contexts[0]!;
+      const newCDPSession = context.newCDPSession;
+      context.newCDPSession = async (target) => {
+        context.newCDPSession = newCDPSession;
+        const session = await newCDPSession(target);
+        const send = session.send.getMockImplementation()!;
+        session.send.mockImplementation(async (method, input) => {
+          if (method !== "Page.startScreencast") return send(method, input);
+          started.resolve();
+          return frozen.promise;
+        });
+        return session;
+      };
+      // The client gave up on this connect, but a proxy that never aborts it keeps it running.
+      yield* browser.attachViewer(viewerInput(tabId, true)).pipe(Effect.forkScoped);
+      yield* Effect.promise(() => started.promise);
+      const next = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Effect.timeout("5 seconds"));
+      expect((yield* Queue.takeAll(next.output)).findLast((item) => item._tag === "control")).toEqual(
+        expect.objectContaining({ controller: "you" }),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(() => frozen.resolve({})))),
+  ).pipe(Effect.provide(layer));
+});
+
 it.live("reports a pending dialog without evaluating the page and resolves it explicitly", () =>
   Effect.scoped(
     Effect.gen(function* () {
