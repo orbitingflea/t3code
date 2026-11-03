@@ -34,9 +34,9 @@ const describeFailure = (error: unknown) => {
 };
 
 /**
- * Posts each Claude rate_limit_info that carries usage windows to
- * T3CODE_CLAUDE_USAGE_EXPORT_URL, with T3CODE_CLAUDE_USAGE_EXPORT_KEY as the Bearer key.
- * Fire-and-forget: the caller never waits on, or sees a failure from, the endpoint.
+ * Posts Claude rate_limit_info to T3CODE_CLAUDE_USAGE_EXPORT_URL (Bearer T3CODE_CLAUDE_USAGE_EXPORT_KEY).
+ * Skips info with no usage windows, the same home and info sent in the last 60 s,
+ * and bodies over 4096 bytes. Does not wait for, or report failures from, the endpoint.
  */
 export const makeClaudeUsageExport = () => {
   const lastSentAt = new Map<string, number>();
