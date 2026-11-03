@@ -72,7 +72,7 @@ it.effect("root setup warns by the owner of a given T3 home, and conditionally w
     );
     // A fresh install has no T3 home yet.
     const missingHome = yield* rootSetupOutput({ baseDir: "/srv/t3" });
-    expect(missingHome).toContain("The T3 home /srv/t3 does not exist yet");
+    expect(missingHome).toContain("Setup could not read the owner of the T3 home /srv/t3");
     expect(missingHome).not.toContain("--base-dir");
     // Without --base-dir, setup looks at root's own T3 home, which says nothing about the server.
     const defaultHome = yield* rootSetupOutput({ baseDirOwner: 0 });

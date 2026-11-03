@@ -13,7 +13,7 @@ const ROOT_SERVER_ADVICE =
  * Returns the warning text or undefined; undefined when the browser sandbox is off. An existing
  * given T3 home decides by its owner: root warns, another user does not. Otherwise undefined when
  * setup is not root or runs under sudo from another user, and a conditional warning when the
- * given home does not exist or no home is given.
+ * given home's owner cannot be read or no home is given.
  */
 export const browserSetupRootWarning = Effect.fn("browserSetup.rootWarning")(function* (input: {
   readonly baseDir: string;
@@ -36,7 +36,7 @@ export const browserSetupRootWarning = Effect.fn("browserSetup.rootWarning")(fun
   // Under sudo from another user, the server most likely runs as that user.
   if ((yield* HostProcess.UserId) !== 0 || (env.SUDO_USER ?? "root") !== "root") return undefined;
   const unknownUser = input.baseDirGiven
-    ? `The T3 home ${input.baseDir} does not exist yet, so setup cannot check which user runs the T3 server.`
+    ? `Setup could not read the owner of the T3 home ${input.baseDir} (for example because it does not exist yet), so it cannot check which user runs the T3 server.`
     : "Setup runs as root and cannot tell which user runs the T3 server; pass `--base-dir` with the server's T3 home to check.";
   return `${unknownUser} If the server runs as root: ${ROOT_SERVER_ADVICE}`;
 });
