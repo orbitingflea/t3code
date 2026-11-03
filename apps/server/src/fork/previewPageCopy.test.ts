@@ -112,8 +112,62 @@ describe("preview page copy", () => {
     expect(await take()).toBeUndefined();
   });
 
+  it("ignores writes the browser rejects", async () => {
+    await open(`<button id="copy" onclick='navigator.clipboard.writeText().catch(() => {})'>copy</button>
+      <button id="denied" onclick='navigator.clipboard.writeText("denied").catch(() => {})'>denied</button>`);
+    expect(await press("#copy")).toBeUndefined();
+    await context.clearPermissions();
+    expect(await press("#denied")).toBeUndefined();
+  });
+
   it("a press that copies nothing returns once its window ends", async () => {
     await open("");
     expect(await press("#other")).toBeUndefined();
+  });
+});
+
+describe("forwardPressCopy", () => {
+  const session = (copy: string) =>
+    ({
+      send: async (method: string) =>
+        method === "Page.getFrameTree"
+          ? { frameTree: { frame: { id: "main" } } }
+          : method === "Page.createIsolatedWorld"
+            ? { executionContextId: 1 }
+            : { result: { value: copy } },
+    }) as unknown as CDPSession;
+
+  it.each([
+    {
+      name: "the controller's left press",
+      button: "left",
+      controller: "viewer",
+      desktop: null,
+      sent: true,
+    },
+    { name: "a right press", button: "right", controller: "viewer", desktop: null, sent: false },
+    {
+      name: "a viewer who lost control",
+      button: "left",
+      controller: "other",
+      desktop: null,
+      sent: false,
+    },
+    { name: "a desktop tab", button: "left", controller: "viewer", desktop: {}, sent: false },
+  ])("sends for $name: $sent", async ({ button, controller, desktop, sent }) => {
+    const pushed: Array<unknown> = [];
+    const tab = {
+      cdp: session(""),
+      frameSessions: new Map([["frame", session("from button")]]),
+      control: { controller },
+      desktop,
+    };
+    await PreviewPageCopy.forwardPressCopy(
+      tab,
+      { id: "viewer", push: (output) => pushed.push(output) },
+      button,
+      WORLD,
+    );
+    expect(pushed).toEqual(sent ? [{ _tag: "clipboard", text: "from button" }] : []);
   });
 });

@@ -13,15 +13,19 @@ const MAIN_SCRIPT = `(() => {
   const send = (text) => dispatchEvent(new CustomEvent(${JSON.stringify(EVENT)}, { detail: String(text) }));
   const { writeText, write } = proto;
   proto.writeText = function (text) {
-    send(text);
-    return writeText.apply(this, arguments);
+    const written = writeText.apply(this, arguments);
+    if (arguments.length > 0) written.then(() => send(text), () => {});
+    return written;
   };
   proto.write = function (items) {
+    const written = write.apply(this, arguments);
     try {
       const item = [...items].find((candidate) => candidate.types.includes("text/plain"));
-      item?.getType("text/plain").then((blob) => blob.text()).then(send, () => {});
+      if (item)
+        Promise.all([item.getType("text/plain").then((blob) => blob.text()), written])
+          .then(([text]) => send(text), () => {});
     } catch {}
-    return write.apply(this, arguments);
+    return written;
   };
 })();`;
 
@@ -145,4 +149,24 @@ const takeSessionCopy = async (cdp: CDPSession, worldName: string) => {
 export const takePageCopy = async (sessions: Iterable<CDPSession>, worldName: string) => {
   const copies = await Promise.all([...sessions].map((cdp) => takeSessionCopy(cdp, worldName)));
   return copies.flat().find((text) => text.length > 0);
+};
+
+/** After the viewer releases a left press, sends what the page copied if they still control the tab. */
+export const forwardPressCopy = async (
+  tab: {
+    readonly cdp: CDPSession;
+    readonly frameSessions: ReadonlyMap<unknown, CDPSession>;
+    readonly control: { readonly controller: string | null };
+    readonly desktop: unknown;
+  },
+  viewer: {
+    readonly id: string;
+    readonly push: (output: { _tag: "clipboard"; text: string }) => void;
+  },
+  button: string,
+  worldName: string,
+) => {
+  if (button !== "left" || tab.desktop) return;
+  const text = await takePageCopy([tab.cdp, ...tab.frameSessions.values()], worldName);
+  if (text && tab.control.controller === viewer.id) viewer.push({ _tag: "clipboard", text });
 };

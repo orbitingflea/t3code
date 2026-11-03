@@ -2346,16 +2346,8 @@ const make = Effect.gen(function* () {
             viewer.pressedButtons.set(button, { x: num(message.x), y: num(message.y) });
           else if (action === "up") viewer.pressedButtons.delete(button);
         }
-        if (action === "up" && button === "left" && !tab.desktop)
-          void PreviewPageCopy.takePageCopy(
-            [tab.cdp, ...tab.frameSessions.values()],
-            CLIPBOARD_WORLD,
-          ).then(
-            (text) =>
-              text &&
-              tab.control.controller === viewer.id &&
-              viewer.push({ _tag: "clipboard", text }),
-          );
+        if (action === "up")
+          void PreviewPageCopy.forwardPressCopy(tab, viewer, button, CLIPBOARD_WORLD);
         return;
       }
       case "wheel":

@@ -126,14 +126,6 @@ function makeSession(
         if (focusedFrame) focusedFrame.copy = keyCopy || focusedFrame.copy;
         else pageCopy = keyCopy || pageCopy;
       }
-      if (
-        method === "Runtime.evaluate" &&
-        (input as { expression?: string }).expression?.includes("takePageCopy")
-      ) {
-        const value = clickCopy;
-        clickCopy = "";
-        return { result: { value } };
-      }
       if (method === "Runtime.evaluate" && (input as { contextId?: number }).contextId === 7) {
         const value = frame ? frame.copy : pageCopy;
         if (frame) frame.copy = "";
@@ -303,7 +295,6 @@ const contextRequests: Array<{ profileId: string; isolated: boolean }> = [];
 let contextGate: PromiseWithResolvers<void> | null = null;
 let pageCopy = "";
 let keyCopy = "";
-let clickCopy = "";
 let focusedFrame: ReturnType<typeof makeFrame> | null = null;
 let contextFailure: Error | null = null;
 let initialNavigation: (() => Promise<void>) | null = null;
@@ -453,7 +444,6 @@ beforeEach(() => {
   initialNavigation = null;
   pageCopy = "";
   keyCopy = "";
-  clickCopy = "";
   focusedFrame = null;
   desktopTabs.clear();
   desktopRendersNext = false;
@@ -1198,7 +1188,7 @@ it.effect.each([
   ).pipe(Effect.provide(layer)),
 );
 
-it.live("only the controlling viewer's copy keys and copy buttons reach its clipboard", () =>
+it.live("only the controlling viewer's copy and cut keys reach its clipboard", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const { browser, tabId } = yield* ready;
@@ -1230,14 +1220,6 @@ it.live("only the controlling viewer's copy keys and copy buttons reach its clip
       keyCopy = "";
       yield* viewer.input({ type: "key", action: "down", key: "c", code: "KeyC", modifiers: 4 });
       expect(yield* clipboard(viewer.output)).toEqual([]);
-      clickCopy = "from button";
-      yield* viewer.input({ type: "mouse", action: "up", x: 10, y: 10, button: "right" });
-      yield* viewer.input({ type: "mouse", action: "down", x: 10, y: 10, button: "left" });
-      expect(clickCopy).toBe("from button");
-      yield* viewer.input({ type: "mouse", action: "up", x: 10, y: 10, button: "left" });
-      let pushed = yield* Queue.take(viewer.output);
-      while (pushed._tag !== "clipboard") pushed = yield* Queue.take(viewer.output);
-      expect(pushed).toEqual({ _tag: "clipboard", text: "from button" });
       expect(yield* clipboard(watcher.output)).toEqual([]);
     }),
   ).pipe(Effect.provide(layer)),
