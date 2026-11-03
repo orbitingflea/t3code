@@ -5,9 +5,10 @@ const EVENT = "t3-preview-page-copy";
 // Long enough for a copy button that awaits a fetch first; a new press or key ends it sooner.
 const PAGE_COPY_WINDOW_MS = 2_000;
 
-// Within a press window the server forwards text the page reports: wrapped writes that
-// succeeded, execCommand copy, or copy events. The page can dispatch this event with any text
-// in that window, the same text it could write with writeText after that press.
+// Within a trusted press window the server forwards any text the page reports (wrapped writes,
+// copy events, or this event dispatched by page script), whether or not the browser would allow
+// the write. It sends only when the controlling viewer releases a left press, and only into
+// that viewer's clipboard.
 const MAIN_SCRIPT = `(() => {
   const proto = globalThis.Clipboard?.prototype;
   if (!proto) return;
