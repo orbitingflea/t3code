@@ -262,7 +262,7 @@ it.live("tells a viewer without control which viewer holds it", () =>
       ).toEqual(
         expect.objectContaining({
           controller: "another-viewer",
-          holder: { viewer: holder?.viewer, attachedAt: expect.any(Number), connected: true },
+          holder: { viewer: holder?.viewer, attachedAt: expect.any(Number) },
         }),
       );
       expect(holder).toEqual(expect.objectContaining({ controller: "you", holder: null }));

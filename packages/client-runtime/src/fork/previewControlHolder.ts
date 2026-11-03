@@ -3,8 +3,6 @@ export interface PreviewStreamControlHolder {
   readonly viewer: string;
   /** Epoch ms when that viewer began to connect. */
   readonly attachedAt: number | null;
-  /** False while its connect has not finished: no stream to it has opened. */
-  readonly connected: boolean;
 }
 
 const isHolder = (value: unknown): value is PreviewStreamControlHolder =>
@@ -13,9 +11,7 @@ const isHolder = (value: unknown): value is PreviewStreamControlHolder =>
   "viewer" in value &&
   typeof value.viewer === "string" &&
   "attachedAt" in value &&
-  (value.attachedAt === null || typeof value.attachedAt === "number") &&
-  "connected" in value &&
-  typeof value.connected === "boolean";
+  (value.attachedAt === null || typeof value.attachedAt === "number");
 
 /** The optional fields a fork server adds to a control message; an upstream server sends none. */
 export const decodeControlHolder = (message: Record<string, unknown>) => ({

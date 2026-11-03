@@ -1,4 +1,4 @@
-// @effect-diagnostics globalDate:off - ServerBrowser calls these from Playwright callbacks outside the Effect runtime.
+import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 
 import { SessionControl } from "../preview/SessionControl.ts";
@@ -21,35 +21,24 @@ export interface ControlHolder {
   readonly viewer: string;
   /** Epoch ms when that viewer began to connect. */
   readonly attachedAt: number | null;
-  /** False while its connect has not finished: no stream to it has opened. */
-  readonly connected: boolean;
 }
 
-const viewers = new Map<string, { readonly attachedAt: number; connected: boolean }>();
+const attachTimes = new Map<string, number>();
 
-export const viewerAttaching = (viewerId: string) => {
-  viewers.set(viewerId, { attachedAt: Date.now(), connected: false });
-};
-
-export const viewerConnected = (viewerId: string) => {
-  const record = viewers.get(viewerId);
-  if (record) record.connected = true;
+export const viewerAttaching = (viewerId: string, at: number) => {
+  attachTimes.set(viewerId, at);
 };
 
 export const viewerGone = (viewerId: string) => {
-  viewers.delete(viewerId);
+  attachTimes.delete(viewerId);
 };
 
 const shortId = (viewerId: string) => viewerId.slice(0, 8);
 
-const holder = (viewerId: string): ControlHolder => {
-  const record = viewers.get(viewerId);
-  return {
-    viewer: shortId(viewerId),
-    attachedAt: record?.attachedAt ?? null,
-    connected: record?.connected ?? false,
-  };
-};
+const holder = (viewerId: string): ControlHolder => ({
+  viewer: shortId(viewerId),
+  attachedAt: attachTimes.get(viewerId) ?? null,
+});
 
 /** Extra fields of a control message for one viewer. */
 export const controlFields = (viewerId: string, controller: string | null) => ({
@@ -59,8 +48,11 @@ export const controlFields = (viewerId: string, controller: string | null) => ({
 
 const describe = (viewerId: string | null) => {
   if (viewerId === null) return null;
-  const { attachedAt, ...rest } = holder(viewerId);
-  return { ...rest, attachedAt: attachedAt === null ? null : new Date(attachedAt).toISOString() };
+  const { viewer, attachedAt } = holder(viewerId);
+  return {
+    viewer,
+    attachedAt: attachedAt === null ? null : DateTime.formatIso(DateTime.makeUnsafe(attachedAt)),
+  };
 };
 
 /** The log entry is built now, while the viewers it names are still known. */
@@ -78,18 +70,6 @@ export const logControlChange = (
     to: describe(change.to),
   };
   return Effect.logInfo("server preview control changed", entry);
-};
-
-let nextReason: ControlChangeReason | null = null;
-
-/** Names why `run` changes the controller, for the change it makes before its first await. */
-export const because = <A>(reason: ControlChangeReason, run: () => A): A => {
-  nextReason = reason;
-  try {
-    return run();
-  } finally {
-    nextReason = null;
-  }
 };
 
 /** Logs each change of controller. Each method below changes it before its first await. */
@@ -113,11 +93,15 @@ export class TracedSessionControl extends SessionControl {
 
   private traced<A>(reason: ControlChangeReason, run: () => Promise<A>): Promise<A> {
     const from = this.controller;
-    const named = nextReason ?? reason;
-    const result = because(named, run);
+    const result = run();
     const tab = { ...this.tab, agentId: this.agentId };
-    this.runLog(logControlChange(tab, { from, to: this.controller, reason: named }));
+    this.runLog(logControlChange(tab, { from, to: this.controller, reason }));
     return result;
+  }
+
+  /** Takes control for a viewer that just finished connecting. */
+  attach(viewerId: string) {
+    return this.traced("attach", () => super.take(viewerId));
   }
 
   override take(viewerId: string) {
@@ -128,9 +112,10 @@ export class TracedSessionControl extends SessionControl {
     return this.traced("release", () => super.release(viewerId, afterDrain));
   }
 
-  // Disconnect releases through release, which logs it under this reason.
-  override disconnect(viewerId: string, afterDrain?: () => Promise<void>) {
-    return because("disconnect", () => super.disconnect(viewerId, afterDrain));
+  // A closed tab has no controller, so this matches SessionControl.disconnect.
+  override async disconnect(viewerId: string, afterDrain?: () => Promise<void>) {
+    if (this.controller === viewerId)
+      await this.traced("disconnect", () => super.release(viewerId, afterDrain));
   }
 
   override close() {

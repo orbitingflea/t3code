@@ -10,9 +10,8 @@ it.effect("logs who got control, who lost it, and why", () => {
   const messages: unknown[] = [];
   const logger = Logger.make(({ message }) => messages.push(message));
   return Effect.gen(function* () {
-    PreviewControlTrail.viewerAttaching("stale-viewer-id");
-    PreviewControlTrail.viewerAttaching("fresh-viewer-id");
-    PreviewControlTrail.viewerConnected("fresh-viewer-id");
+    PreviewControlTrail.viewerAttaching("stale-viewer-id", 1_700_000_000_000);
+    PreviewControlTrail.viewerAttaching("fresh-viewer-id", 1_700_000_001_000);
     yield* PreviewControlTrail.logControlChange(tab, {
       from: null,
       to: "stale-viewer-id",
@@ -32,7 +31,7 @@ it.effect("logs who got control, who lost it, and why", () => {
           tabId: "tab_1",
           reason: "attach",
           from: null,
-          to: expect.objectContaining({ viewer: "stale-vi", connected: false }),
+          to: { viewer: "stale-vi", attachedAt: "2023-11-14T22:13:20.000Z" },
         }),
       ],
       [
@@ -46,7 +45,7 @@ it.effect("logs who got control, who lost it, and why", () => {
     ]);
     expect(PreviewControlTrail.controlFields("fresh-viewer-id", "stale-viewer-id")).toEqual({
       viewer: "fresh-vi",
-      holder: { viewer: "stale-vi", attachedAt: expect.any(Number), connected: false },
+      holder: { viewer: "stale-vi", attachedAt: 1_700_000_000_000 },
     });
     expect(PreviewControlTrail.controlFields("fresh-viewer-id", "fresh-viewer-id").holder).toBe(
       null,
@@ -67,9 +66,7 @@ it.effect("names why each change of controller happened", () => {
   return Effect.gen(function* () {
     const logs: Array<Effect.Effect<void>> = [];
     const control = new PreviewControlTrail.TracedSessionControl(tab, (log) => logs.push(log));
-    yield* Effect.promise(() =>
-      PreviewControlTrail.because("attach", () => control.take("viewer-a")),
-    );
+    yield* Effect.promise(() => control.attach("viewer-a"));
     yield* Effect.promise(() => control.release("viewer-a"));
     yield* Effect.promise(() => control.take("viewer-a"));
     yield* Effect.promise(() => control.disconnect("viewer-a"));

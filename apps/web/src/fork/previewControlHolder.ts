@@ -7,5 +7,5 @@ import {
 export const previewControlLabel = (control: PreviewStreamControl | null): string => {
   const holder = control?.controller === "another-viewer" ? control.holder : undefined;
   if (!holder) return previewStreamControlLabel(control);
-  return `Viewer ${holder.viewer} has control${holder.connected ? "" : " (still connecting)"}`;
+  return `Viewer ${holder.viewer} has control`;
 };
