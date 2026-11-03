@@ -40,6 +40,7 @@ import { hasClaudeManagedMcpConfig, makeClaudeEnvironment } from "./Drivers/Clau
 import { discoverClaudeSkills, readClaudeSettingsEnv } from "./Drivers/ClaudeSkills.ts";
 import type { ProviderWorkspaceSnapshot } from "@t3tools/provider-core/server/driver";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import { withUsageReadAt } from "../fork/usageReadAt/usageReadAt.ts";
 import {
   type ClaudeScopedLimitNames,
   claudeUsageResponseToLimits,
@@ -244,6 +245,7 @@ export type ClaudeCapabilitiesProbe = {
   /** Undefined means get_usage failed; absent windows on success mean no subscription windows, as with API keys. */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
   readonly usageCheckedAt?: string;
+  readonly usageReadAt?: string | undefined;
   readonly usageError?: { readonly message: string };
 };
 
@@ -675,7 +677,10 @@ export const checkClaudeProviderStatus = Effect.fn("checkClaudeProviderStatus")(
         ...(authMetadata ? authMetadata : {}),
       },
       ...(versionUpgradeMessage ? { message: versionUpgradeMessage } : {}),
-      usageLimits: resetCredits ? { ...usageLimits, resetCredits } : usageLimits,
+      usageLimits: withUsageReadAt(
+        resetCredits ? { ...usageLimits, resetCredits } : usageLimits,
+        capabilities.usageReadAt,
+      ),
     },
   });
 });

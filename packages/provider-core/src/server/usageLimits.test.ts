@@ -112,6 +112,12 @@ describe("resolveUsageLimitsAfterProbe", () => {
     expect(resolveUsageLimitsAfterProbe({ published: live, probed: newer })).toEqual(newer);
   });
 
+  it("drops a usage source's reading time when runtime windows are newer", () => {
+    const live = { checkedAt: "2026-09-03T12:00:05.000Z", windows: [session] };
+    const probed = { ...published, readAt: "2026-09-03T09:00:00.000Z" };
+    expect(resolveUsageLimitsAfterProbe({ published: live, probed })).not.toHaveProperty("readAt");
+  });
+
   it("keeps the last good windows through a failed probe but not an unsupported one", () => {
     const failed = { checkedAt, windows: [], unavailable: { reason: "probeFailed" as const } };
     const unsupported = { checkedAt, windows: [], unavailable: { reason: "unsupported" as const } };

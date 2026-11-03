@@ -116,6 +116,47 @@ describe("Claude through a CLIProxyAPI hub", () => {
     }),
   );
 
+  it.effect("keeps the time of a reading the hub served from its cache", () =>
+    Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-11-03T14:00:00Z"));
+      const fetched_at = "2026-11-03T11:24:32Z";
+      const test = fixture({
+        accounts: [claude, { ...codex, id: "second.json", auth_index: "b" }],
+        upstream: (request) => ({
+          status: 200,
+          body: request.url?.includes("anthropic")
+            ? { five_hour: { utilization: 10, resets_at: null }, fetched_at }
+            : request.url?.endsWith("/usage")
+              ? { rate_limit: null, fetched_at }
+              : { credits: [] },
+        }),
+      });
+      const api = yield* test.api;
+      const accounts = yield* api.readAccounts(config);
+      expect(accounts.map((account) => account.usageLimits.readAt)).toEqual([
+        "2026-11-03T11:24:32.000Z",
+        "2026-11-03T11:24:32.000Z",
+      ]);
+      expect(accounts[0]?.usageLimits.checkedAt).toBe("2026-11-03T14:00:00.000Z");
+      const login = yield* api.claude.usage(config, claude);
+      expect(login.readAt).toBe("2026-11-03T11:24:32.000Z");
+    }),
+  );
+
+  it.effect("leaves the reading time out when the hub sends none", () =>
+    Effect.gen(function* () {
+      const test = fixture({
+        accounts: [claude],
+        upstream: () => ({
+          status: 200,
+          body: { five_hour: { utilization: 10, resets_at: null } },
+        }),
+      });
+      const [account] = yield* (yield* test.api).readAccounts(config);
+      expect(account?.usageLimits).not.toHaveProperty("readAt");
+    }),
+  );
+
   it.effect("finds a Claude login only by its exact email and organization", () =>
     Effect.gen(function* () {
       const login = { email: "FIRST@example.com", organizationId: "org-1" };

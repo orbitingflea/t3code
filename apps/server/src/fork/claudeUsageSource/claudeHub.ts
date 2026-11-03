@@ -13,6 +13,7 @@ import {
   REQUEST_ID,
   claudeResetCreditsToContract,
 } from "../../provider/claudeResetCredits.ts";
+import { usageReadAt, usageReadAtField } from "../usageReadAt/usageReadAt.ts";
 
 type HubAccount = {
   readonly auth_index: string;
@@ -120,14 +121,19 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     );
   });
 
-  /** Adds reset credits from a usage answer to a hub account read from it. */
-  const withResetCredits = Effect.fn("ClaudeHub.withResetCredits")(function* <
+  /** Adds reset credits and the reading's time from a usage answer to a hub account read from it. */
+  const withUsageAnswer = Effect.fn("ClaudeHub.withUsageAnswer")(function* <
     A extends { readonly usageLimits: object },
   >(body: string, account: A) {
     const credits = yield* resetCredits(yield* decodeClaudeUsage(body));
-    return credits
-      ? { ...account, usageLimits: { ...account.usageLimits, resetCredits: credits } }
-      : account;
+    return {
+      ...account,
+      usageLimits: {
+        ...account.usageLimits,
+        ...(credits ? { resetCredits: credits } : {}),
+        ...usageReadAtField(body),
+      },
+    };
   });
 
   /** Usage in the Claude SDK's get_usage shape, plus reset credits. */
@@ -163,6 +169,7 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
           },
         },
         resetCredits: yield* resetCredits(usage),
+        readAt: usageReadAt(response.body),
       };
     },
     Effect.mapError((error) =>
@@ -294,5 +301,5 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     } as const;
   });
 
-  return { withResetCredits, usage, findLogin, claimLogin, consume };
+  return { withUsageAnswer, usage, findLogin, claimLogin, consume };
 });

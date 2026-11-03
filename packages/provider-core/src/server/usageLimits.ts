@@ -114,7 +114,9 @@ export function resolveUsageLimitsAfterProbe(input: {
     !probed.unavailable &&
     Date.parse(published.checkedAt) > Date.parse(probed.checkedAt)
   ) {
-    return { ...probed, checkedAt: published.checkedAt, windows: published.windows };
+    // Windows from a runtime update are newer than a usage source's reading time.
+    const { readAt: _readAt, ...fresh } = probed;
+    return { ...fresh, checkedAt: published.checkedAt, windows: published.windows };
   }
   return probed;
 }
