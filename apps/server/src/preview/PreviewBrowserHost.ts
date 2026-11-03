@@ -6,6 +6,8 @@ import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import { FULL_CHROME_DEBIAN_PACKAGES } from "../fork/previewChrome.ts";
+
 export const SETUP_SUBCOMMAND = "browser setup";
 
 export const NO_SANDBOX_SIGNATURE = "No usable sandbox";
@@ -48,6 +50,7 @@ export const DEBIAN_PACKAGES: ReadonlyArray<ReadonlyArray<string>> = [
   ["libgbm1"],
   ["libasound2t64", "libasound2"],
   ["libexpat1"],
+  ...FULL_CHROME_DEBIAN_PACKAGES,
 ];
 
 export class PreviewBrowserSandboxError extends Schema.TaggedError<PreviewBrowserSandboxError>()(

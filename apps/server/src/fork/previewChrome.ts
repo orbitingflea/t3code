@@ -73,3 +73,10 @@ export const chromeBrands = (
   brands[chrome] = { brand: "Google Chrome", version: version(String(major)) };
   return brands;
 };
+
+/** Libraries full Chrome links that chrome-headless-shell does not (libsmime3 comes with libnss3). */
+export const FULL_CHROME_DEBIAN_PACKAGES: ReadonlyArray<ReadonlyArray<string>> = [
+  ["libcups2t64", "libcups2"],
+  ["libpango-1.0-0"],
+  ["libcairo2"],
+];

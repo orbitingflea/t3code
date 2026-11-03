@@ -299,7 +299,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
       }
       if (!foundExecutable) {
         return yield* new PreviewBrowserInstallError({
-          detail: "The archive does not contain chrome-headless-shell.",
+          detail: `The archive does not contain ${executableName}.`,
         });
       }
     },
