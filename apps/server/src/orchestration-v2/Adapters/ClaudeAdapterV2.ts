@@ -3680,12 +3680,6 @@ function terminalStatusFromResult(
   return "failed";
 }
 
-function isClaudeActiveSteeringAbortResult(message: SDKResultMessage): boolean {
-  return (
-    message.terminal_reason === "aborted_streaming" || message.terminal_reason === "aborted_tools"
-  );
-}
-
 function isClaudeProviderContinuationTurn(
   input: ProviderAdapter.ProviderAdapterV2TurnInput,
 ): boolean {
@@ -9439,12 +9433,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const completedAt = yield* DateTime.now;
             const interrupted = (yield* Ref.get(interruptedTurns)).has(context.providerTurnId);
             const wasSteered = (yield* Ref.get(steeredTurns)).has(context.providerTurnId);
-            if (
-              !interrupted &&
-              wasSteered &&
-              (isClaudeActiveSteeringAbortResult(message) ||
-                isClaudeSteerQueuedPastResult(context, message))
-            ) {
+            if (!interrupted && wasSteered && isClaudeSteerQueuedPastResult(context, message)) {
               context.steeredSegmentUsage.push(message.usage);
               context.steeredLedgerUsage = addClaudeLedgerUsage(
                 context.steeredLedgerUsage,

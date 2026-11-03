@@ -30,6 +30,10 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../../config.ts";
 import {
+  claudeRecordingPromptUuid,
+  recordClaudeFramesUntilInit,
+} from "../../fork/claudeSteerQueue.testkit.ts";
+import {
   isWindowsClaudeLauncherShimPath,
   resolveClaudeSdkExecutablePath,
 } from "../../provider/Drivers/ClaudeExecutable.ts";
@@ -1681,16 +1685,10 @@ async function recordClaudeActiveSteeringQuery(input: {
   }
 
   const promptQueue = new RecordingPromptQueue();
-  const offerPrompt = async (index: number) => {
+  const offerPrompt = (index: number) => {
     const message = ClaudeAdapterV2.makeClaudeUserMessage({
       text: input.prompts[index]!,
-      uuid: await Effect.runPromise(
-        Crypto.Crypto.pipe(
-          Effect.flatMap((crypto) => crypto.randomUUIDv4()),
-          Effect.filterOrFail(ClaudeAdapterV2.isClaudePromptUuid),
-          Effect.provide(NodeServices.layer),
-        ),
-      ),
+      uuid: claudeRecordingPromptUuid(),
     });
     input.entries.push({
       type: "expect_outbound",
@@ -1699,9 +1697,9 @@ async function recordClaudeActiveSteeringQuery(input: {
     });
     promptQueue.offer(message);
   };
-  const offerSteeringPrompts = async () => {
+  const offerSteeringPrompts = () => {
     for (let index = 1; index < input.prompts.length; index += 1) {
-      await offerPrompt(index);
+      offerPrompt(index);
     }
   };
 
@@ -1765,21 +1763,15 @@ async function recordClaudeActiveSteeringQuery(input: {
   });
   const iterator = queryRuntime[Symbol.asyncIterator]();
   try {
-    await offerPrompt(0);
-    // Steer once Claude has started the first prompt's turn, as T3 does.
-    while (true) {
-      const next = await iterator.next();
-      if (next.done === true) {
-        throw new Error("Claude active steering query ended before the turn started.");
-      }
+    offerPrompt(0);
+    await recordClaudeFramesUntilInit(iterator, (message) =>
       input.entries.push({
         type: "emit_inbound",
-        label: next.value.type,
-        frame: sanitizeSdkMessageForReplay({ message: next.value, scenario: input.scenario }),
-      });
-      if (isSystemInitFrame(next.value)) break;
-    }
-    await offerSteeringPrompts();
+        label: message.type,
+        frame: sanitizeSdkMessageForReplay({ message, scenario: input.scenario }),
+      }),
+    );
+    offerSteeringPrompts();
     const completed = await recordMessagesUntilTurnResults({
       iterator,
       entries: input.entries,
