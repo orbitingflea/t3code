@@ -10,10 +10,10 @@ const ROOT_SERVER_ADVICE =
   "Chrome's sandbox cannot start as root. Run T3 as a nonroot user. Otherwise set `T3CODE_SERVER_BROWSER_SANDBOX=0` in the T3 server's environment and restart the server; this disables Chrome's sandbox. Manual: `T3CODE_SERVER_BROWSER_SANDBOX=0 t3 serve`. Systemd: add `Environment=T3CODE_SERVER_BROWSER_SANDBOX=0` under `[Service]`, reload systemd, then restart the service. `t3 browser setup` cannot fix root sandboxing.";
 
 /**
- * Returns the warning text or undefined; undefined when the browser sandbox is off. An existing
- * given T3 home decides by its owner: root warns, another user does not. Otherwise undefined when
- * setup is not root or runs under sudo from another user, and a conditional warning when the
- * given home's owner cannot be read or no home is given.
+ * Returns the warning text or undefined; undefined when the browser sandbox is off. A given T3
+ * home whose owner can be read decides by its owner: root warns, another user does not. Otherwise
+ * undefined when setup is not root or runs under sudo from another user, and a conditional
+ * warning when the given home's owner cannot be read or no home is given.
  */
 export const browserSetupRootWarning = Effect.fn("browserSetup.rootWarning")(function* (input: {
   readonly baseDir: string;
