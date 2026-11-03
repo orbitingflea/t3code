@@ -1,7 +1,7 @@
 import type { PreviewBrowserRelease } from "../preview/PreviewBrowser.ts";
 
 // Full Chrome for Testing passes Cloudflare where chrome-headless-shell is blocked after one page.
-// macOS keeps the shell: its app bundle holds symlinks the installer will not unpack.
+// macOS keeps the shell: the Chrome app bundle holds symlinks the installer will not unpack.
 // Pin from each chrome zip in known-good-versions-with-downloads.json, never below 156.0.8078.70.
 const VERSION = "156.0.8078.80";
 const ARCHIVES: Partial<Record<string, { readonly bytes: number; readonly sha256: string }>> = {
@@ -74,7 +74,7 @@ export const chromeBrands = (
   return brands;
 };
 
-/** Libraries full Chrome links that chrome-headless-shell does not (libsmime3 comes with libnss3). */
+/** Libraries that full Chrome needs and chrome-headless-shell does not (libnss3 brings libsmime3). */
 export const FULL_CHROME_DEBIAN_PACKAGES: ReadonlyArray<ReadonlyArray<string>> = [
   ["libcups2t64", "libcups2"],
   ["libpango-1.0-0"],

@@ -76,7 +76,7 @@ export interface PreviewBrowserRelease {
   readonly sha256: string;
   /** Archive and tools directory name; defaults to chrome-headless-shell. */
   readonly product?: string;
-  /** Executable inside the archive root; defaults to chrome-headless-shell. */
+  /** Executable inside the archive root; defaults to chrome-headless-shell (.exe on Windows). */
   readonly executable?: string;
 }
 
