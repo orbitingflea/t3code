@@ -1,13 +1,15 @@
 // @effect-diagnostics globalDate:off - ServerBrowser calls these from Playwright callbacks outside the Effect runtime.
 import * as Effect from "effect/Effect";
 
+import { SessionControl } from "../preview/SessionControl.ts";
+
 // Every change of a server preview tab's controller is logged with who and why, and a viewer
 // that does not hold control is told who does, so a lock can be traced to its holder.
 
 /** Why the controller of a server preview tab changed. */
-export type ControlChangeReason = "attach" | "take" | "release" | "disconnect" | "tabClosed";
+type ControlChangeReason = "attach" | "take" | "release" | "disconnect" | "tabClosed";
 
-export interface ControlChange {
+interface ControlChange {
   /** Viewer ids; null means no viewer holds control. */
   readonly from: string | null;
   readonly to: string | null;
@@ -77,3 +79,61 @@ export const logControlChange = (
   };
   return Effect.logInfo("server preview control changed", entry);
 };
+
+let nextReason: ControlChangeReason | null = null;
+
+/** Names why `run` changes the controller, for the change it makes before its first await. */
+export const because = <A>(reason: ControlChangeReason, run: () => A): A => {
+  nextReason = reason;
+  try {
+    return run();
+  } finally {
+    nextReason = null;
+  }
+};
+
+/** Logs each change of controller. Each method below changes it before its first await. */
+export class TracedSessionControl extends SessionControl {
+  private readonly tab: { readonly threadId: string; readonly tabId: string };
+  private readonly runLog: (log: Effect.Effect<void>) => void;
+
+  constructor(
+    tab: {
+      readonly threadId: string;
+      readonly tabId: string;
+      readonly automationOwner?: string | undefined;
+    },
+    runLog: (log: Effect.Effect<void>) => void,
+    onGenerationChange?: () => void,
+  ) {
+    super(tab.automationOwner ?? null, onGenerationChange);
+    this.tab = { threadId: tab.threadId, tabId: tab.tabId };
+    this.runLog = runLog;
+  }
+
+  private traced<A>(reason: ControlChangeReason, run: () => Promise<A>): Promise<A> {
+    const from = this.controller;
+    const named = nextReason ?? reason;
+    const result = because(named, run);
+    const tab = { ...this.tab, agentId: this.agentId };
+    this.runLog(logControlChange(tab, { from, to: this.controller, reason: named }));
+    return result;
+  }
+
+  override take(viewerId: string) {
+    return this.traced("take", () => super.take(viewerId));
+  }
+
+  override release(viewerId: string, afterDrain?: () => Promise<void>) {
+    return this.traced("release", () => super.release(viewerId, afterDrain));
+  }
+
+  // Disconnect releases through release, which logs it under this reason.
+  override disconnect(viewerId: string, afterDrain?: () => Promise<void>) {
+    return because("disconnect", () => super.disconnect(viewerId, afterDrain));
+  }
+
+  override close() {
+    return this.traced("tabClosed", () => super.close());
+  }
+}

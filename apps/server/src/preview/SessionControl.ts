@@ -1,5 +1,4 @@
 import type { PreviewAutomationControlReason } from "@t3tools/contracts";
-import type { ControlChange, ControlChangeReason } from "../fork/previewControlTrail.ts";
 
 export class BrowserControlInterrupted extends Error {
   readonly reason: PreviewAutomationControlReason;
@@ -21,7 +20,7 @@ const settle = (work: Promise<unknown>) =>
 /** Reserves control immediately, but drains running work before the new owner can act. */
 export class SessionControl {
   readonly agentId: string | null;
-  private readonly onGenerationChange: (change: ControlChange) => void;
+  private readonly onGenerationChange: () => void;
   private tail: Promise<unknown> = Promise.resolve();
   private latestHuman: {
     entry: { viewerId: string; key: string; run: () => Promise<void> };
@@ -33,10 +32,7 @@ export class SessionControl {
   private epoch = 0;
   private closed = false;
 
-  constructor(
-    agentId: string | null,
-    onGenerationChange: (change: ControlChange) => void = () => {},
-  ) {
+  constructor(agentId: string | null, onGenerationChange: () => void = () => {}) {
     this.agentId = agentId;
     this.onGenerationChange = onGenerationChange;
   }
@@ -76,12 +72,11 @@ export class SessionControl {
     if (this.closed) throw new BrowserControlInterrupted("This browser tab is closed.", "closed");
   }
 
-  private changeOwner(owner: string | null, reason: ControlChangeReason) {
-    const from = this.owner;
+  private changeOwner(owner: string | null) {
     this.latestHuman = null;
     this.owner = owner;
     this.epoch++;
-    this.onGenerationChange({ from, to: owner, reason });
+    this.onGenerationChange();
   }
 
   private async action<A>(allowed: () => boolean, run: () => Promise<A>, deadlineMs?: number) {
@@ -156,27 +151,23 @@ export class SessionControl {
     return result;
   }
 
-  async take(viewerId: string, reason: ControlChangeReason = "take") {
+  async take(viewerId: string) {
     this.assertOpen();
     if (this.owner !== null && this.owner !== viewerId) {
       throw new BrowserControlInterrupted("Another viewer controls this browser tab.");
     }
-    if (this.owner !== viewerId) this.changeOwner(viewerId, reason);
+    if (this.owner !== viewerId) this.changeOwner(viewerId);
     return this.human(viewerId, async () => {});
   }
 
-  async release(
-    viewerId: string,
-    afterDrain: () => Promise<void> = async () => {},
-    reason: ControlChangeReason = "release",
-  ) {
+  async release(viewerId: string, afterDrain: () => Promise<void> = async () => {}) {
     this.assertOpen();
     if (this.owner !== viewerId) {
       throw new BrowserControlInterrupted(
         "Only the controlling viewer can release this browser tab.",
       );
     }
-    this.changeOwner(null, reason);
+    this.changeOwner(null);
     await this.enqueue(async () => {
       await Promise.all(this.handoff);
       await afterDrain();
@@ -184,14 +175,13 @@ export class SessionControl {
   }
 
   async disconnect(viewerId: string, afterDrain?: () => Promise<void>) {
-    if (!this.closed && this.owner === viewerId)
-      await this.release(viewerId, afterDrain, "disconnect");
+    if (!this.closed && this.owner === viewerId) await this.release(viewerId, afterDrain);
   }
 
   async close() {
     if (!this.closed) {
       this.closed = true;
-      this.changeOwner(null, "tabClosed");
+      this.changeOwner(null);
     }
     await this.tail;
   }

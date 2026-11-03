@@ -55,3 +55,34 @@ it.effect("logs who got control, who lost it, and why", () => {
     PreviewControlTrail.viewerGone("fresh-viewer-id");
   }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
 });
+
+it.effect("names why each change of controller happened", () => {
+  const changes: Array<string> = [];
+  const logger = Logger.make(({ message }) => {
+    const [, entry] = message as [string, { reason: string; from: unknown; to: unknown }];
+    changes.push(
+      `${entry.reason}:${entry.from === null ? "-" : "v"}>${entry.to === null ? "-" : "v"}`,
+    );
+  });
+  return Effect.gen(function* () {
+    const logs: Array<Effect.Effect<void>> = [];
+    const control = new PreviewControlTrail.TracedSessionControl(tab, (log) => logs.push(log));
+    yield* Effect.promise(() =>
+      PreviewControlTrail.because("attach", () => control.take("viewer-a")),
+    );
+    yield* Effect.promise(() => control.release("viewer-a"));
+    yield* Effect.promise(() => control.take("viewer-a"));
+    yield* Effect.promise(() => control.disconnect("viewer-a"));
+    yield* Effect.promise(() => control.take("viewer-a"));
+    yield* Effect.promise(() => control.close());
+    yield* Effect.all(logs);
+    expect(changes).toEqual([
+      "attach:->v",
+      "release:v>-",
+      "take:->v",
+      "disconnect:v>-",
+      "take:->v",
+      "tabClosed:v>-",
+    ]);
+  }).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+});

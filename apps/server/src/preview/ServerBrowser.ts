@@ -826,11 +826,9 @@ const make = Effect.gen(function* () {
     if (!desktop) await recordCopies(cdp);
     page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
     page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
-    const control = new SessionControl(snapshot.automationOwner ?? null, (change) => {
-      ServerBrowserPage.invalidateRefs(page);
-      const owner = { ...snapshot, agentId: snapshot.automationOwner ?? null };
-      runFork(PreviewControlTrail.logControlChange(owner, change));
-    });
+    const control = new PreviewControlTrail.TracedSessionControl(snapshot, runFork, () =>
+      ServerBrowserPage.invalidateRefs(page),
+    );
     let pendingFileChooserOffer = Promise.resolve();
     const tab: ServerTab = {
       threadId: ThreadId.make(snapshot.threadId),
@@ -2619,7 +2617,7 @@ const make = Effect.gen(function* () {
     PreviewControlTrail.viewerConnected(viewer.id);
     // Last and not awaited: a connect that hangs, or waits behind a stuck action, never holds control.
     if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
-      tab.control.take(viewer.id, "attach").catch(constVoid);
+      PreviewControlTrail.because("attach", () => tab.control.take(viewer.id)).catch(constVoid);
     }
     broadcastControl(tab);
     pushFileChooser(tab);
