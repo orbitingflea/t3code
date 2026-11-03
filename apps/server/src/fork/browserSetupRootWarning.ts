@@ -5,6 +5,10 @@ import * as Option from "effect/Option";
 
 import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 
+/** PreviewBrowserRootError's advice without its claim that the server runs as root. */
+const ROOT_SERVER_ADVICE =
+  "Chrome's sandbox cannot start as root. Run T3 as a nonroot user. Otherwise set `T3CODE_SERVER_BROWSER_SANDBOX=0` in the T3 server's environment and restart the server; this disables Chrome's sandbox. Manual: `T3CODE_SERVER_BROWSER_SANDBOX=0 t3 serve`. Systemd: add `Environment=T3CODE_SERVER_BROWSER_SANDBOX=0` under `[Service]`, reload systemd, then restart the service. `t3 browser setup` cannot fix root sandboxing.";
+
 /**
  * Setup often runs as root for the server's account (`incus exec` sets no SUDO_USER), so its
  * own uid says little. The owner of a T3 home given on the command line or in T3CODE_HOME is
@@ -16,7 +20,6 @@ export const browserSetupRootWarning = Effect.fn("browserSetup.rootWarning")(fun
 }) {
   const env = yield* HostProcess.Environment;
   if (PreviewBrowserHost.sandboxDisabled(env)) return undefined;
-  const rootError = new PreviewBrowserHost.PreviewBrowserRootError().message;
   if (input.baseDirGiven) {
     const fs = yield* FileSystem.FileSystem;
     const owner = yield* fs.stat(input.baseDir).pipe(
@@ -25,11 +28,14 @@ export const browserSetupRootWarning = Effect.fn("browserSetup.rootWarning")(fun
     );
     if (Option.isSome(owner)) {
       return owner.value === 0
-        ? `The T3 home ${input.baseDir} belongs to root, so the T3 server likely runs as root. If it does: ${rootError}`
+        ? `The T3 home ${input.baseDir} belongs to root, so the T3 server likely runs as root. If it does: ${ROOT_SERVER_ADVICE}`
         : undefined;
     }
   }
   // Under sudo from another user, the server most likely runs as that user.
   if ((yield* HostProcess.UserId) !== 0 || (env.SUDO_USER ?? "root") !== "root") return undefined;
-  return `Setup runs as root and cannot tell which user runs the T3 server; pass \`--base-dir\` with the server's T3 home to check. If the server runs as root: ${rootError}`;
+  const unknownUser = input.baseDirGiven
+    ? `The T3 home ${input.baseDir} does not exist yet, so setup cannot check which user runs the T3 server.`
+    : "Setup runs as root and cannot tell which user runs the T3 server; pass `--base-dir` with the server's T3 home to check.";
+  return `${unknownUser} If the server runs as root: ${ROOT_SERVER_ADVICE}`;
 });

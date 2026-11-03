@@ -121,15 +121,13 @@ const browserSetupCommand = Command.make("setup", { baseDir: baseDirFlag }).pipe
       const isRoot = (yield* HostProcess.UserId) === 0;
       const env = yield* HostProcess.Environment;
       const baseDirPath = yield* setupBaseDir(baseDir);
+      const baseDirGiven = Option.isSome(baseDir) || env.T3CODE_HOME !== undefined;
       // sudo resets the environment, so a chosen home has to be on the command line.
       const setupCommand = yield* resolveRootCliCommand(
         PreviewBrowserHost.SETUP_SUBCOMMAND,
-        Option.isSome(baseDir) || env.T3CODE_HOME !== undefined ? ["--base-dir", baseDirPath] : [],
+        baseDirGiven ? ["--base-dir", baseDirPath] : [],
       );
-      const rootWarning = yield* browserSetupRootWarning({
-        baseDir: baseDirPath,
-        baseDirGiven: Option.isSome(baseDir) || env.T3CODE_HOME !== undefined,
-      });
+      const rootWarning = yield* browserSetupRootWarning({ baseDir: baseDirPath, baseDirGiven });
 
       const needsProfile = yield* PreviewBrowserHost.sandboxBlocked;
       const browser = yield* installedBrowser(baseDirPath);
