@@ -19,6 +19,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
+import { fullChromeRelease, removeReplacedShell } from "../fork/previewChrome.ts";
 import { openZipArchive } from "../zipArchive.ts";
 
 // Update the version, sizes and hashes from each chrome-headless-shell zip listed at
@@ -73,6 +74,10 @@ export interface PreviewBrowserRelease {
   readonly url: string;
   readonly bytes: number;
   readonly sha256: string;
+  /** Archive and tools directory name; defaults to chrome-headless-shell. */
+  readonly product?: string;
+  /** Executable inside the archive root; defaults to chrome-headless-shell (.exe on Windows). */
+  readonly executable?: string;
 }
 
 const previewBrowserRelease = (
@@ -82,12 +87,12 @@ const previewBrowserRelease = (
   const chrome = chromePlatform(platform, arch);
   return chrome === null
     ? null
-    : {
+    : (fullChromeRelease(chrome) ?? {
         version: VERSION,
         platform: chrome,
         url: `https://storage.googleapis.com/chrome-for-testing-public/${VERSION}/${chrome}/chrome-headless-shell-${chrome}.zip`,
         ...ARCHIVES[chrome],
-      };
+      });
 };
 
 const megabytes = (bytes: number) => Math.round(bytes / 1_000_000);
@@ -173,11 +178,12 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
   const installRoot = path.join(
     options.baseDir,
     "tools",
-    "chrome-headless-shell",
+    release?.product ?? "chrome-headless-shell",
     release?.platform ?? `${platform}-${arch}`,
   );
   const executableName =
-    platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell";
+    release?.executable ??
+    (platform === "win32" ? "chrome-headless-shell.exe" : "chrome-headless-shell");
   const gate = yield* Semaphore.make(1);
   let state: InstallState = { _tag: "idle" };
   const progress = { downloadedBytes: 0, unpacking: false };
@@ -251,7 +257,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
       const unsafe = new PreviewBrowserInstallError({
         detail: "The archive contains an unexpected or unsafe entry.",
       });
-      const root = `chrome-headless-shell-${release.platform}/`;
+      const root = `${release.product ?? "chrome-headless-shell"}-${release.platform}/`;
       yield* fs.makeDirectory(destination);
       let foundExecutable = false;
       for (;;) {
@@ -293,7 +299,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
       }
       if (!foundExecutable) {
         return yield* new PreviewBrowserInstallError({
-          detail: "The archive does not contain chrome-headless-shell.",
+          detail: `The archive does not contain ${executableName}.`,
         });
       }
     },
@@ -348,6 +354,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
           ),
         { discard: true },
       );
+      yield* removeReplacedShell(fs, path, release, installRoot);
       return path.join(installRoot, release.version, executableName);
     },
     Effect.mapError(wrapFailure("Could not save the browser in T3's home directory.")),

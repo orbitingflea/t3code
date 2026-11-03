@@ -9,6 +9,7 @@ import { Command } from "effect/cli";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import { FULL_CHROME_PRODUCT } from "../fork/previewChrome.ts";
 import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 import { resolveBaseDir } from "../os-jank.ts";
 import { baseDirFlag } from "./config.ts";
@@ -67,14 +68,16 @@ const aptOffers = Effect.fn("browserSetup.aptOffers")(function* (name: string) {
 const installedBrowser = Effect.fn("browserSetup.installedBrowser")(function* (baseDir: string) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-  const root = path.join(baseDir, "tools", "chrome-headless-shell");
-  for (const platform of yield* fs.readDirectory(root).pipe(Effect.orElseSucceed(() => []))) {
-    for (const version of yield* fs
-      .readDirectory(path.join(root, platform))
-      .pipe(Effect.orElseSucceed(() => []))) {
-      const executable = path.join(root, platform, version, "chrome-headless-shell");
-      if (yield* fs.exists(executable).pipe(Effect.orElseSucceed(() => false))) {
-        return Option.some(executable);
+  for (const product of [FULL_CHROME_PRODUCT, "chrome-headless-shell"]) {
+    const root = path.join(baseDir, "tools", product);
+    for (const platform of yield* fs.readDirectory(root).pipe(Effect.orElseSucceed(() => []))) {
+      for (const version of yield* fs
+        .readDirectory(path.join(root, platform))
+        .pipe(Effect.orElseSucceed(() => []))) {
+        const executable = path.join(root, platform, version, product);
+        if (yield* fs.exists(executable).pipe(Effect.orElseSucceed(() => false))) {
+          return Option.some(executable);
+        }
       }
     }
   }
