@@ -1,5 +1,5 @@
 // Exposes the Vite development and build configuration for the web client.
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import { config } from "./server/config.mjs";
 
@@ -21,6 +21,29 @@ const disableHmrTransport = {
     );
   },
 } satisfies Plugin;
+
+// Vite's proxy ends the chat server's side of a WebSocket only after the upgrade, and until then
+// it does not read the client socket, so it cannot see the client leave. A preview viewer that
+// reconnects while its upgrade is pending would leave the chat server holding a viewer that is
+// gone, and that viewer can keep control of a tab. Read the socket until the upgrade; keep what
+// it sends for the upgraded pipe.
+const endUpgradeWithClient: ProxyOptions["configure"] = (proxy) => {
+  proxy.on("proxyReqWs", (proxyReq, _req, socket) => {
+    const early: Buffer[] = [];
+    const keep = (chunk: Buffer) => early.push(chunk);
+    const cancel = () => proxyReq.destroy();
+    socket.on("data", keep);
+    socket.once("end", cancel);
+    socket.once("close", cancel);
+    proxyReq.once("upgrade", () => {
+      socket.off("data", keep);
+      socket.off("end", cancel);
+      socket.off("close", cancel);
+      socket.pause();
+      for (const chunk of early.reverse()) socket.unshift(chunk);
+    });
+  });
+};
 
 export default defineConfig({
   plugins: [react(), disableHmrTransport],
@@ -44,7 +67,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/chat/, ""),
       },
       // The chat's browser code builds these from the page origin, so they reach it unprefixed.
-      "/api": { target: `http://127.0.0.1:${config.chatPort}`, ws: true },
+      "/api": {
+        target: `http://127.0.0.1:${config.chatPort}`,
+        ws: true,
+        configure: endUpgradeWithClient,
+      },
       "/ws": { target: `http://127.0.0.1:${config.chatPort}`, ws: true },
       "/.well-known": { target: `http://127.0.0.1:${config.chatPort}`, ws: true },
     },
