@@ -2546,11 +2546,6 @@ const make = Effect.gen(function* () {
           reportLiveTabs();
         }),
     );
-    if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
-      yield* Effect.promise(() => tab.control.take(viewer.id));
-    }
-    broadcastControl(tab);
-    pushFileChooser(tab);
     const pushStill = async () => {
       const data = await withCaptureLock(tab, () =>
         ServerBrowserPage.captureViewport(session, { format: "jpeg", quality }),
@@ -2613,6 +2608,12 @@ const make = Effect.gen(function* () {
     // An idle page does not repaint for a new screencast, so the viewer
     // starts from a still unless a live frame beat it.
     if (!screencastStarted) yield* Effect.promise(pushStill);
+    // Last and not awaited: a connect that hangs, or waits behind a stuck action, never holds control.
+    if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
+      tab.control.take(viewer.id).catch(constVoid);
+    }
+    broadcastControl(tab);
+    pushFileChooser(tab);
     return {
       output,
       input: (raw: unknown) =>
