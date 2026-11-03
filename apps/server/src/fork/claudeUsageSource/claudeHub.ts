@@ -1,4 +1,8 @@
-import { UsageLimitSourceError, type UsageLimitSourceConfig } from "@t3tools/contracts";
+import {
+  type ServerProviderUsageLimits,
+  UsageLimitSourceError,
+  type UsageLimitSourceConfig,
+} from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -13,7 +17,7 @@ import {
   REQUEST_ID,
   claudeResetCreditsToContract,
 } from "../../provider/claudeResetCredits.ts";
-import { usageReadAt, usageReadAtField } from "../usageReadAt/usageReadAt.ts";
+import { usageReadAt, withAccountReadAt } from "../usageReadAt/usageReadAt.ts";
 
 type HubAccount = {
   readonly auth_index: string;
@@ -123,17 +127,15 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
 
   /** Adds reset credits and the reading's time from a usage answer to a hub account read from it. */
   const withUsageAnswer = Effect.fn("ClaudeHub.withUsageAnswer")(function* <
-    A extends { readonly usageLimits: object },
+    A extends { readonly usageLimits: ServerProviderUsageLimits },
   >(body: string, account: A) {
     const credits = yield* resetCredits(yield* decodeClaudeUsage(body));
-    return {
-      ...account,
-      usageLimits: {
-        ...account.usageLimits,
-        ...(credits ? { resetCredits: credits } : {}),
-        ...usageReadAtField(body),
-      },
-    };
+    return withAccountReadAt(
+      body,
+      credits
+        ? { ...account, usageLimits: { ...account.usageLimits, resetCredits: credits } }
+        : account,
+    );
   });
 
   /** Usage in the Claude SDK's get_usage shape, plus reset credits. */

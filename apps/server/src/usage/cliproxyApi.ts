@@ -17,7 +17,7 @@ import { codexPlanLabel } from "../provider/CodexProvider.ts";
 import { codexRateLimitsToLimits } from "../provider/codexUsageLimits.ts";
 import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
-import { usageReadAtField } from "../fork/usageReadAt/usageReadAt.ts";
+import { withAccountReadAt } from "../fork/usageReadAt/usageReadAt.ts";
 import * as ClaudeHub from "../fork/claudeUsageSource/claudeHub.ts";
 
 const AuthFile = Schema.Struct({
@@ -329,7 +329,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
       const next = available?.[0];
       const planType =
         usage.plan_type ?? account.id_token?.plan_type ?? account.id_token?.chatgpt_plan_type;
-      return {
+      return withAccountReadAt(body, {
         ...base,
         plan: codexPlanLabel(planType),
         usageLimits: {
@@ -341,7 +341,6 @@ export const makeCliproxyApi = Effect.gen(function* () {
               secondary: toWindow(usage.rate_limit?.secondary_window),
             },
           }),
-          ...usageReadAtField(body),
           ...(available
             ? {
                 resetCredits: {
@@ -356,7 +355,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
               }
             : {}),
         },
-      };
+      });
     });
     return yield* read.pipe(
       Effect.orElseSucceed(() => ({

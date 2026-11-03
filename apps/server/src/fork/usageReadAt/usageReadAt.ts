@@ -19,16 +19,18 @@ export function usageReadAt(body: string): string | undefined {
   );
 }
 
-/** `{ readAt }` from a usage answer, or nothing when it has no `fetched_at`. */
-export function usageReadAtField(body: string): { readonly readAt?: string } {
-  const readAt = usageReadAt(body);
-  return readAt === undefined ? {} : { readAt };
-}
-
 /** Adds the reading's time to limits read from a usage source; unavailable limits have none. */
 export function withUsageReadAt<A extends ServerProviderUsageLimits>(
   limits: A,
   readAt: string | undefined,
 ): A {
   return readAt === undefined || limits.unavailable ? limits : { ...limits, readAt };
+}
+
+/** Adds the reading's time from a usage source's usage answer to an account read from it. */
+export function withAccountReadAt<A extends { readonly usageLimits: ServerProviderUsageLimits }>(
+  body: string,
+  account: A,
+): A {
+  return { ...account, usageLimits: withUsageReadAt(account.usageLimits, usageReadAt(body)) };
 }
