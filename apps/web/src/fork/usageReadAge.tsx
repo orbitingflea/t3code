@@ -4,7 +4,7 @@ import { ClockIcon } from "lucide-react";
 import { usePrimarySettings } from "../hooks/useSettings";
 import { formatRelativeTimeLabel, formatShortTimestamp } from "../timestampFormat";
 
-/** A usage source rereads each account every few minutes, so an older reading is one it kept after failed reads. */
+/** Readings older than this show their age. */
 const OLD_READING_MS = 15 * 60_000;
 
 /** The reading time when the reading is more than 15 minutes old, else null. */

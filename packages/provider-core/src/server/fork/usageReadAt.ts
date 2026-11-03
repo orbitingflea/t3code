@@ -1,6 +1,6 @@
 import type { ServerProviderUsageLimits } from "@t3tools/contracts";
 
-/** Takes a runtime update's newer windows, which outdate a usage source's reading time. */
+/** Returns the probed limits with the runtime update's newer check time and windows, and without the usage source's reading time. */
 export function withRuntimeWindows(
   probed: ServerProviderUsageLimits,
   published: ServerProviderUsageLimits,
