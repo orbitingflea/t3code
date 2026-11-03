@@ -5,9 +5,10 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import type { Browser, BrowserContext, CDPSession, Page } from "playwright-core";
+import type { Browser, BrowserContext, CDPSession } from "playwright-core";
 
 import { chromeBrands } from "../fork/previewChrome.ts";
+import { isStartPage, keepStartPage } from "../fork/previewDisplay.ts";
 import { sandboxDisabled } from "./PreviewBrowserHost.ts";
 
 // Playwright needs its files on disk. createRequire also resolves it from a Node SEA executable.
@@ -77,8 +78,6 @@ export class ServerBrowserContexts {
   private readonly options: Options;
   private readonly contexts = new Map<string, Promise<BrowserContext>>();
   private readonly clearing = new Map<string, Promise<void>>();
-  /** Headed Chrome quits when a persistent profile's last window closes, so its start page stays. */
-  private readonly startPages = new WeakSet<Page>();
   private browser: Promise<Browser> | undefined;
   private closing: Promise<void> | undefined;
 
@@ -152,7 +151,7 @@ export class ServerBrowserContexts {
           this.options.onContextClose?.(context);
         });
         for (const page of context.pages()) {
-          if (!this.startPages.has(page)) await page.close().catch(constVoid);
+          if (!isStartPage(page)) await page.close().catch(constVoid);
         }
         if (this.closing) {
           await context.close().catch(constVoid);
@@ -184,8 +183,7 @@ export class ServerBrowserContexts {
         executablePath,
       }),
     );
-    const startPage = context.pages()[0];
-    if (!options.headless && startPage) this.startPages.add(startPage);
+    if (!options.headless) keepStartPage(context);
     return context;
   }
 

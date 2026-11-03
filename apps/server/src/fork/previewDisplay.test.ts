@@ -9,12 +9,12 @@ import { afterEach, describe, expect, it } from "vite-plus/test";
 
 import { PreviewDisplay, xauthorityEntry } from "./previewDisplay.ts";
 
-const hasXvfb = (process.env.PATH ?? "")
-  .split(":")
-  .some((directory) => directory && NodeFS.existsSync(NodePath.join(directory, "Xvfb")));
-const hasXdpyinfo = (process.env.PATH ?? "")
-  .split(":")
-  .some((directory) => directory && NodeFS.existsSync(NodePath.join(directory, "xdpyinfo")));
+const onPath = (name: string) =>
+  (process.env.PATH ?? "")
+    .split(":")
+    .some((directory) => directory && NodeFS.existsSync(NodePath.join(directory, name)));
+const hasXvfb = onPath("Xvfb");
+const hasXdpyinfo = onPath("xdpyinfo");
 
 const directories: string[] = [];
 const tempDirectory = async () => {
@@ -56,6 +56,20 @@ describe("PreviewDisplay", () => {
       command: "/nonexistent/Xvfb",
     });
     expect(await display.env({})).toBeUndefined();
+  });
+
+  it.skipIf(!hasXvfb)("finds Xvfb once it is installed, without a restart", async () => {
+    const directory = await tempDirectory();
+    const command = NodePath.join(NodePath.dirname(directory), "Xvfb");
+    const display = new PreviewDisplay({ platform: "linux", directory, command });
+    expect(await display.env({})).toBeUndefined();
+    const xvfb = (process.env.PATH ?? "")
+      .split(":")
+      .map((entry) => NodePath.join(entry, "Xvfb"))
+      .find((path) => NodeFS.existsSync(path))!;
+    await NodeFSP.symlink(xvfb, command);
+    expect((await display.env({}))?.DISPLAY).toMatch(/^:\d+$/);
+    await display.close();
   });
 
   it.skipIf(!hasXvfb)("starts one private display and stops it on close", async () => {

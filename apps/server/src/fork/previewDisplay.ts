@@ -5,6 +5,8 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import type * as NodeStream from "node:stream";
 
+import type { BrowserContext, Page } from "playwright-core";
+
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -65,6 +67,14 @@ const readLine = (stream: NodeStream.Readable, timeoutMs: number) =>
     stream.on("data", onData).on("end", onEnd);
   });
 
+// Headed Chrome quits when a persistent profile's last window closes, so its start page stays open.
+const startPages = new WeakSet<Page>();
+export const keepStartPage = (context: BrowserContext) => {
+  const page = context.pages()[0];
+  if (page) startPages.add(page);
+};
+export const isStartPage = (page: Page) => startPages.has(page);
+
 interface Started {
   readonly env: NodeJS.ProcessEnv;
   readonly child: NodeChildProcess.ChildProcess;
@@ -90,7 +100,10 @@ export class PreviewDisplay {
       this.started = undefined;
       throw cause;
     });
-    const started = await this.started;
+    const pending = this.started;
+    const started = await pending;
+    // No Xvfb yet: check again at the next launch, so `t3 browser setup` takes effect without a restart.
+    if (!started && this.started === pending) this.started = undefined;
     return started && { ...base, ...started.env };
   }
 
@@ -109,7 +122,6 @@ export class PreviewDisplay {
       child.once("spawn", () => resolve(undefined));
       child.once("error", resolve);
     });
-    // No Xvfb on this host: Chrome stays headless until `t3 browser setup` installs it.
     if (spawned?.code === "ENOENT") return undefined;
     if (spawned) throw spawned;
     let output = "";
