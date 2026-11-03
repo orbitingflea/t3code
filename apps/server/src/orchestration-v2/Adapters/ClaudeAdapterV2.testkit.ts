@@ -1681,10 +1681,16 @@ async function recordClaudeActiveSteeringQuery(input: {
   }
 
   const promptQueue = new RecordingPromptQueue();
-  const offerPrompt = (index: number, priority?: SDKUserMessage["priority"]) => {
+  const offerPrompt = async (index: number) => {
     const message = ClaudeAdapterV2.makeClaudeUserMessage({
       text: input.prompts[index]!,
-      ...(priority === undefined ? {} : { priority }),
+      uuid: await Effect.runPromise(
+        Crypto.Crypto.pipe(
+          Effect.flatMap((crypto) => crypto.randomUUIDv4()),
+          Effect.filterOrFail(ClaudeAdapterV2.isClaudePromptUuid),
+          Effect.provide(NodeServices.layer),
+        ),
+      ),
     });
     input.entries.push({
       type: "expect_outbound",
@@ -1693,9 +1699,9 @@ async function recordClaudeActiveSteeringQuery(input: {
     });
     promptQueue.offer(message);
   };
-  const offerSteeringPrompts = () => {
+  const offerSteeringPrompts = async () => {
     for (let index = 1; index < input.prompts.length; index += 1) {
-      offerPrompt(index, "now");
+      await offerPrompt(index);
     }
   };
 
@@ -1759,8 +1765,21 @@ async function recordClaudeActiveSteeringQuery(input: {
   });
   const iterator = queryRuntime[Symbol.asyncIterator]();
   try {
-    offerPrompt(0);
-    offerSteeringPrompts();
+    await offerPrompt(0);
+    // Steer once Claude has started the first prompt's turn, as T3 does.
+    while (true) {
+      const next = await iterator.next();
+      if (next.done === true) {
+        throw new Error("Claude active steering query ended before the turn started.");
+      }
+      input.entries.push({
+        type: "emit_inbound",
+        label: next.value.type,
+        frame: sanitizeSdkMessageForReplay({ message: next.value, scenario: input.scenario }),
+      });
+      if (isSystemInitFrame(next.value)) break;
+    }
+    await offerSteeringPrompts();
     const completed = await recordMessagesUntilTurnResults({
       iterator,
       entries: input.entries,

@@ -2211,7 +2211,7 @@ describe("ClaudeAdapterV2 attachments", () => {
             },
           });
 
-          assert.equal(offeredMessages[1]?.priority, "now");
+          assert.isUndefined(offeredMessages[1]?.priority);
           assert.deepEqual(offeredMessages[1]?.message.content, expectedContent);
           const documentPath = path.join(attachmentsDir, attachmentRelativePath(document)!);
           for (const scenario of [
@@ -2872,6 +2872,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
     readonly apiErrorStatus?: number;
     // null omits the field, as the CLI does on a zero-turn result.
     readonly terminalReason?: SDKResultMessage["terminal_reason"] | null;
+    readonly userMessageUuids?: ReadonlyArray<string>;
     readonly usage?: {
       readonly input_tokens: number;
       readonly output_tokens: number;
@@ -2902,6 +2903,9 @@ describe("ClaudeAdapterV2 background wake turns", () => {
       ...(input.origin === undefined ? {} : { origin: input.origin }),
       ...(input.errors === undefined ? {} : { errors: input.errors }),
       ...(input.apiErrorStatus === undefined ? {} : { api_error_status: input.apiErrorStatus }),
+      ...(input.userMessageUuids === undefined
+        ? {}
+        : { user_message_uuids: input.userMessageUuids }),
       ...(input.terminalReason === null
         ? {}
         : { terminal_reason: input.terminalReason ?? "completed" }),
@@ -4582,7 +4586,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
           },
         });
         const attachmentNote = `\n\n[Attached file "requirements.pdf" is saved at: ${path.join(harness.attachmentsDir, attachmentRelativePath(attachment)!)}]`;
-        assert.equal(harness.offeredMessages[1]?.priority, "now");
+        assert.isUndefined(harness.offeredMessages[1]?.priority);
         assert.deepEqual(harness.offeredMessages[1]?.message.content, [
           { type: "text", text: `${leadingText}${attachmentNote}` },
           { type: "text", text: `/implement the fixes${attachmentNote}` },
@@ -5405,7 +5409,7 @@ describe("ClaudeAdapterV2 background wake turns", () => {
               attachments: [],
             },
           });
-          assert.equal(harness.offeredMessages[1]?.priority, "now");
+          assert.isUndefined(harness.offeredMessages[1]?.priority);
         }
         yield* harness.offerAndWait(
           makeResultFrame({
@@ -5472,6 +5476,76 @@ describe("ClaudeAdapterV2 background wake turns", () => {
             },
           );
         }
+        assert.lengthOf(harness.terminalEvents(), 1);
+      }).pipe(
+        Effect.provide(
+          Layer.mergeAll(IdAllocator.layer, McpProviderSessions.layer, NodeServices.layer),
+        ),
+      ),
+    ),
+  );
+
+  it.effect("keeps a steered turn open until Claude runs the queued steer", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const harness = yield* makeWakeHarness;
+        const idAllocator = yield* IdAllocator.IdAllocatorV2;
+        const attemptId = RunAttemptId.make("attempt-steer-queued");
+        const input = makeClaudeTestTurnInput({
+          threadId: harness.threadId,
+          providerThread: harness.providerThread,
+          now: yield* DateTime.now,
+          attemptId,
+          text: "Audit the settings pages.",
+          attachments: [],
+        });
+        yield* harness.runtime.startTurn(input);
+        yield* harness.runtime.steerTurn({
+          threadId: harness.threadId,
+          runId: input.runId,
+          providerThread: harness.providerThread,
+          providerTurnId: idAllocator.derive.providerTurn({
+            driver: ClaudeAdapterV2.CLAUDE_PROVIDER,
+            nativeTurnId: `turn:${attemptId}`,
+          }),
+          message: {
+            createdBy: "user",
+            creationSource: "web",
+            messageId: MessageId.make("message-steer-queued"),
+            text: "Include the hierarchy mock.",
+            attachments: [],
+          },
+        });
+        const [prompt, steer] = harness.offeredMessages;
+        assert.isDefined(prompt?.uuid);
+        assert.isDefined(steer?.uuid);
+        // The turn ended before Claude read the steer, so it runs as Claude's next turn.
+        yield* harness.offerAndWait(
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000911",
+            result: "Audit finished.",
+            userMessageUuids: [prompt!.uuid!],
+          }),
+        );
+        assert.lengthOf(harness.terminalEvents(), 0);
+        yield* Queue.offer(harness.sdkMessages, wakeAssistant);
+        yield* Queue.offer(
+          harness.sdkMessages,
+          makeResultFrame({
+            uuid: "00000000-0000-4000-8000-000000000912",
+            result: WAKE_ASSISTANT_TEXT,
+            userMessageUuids: [steer!.uuid!],
+          }),
+        );
+        assert.equal((yield* Queue.take(harness.terminalReceipts)).status, "completed");
+        assert.isTrue(
+          harness.events.some(
+            (event) =>
+              event.type === "turn_item.updated" &&
+              event.turnItem.type === "assistant_message" &&
+              event.turnItem.text === WAKE_ASSISTANT_TEXT,
+          ),
+        );
         assert.lengthOf(harness.terminalEvents(), 1);
       }).pipe(
         Effect.provide(
