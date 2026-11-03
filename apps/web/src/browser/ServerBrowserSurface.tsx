@@ -1,7 +1,6 @@
 import {
   createPreviewFramePainter,
   createPreviewStreamClient,
-  previewStreamControlLabel,
   previewStreamModifiers,
   type PreviewStreamClient,
   type PreviewStreamControl,
@@ -34,6 +33,7 @@ import {
 } from "react";
 
 import { AgentCursorMark } from "~/components/preview/AgentBrowserCursor";
+import { previewControlLabel } from "~/fork/previewControlHolder";
 import { CommandBlock } from "~/components/CommandBlock";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
@@ -753,7 +753,7 @@ export function ServerBrowserSurface(props: {
         )}
       >
         <span role="status" className="text-xs text-muted-foreground">
-          {previewStreamControlLabel(control)}
+          {previewControlLabel(control)}
         </span>
         {control?.canOperate ? (
           <Button

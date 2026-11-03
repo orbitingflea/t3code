@@ -81,6 +81,7 @@ import * as DesktopBrowserChannel from "./DesktopBrowserChannel.ts";
 import * as PreviewAgentActivity from "./PreviewAgentActivity.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
+import * as PreviewControlTrail from "../fork/previewControlTrail.ts";
 import * as PreviewDisplay from "../fork/previewDisplay.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
@@ -174,6 +175,8 @@ export type ServerBrowserViewerOutput =
         readonly message: string;
         readonly defaultValue: string;
       } | null;
+      readonly viewer: string;
+      readonly holder: PreviewControlTrail.ControlHolder | null;
     }
   | {
       readonly _tag: "probe";
@@ -556,6 +559,7 @@ const make = Effect.gen(function* () {
                 : "unclaimed",
         generation: tab.control.generation,
         dialog: dialogStatus(tab),
+        ...PreviewControlTrail.controlFields(viewer.id, tab.control.controller),
       });
   };
 
@@ -822,9 +826,11 @@ const make = Effect.gen(function* () {
     if (!desktop) await recordCopies(cdp);
     page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
     page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
-    const control = new SessionControl(snapshot.automationOwner ?? null, () =>
-      ServerBrowserPage.invalidateRefs(page),
-    );
+    const control = new SessionControl(snapshot.automationOwner ?? null, (change) => {
+      ServerBrowserPage.invalidateRefs(page);
+      const owner = { ...snapshot, agentId: snapshot.automationOwner ?? null };
+      runFork(PreviewControlTrail.logControlChange(owner, change));
+    });
     let pendingFileChooserOffer = Promise.resolve();
     const tab: ServerTab = {
       threadId: ThreadId.make(snapshot.threadId),
@@ -2536,12 +2542,14 @@ const make = Effect.gen(function* () {
     yield* Effect.acquireRelease(
       Effect.sync(() => {
         tab.viewers.add(viewer);
+        PreviewControlTrail.viewerAttaching(viewer.id);
         reportLiveTabs();
       }),
       () =>
         Effect.promise(async () => {
           await tab.control.disconnect(viewer.id, () => releaseViewerInput(viewer, session));
           tab.viewers.delete(viewer);
+          PreviewControlTrail.viewerGone(viewer.id);
           broadcastControl(tab);
           reportLiveTabs();
         }),
@@ -2608,9 +2616,10 @@ const make = Effect.gen(function* () {
     // An idle page does not repaint for a new screencast, so the viewer
     // starts from a still unless a live frame beat it.
     if (!screencastStarted) yield* Effect.promise(pushStill);
+    PreviewControlTrail.viewerConnected(viewer.id);
     // Last and not awaited: a connect that hangs, or waits behind a stuck action, never holds control.
     if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
-      tab.control.take(viewer.id).catch(constVoid);
+      tab.control.take(viewer.id, "attach").catch(constVoid);
     }
     broadcastControl(tab);
     pushFileChooser(tab);

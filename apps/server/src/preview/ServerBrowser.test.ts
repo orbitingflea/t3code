@@ -922,12 +922,37 @@ it.live("a viewer whose connect never finishes does not hold control", () => {
       const next = yield* browser
         .attachViewer(viewerInput(tabId, true))
         .pipe(Effect.timeout("5 seconds"));
-      expect((yield* Queue.takeAll(next.output)).findLast((item) => item._tag === "control")).toEqual(
-        expect.objectContaining({ controller: "you" }),
-      );
+      expect(
+        (yield* Queue.takeAll(next.output)).findLast((item) => item._tag === "control"),
+      ).toEqual(expect.objectContaining({ controller: "you" }));
     }).pipe(Effect.ensuring(Effect.sync(() => frozen.resolve({})))),
   ).pipe(Effect.provide(layer));
 });
+
+it.live("tells a viewer without control which viewer holds it", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const manager = yield* Manager.PreviewManager;
+      yield* Effect.yieldNow;
+      const { tabId } = yield* manager.open({ threadId: scope.thread.threadId, runtime: "server" });
+      const holding = yield* browser.attachViewer(viewerInput(tabId, true));
+      const holder = (yield* Queue.takeAll(holding.output)).findLast(
+        (item) => item._tag === "control",
+      );
+      const other = yield* browser.attachViewer(viewerInput(tabId, true));
+      expect(
+        (yield* Queue.takeAll(other.output)).findLast((item) => item._tag === "control"),
+      ).toEqual(
+        expect.objectContaining({
+          controller: "another-viewer",
+          holder: { viewer: holder?.viewer, attachedAt: expect.any(Number), connected: true },
+        }),
+      );
+      expect(holder).toEqual(expect.objectContaining({ controller: "you", holder: null }));
+    }),
+  ).pipe(Effect.provide(layer)),
+);
 
 it.live("reports a pending dialog without evaluating the page and resolves it explicitly", () =>
   Effect.scoped(
