@@ -32,35 +32,51 @@ const readyHostSpawner = ChildProcessSpawner.make(() =>
   ),
 );
 
-const setupOutput = (baseDirOwner: number) =>
+// Setup runs as root without sudo, as from `incus exec` or a root shell.
+const rootSetupOutput = (input: { readonly baseDir?: string; readonly baseDirOwner?: number }) =>
   Effect.gen(function* () {
+    const { baseDirOwner } = input;
     yield* Command.runWith(browserCommand, { version: "0.0.0" })([
       "setup",
-      "--base-dir",
-      "/srv/t3",
+      ...(input.baseDir === undefined ? [] : ["--base-dir", input.baseDir]),
     ]).pipe(
       Effect.provide(
         FileSystem.layerNoop({
           exists: () => Effect.succeed(true),
-          stat: () =>
-            Effect.succeed({
-              type: "Directory",
-              uid: Option.some(baseDirOwner),
-            } as FileSystem.File.Info),
+          ...(baseDirOwner === undefined
+            ? {}
+            : {
+                stat: () =>
+                  Effect.succeed({
+                    type: "Directory",
+                    uid: Option.some(baseDirOwner),
+                  } as FileSystem.File.Info),
+              }),
         }),
       ),
       Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, readyHostSpawner),
       Effect.provideService(HostProcess.Platform, "linux"),
-      // Root without sudo, as from `incus exec` or a root shell.
       Effect.provideService(HostProcess.UserId, 0),
       Effect.provideService(HostProcess.Environment, {}),
     );
     return (yield* TestConsole.logLines).join("\n");
   }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, Layer.fresh(TestConsole.layer))));
 
-it.effect("root setup warns only when root owns the server's T3 home", () =>
+it.effect("root setup warns by the owner of a given T3 home, and conditionally without one", () =>
   Effect.gen(function* () {
-    expect(yield* setupOutput(0)).toContain("T3 server is running as root");
-    expect(yield* setupOutput(1000)).not.toContain("running as root");
+    expect(yield* rootSetupOutput({ baseDir: "/srv/t3", baseDirOwner: 0 })).toContain(
+      "The T3 home /srv/t3 belongs to root",
+    );
+    expect(yield* rootSetupOutput({ baseDir: "/srv/t3", baseDirOwner: 1000 })).not.toContain(
+      "root",
+    );
+    // A fresh install has no T3 home yet.
+    expect(yield* rootSetupOutput({ baseDir: "/srv/t3" })).toContain(
+      "cannot tell which user runs the T3 server",
+    );
+    // Without --base-dir, setup looks at root's own T3 home, which says nothing about the server.
+    const defaultHome = yield* rootSetupOutput({ baseDirOwner: 0 });
+    expect(defaultHome).toContain("cannot tell which user runs the T3 server");
+    expect(defaultHome).not.toContain("belongs to root");
   }),
 );
