@@ -8,6 +8,7 @@ import * as NodePath from "node:path";
 import type { Browser, BrowserContext, CDPSession } from "playwright-core";
 
 import { chromeBrands } from "../fork/previewChrome.ts";
+import { isStartPage, keepStartPage } from "../fork/previewDisplay.ts";
 import { sandboxDisabled } from "./PreviewBrowserHost.ts";
 
 // Playwright needs its files on disk. createRequire also resolves it from a Node SEA executable.
@@ -27,6 +28,8 @@ interface Options {
   ) => Promise<{ readonly path: string; readonly release: () => Promise<void> } | undefined>;
   readonly diagnose?: (executable: string, cause: unknown) => Promise<unknown>;
   readonly env?: NodeJS.ProcessEnv;
+  /** Chrome's environment on a display, or undefined to run headless. */
+  readonly display?: (env: NodeJS.ProcessEnv) => Promise<NodeJS.ProcessEnv | undefined>;
   readonly onContextClose?: (context: BrowserContext) => void;
 }
 
@@ -85,16 +88,17 @@ export class ServerBrowserContexts {
   private async launchOptions() {
     const executable = await this.options.executable();
     const env = this.options.env ?? process.env;
+    const display = await this.options.display?.(env);
     return {
       executable,
-      env,
+      env: display ?? env,
       args: [
         "--disable-gpu",
         "--force-device-scale-factor=2",
         "--disable-blink-features=AutomationControlled",
       ],
       ignoreDefaultArgs: ["--enable-automation"],
-      headless: true,
+      headless: display === undefined,
       // Only an explicit operator opt-out disables sandboxing. Launch errors never do.
       chromiumSandbox: !sandboxDisabled(env),
     };
@@ -146,7 +150,9 @@ export class ServerBrowserContexts {
           if (this.contexts.get(key) === pending) this.contexts.delete(key);
           this.options.onContextClose?.(context);
         });
-        for (const page of context.pages()) await page.close().catch(constVoid);
+        for (const page of context.pages()) {
+          if (!isStartPage(page)) await page.close().catch(constVoid);
+        }
         if (this.closing) {
           await context.close().catch(constVoid);
           throw new Error("The preview browser is closed.");
@@ -170,13 +176,15 @@ export class ServerBrowserContexts {
     await NodeFSP.mkdir(directory, { recursive: true });
     const { executable, ...options } = await this.launchOptions();
     const { chromium } = loadPlaywright();
-    return this.launch(executable, (executablePath) =>
+    const context = await this.launch(executable, (executablePath) =>
       chromium.launchPersistentContext(directory, {
         ...options,
         ...contextOptions,
         executablePath,
       }),
     );
+    if (!options.headless) keepStartPage(context);
+    return context;
   }
 
   private profileDirectory(profileId: string) {

@@ -10,6 +10,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { FULL_CHROME_PRODUCT } from "../fork/previewChrome.ts";
+import { missingDisplayServer } from "../fork/previewDisplay.ts";
 import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
 import { resolveBaseDir } from "../os-jank.ts";
 import { baseDirFlag } from "./config.ts";
@@ -132,9 +133,12 @@ const browserSetupCommand = Command.make("setup", { baseDir: baseDirFlag }).pipe
 
       const needsProfile = yield* PreviewBrowserHost.sandboxBlocked;
       const browser = yield* installedBrowser(baseDirPath);
-      const missing = Option.isSome(browser)
-        ? yield* PreviewBrowserHost.missingLibraries(browser.value)
-        : [];
+      const missing = [
+        ...(Option.isSome(browser)
+          ? yield* PreviewBrowserHost.missingLibraries(browser.value)
+          : []),
+        ...(yield* missingDisplayServer),
+      ];
       const needsFonts = !(yield* fontAvailable);
       const hasApt = yield* fs.exists("/usr/bin/apt-get").pipe(Effect.orElseSucceed(() => false));
 
