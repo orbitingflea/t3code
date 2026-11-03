@@ -6,11 +6,7 @@ import { isClaudePromptUuid } from "../orchestration-v2/Adapters/ClaudeAdapterV2
 
 /** A prompt uuid for a recording, so the turn's result can list the prompts it answered. */
 export function claudeRecordingPromptUuid(): NonNullable<SDKUserMessage["uuid"]> {
-  return Effect.runSync(
-    randomUuidV4.pipe(
-      Effect.filterOrDie(isClaudePromptUuid, () => new Error("Claude prompt uuid is malformed.")),
-    ),
-  );
+  return Effect.runSync(randomUuidV4.pipe(Effect.filterOrFail(isClaudePromptUuid), Effect.orDie));
 }
 
 /**
