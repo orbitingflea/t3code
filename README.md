@@ -6,6 +6,7 @@ This is a fork of T3 Code that integrates a few additional features, including:
 - **Better support for manually switching accounts mid-session:**
   - After hitting the usage limit of an account, the thread now retries after 2 minutes and 30 minutes in addition to the default retry behavior of T3 Code. This allows the thread to recover earlier if the user manually switches the account.
   - New Codex/Antigravity logins are picked up mid-session without a full restart.
+- Copy buttons on pages in the preview browser now put the copied text into your own clipboard.
 - Enabling math rendering by default.
 - Other small fixes.
 
