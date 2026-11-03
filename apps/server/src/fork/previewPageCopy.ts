@@ -144,15 +144,15 @@ const takeSessionCopy = async (cdp: CDPSession, worldName: string) => {
 };
 
 /**
- * Text the page wrote to its clipboard after the latest trusted press, waiting out the press's
- * window for a write that has not happened yet.
+ * Text the page reported copying after the latest trusted press (see the note at the top),
+ * waiting out the press's window for a report that has not come yet.
  */
 export const takePageCopy = async (sessions: Iterable<CDPSession>, worldName: string) => {
   const copies = await Promise.all([...sessions].map((cdp) => takeSessionCopy(cdp, worldName)));
   return copies.flat().find((text) => text.length > 0);
 };
 
-/** After the viewer releases a left press, sends what the page copied if they still control the tab. */
+/** After the viewer releases a left press, sends what the page reported copying if they still control the tab. */
 export const forwardPressCopy = async (
   tab: {
     readonly cdp: CDPSession;
