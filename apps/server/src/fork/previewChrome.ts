@@ -1,3 +1,7 @@
+import * as Effect from "effect/Effect";
+import type * as FileSystem from "effect/FileSystem";
+import type * as Path from "effect/Path";
+
 import type { PreviewBrowserRelease } from "../preview/PreviewBrowser.ts";
 
 // On x.ai, Cloudflare blocks chrome-headless-shell after one page and lets full Chrome for Testing through.
@@ -37,6 +41,28 @@ export const fullChromeRelease = (platform: string): PreviewBrowserRelease | nul
         url: `https://storage.googleapis.com/chrome-for-testing-public/${VERSION}/${platform}/chrome-${platform}.zip`,
         ...archive,
       };
+};
+
+/** After full Chrome installs into `tools/chrome/<platform>`, drops `tools/chrome-headless-shell/<platform>`. */
+export const removeReplacedShell = (
+  fs: FileSystem.FileSystem,
+  path: Path.Path,
+  release: PreviewBrowserRelease,
+  installRoot: string,
+) => {
+  if (release.product !== FULL_CHROME_PRODUCT) return Effect.void;
+  const shell = path.join(
+    path.dirname(path.dirname(installRoot)),
+    "chrome-headless-shell",
+    release.platform,
+  );
+  return fs
+    .remove(shell, { recursive: true, force: true })
+    .pipe(
+      Effect.catch((cause) =>
+        Effect.logWarning("Could not remove the replaced chrome-headless-shell.", { shell, cause }),
+      ),
+    );
 };
 
 export interface Brand {

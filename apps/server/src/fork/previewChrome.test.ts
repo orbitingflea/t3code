@@ -76,12 +76,14 @@ it("builds the brand list real Chrome sends", () => {
 });
 
 it.layer(NodeServices.layer)("full Chrome install", (it) => {
-  it.effect("installs the chrome executable under tools/chrome", () =>
+  it.effect("installs the chrome executable under tools/chrome and drops the shell", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
       const crypto = yield* Crypto.Crypto;
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-full-chrome-test-" });
+      const shell = path.join(baseDir, "tools", "chrome-headless-shell", "fixture");
+      yield* fs.makeDirectory(path.join(shell, "1.0.0"), { recursive: true });
       const archive = storedZip([
         { name: "chrome-fixture/", mode: 0o40755 },
         { name: "chrome-fixture/chrome", mode: 0o100755 },
@@ -117,6 +119,7 @@ it.layer(NodeServices.layer)("full Chrome install", (it) => {
       expect(yield* browser.executable).toBe(
         path.join(baseDir, "tools", "chrome", "fixture", "1.2.3", "chrome"),
       );
+      expect(yield* fs.exists(shell)).toBe(false);
     }).pipe(Effect.scoped),
   );
 });

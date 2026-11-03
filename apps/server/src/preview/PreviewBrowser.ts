@@ -19,7 +19,7 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
-import { fullChromeRelease } from "../fork/previewChrome.ts";
+import { fullChromeRelease, removeReplacedShell } from "../fork/previewChrome.ts";
 import { openZipArchive } from "../zipArchive.ts";
 
 // Update the version, sizes and hashes from each chrome-headless-shell zip listed at
@@ -354,6 +354,7 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
           ),
         { discard: true },
       );
+      yield* removeReplacedShell(fs, path, release, installRoot);
       return path.join(installRoot, release.version, executableName);
     },
     Effect.mapError(wrapFailure("Could not save the browser in T3's home directory.")),
