@@ -1,4 +1,8 @@
-import { UsageLimitSourceError, type UsageLimitSourceConfig } from "@t3tools/contracts";
+import {
+  type ServerProviderUsageLimits,
+  UsageLimitSourceError,
+  type UsageLimitSourceConfig,
+} from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -13,6 +17,7 @@ import {
   REQUEST_ID,
   claudeResetCreditsToContract,
 } from "../../provider/claudeResetCredits.ts";
+import { usageReadAt, withAccountReadAt } from "../usageReadAt/usageReadAt.ts";
 
 type HubAccount = {
   readonly auth_index: string;
@@ -120,14 +125,17 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     );
   });
 
-  /** Adds reset credits from a usage answer to a hub account read from it. */
-  const withResetCredits = Effect.fn("ClaudeHub.withResetCredits")(function* <
-    A extends { readonly usageLimits: object },
+  /** Adds reset credits and the reading's time from a usage answer to a hub account read from it. */
+  const withUsageAnswer = Effect.fn("ClaudeHub.withUsageAnswer")(function* <
+    A extends { readonly usageLimits: ServerProviderUsageLimits },
   >(body: string, account: A) {
     const credits = yield* resetCredits(yield* decodeClaudeUsage(body));
-    return credits
-      ? { ...account, usageLimits: { ...account.usageLimits, resetCredits: credits } }
-      : account;
+    return withAccountReadAt(
+      body,
+      credits
+        ? { ...account, usageLimits: { ...account.usageLimits, resetCredits: credits } }
+        : account,
+    );
   });
 
   /** Usage in the Claude SDK's get_usage shape, plus reset credits. */
@@ -163,6 +171,7 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
           },
         },
         resetCredits: yield* resetCredits(usage),
+        readAt: usageReadAt(response.body),
       };
     },
     Effect.mapError((error) =>
@@ -294,5 +303,5 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     } as const;
   });
 
-  return { withResetCredits, usage, findLogin, claimLogin, consume };
+  return { withUsageAnswer, usage, findLogin, claimLogin, consume };
 });

@@ -95,7 +95,8 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
       return { ...capabilities, usageError: { message: viaSource.failure.detail } };
     }
     if (Option.isNone(viaSource.success)) return capabilities;
-    return { ...capabilities, usage: viaSource.success.value.response, usageCheckedAt };
+    const { response, readAt } = viaSource.success.value;
+    return { ...capabilities, usage: response, usageCheckedAt, usageReadAt: readAt };
   });
 
   /** Reset credits from the source that answered the last probe, else the direct read. */
