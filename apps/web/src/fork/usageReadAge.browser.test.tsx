@@ -30,7 +30,7 @@ describe("UsageLimitsPooled usage source accounts", () => {
               {
                 id: UsageLimitSourceId.make("hub"),
                 kind: "cliproxy" as const,
-                label: "t3switch",
+                label: "usage source",
                 checkedAt: "2026-11-03T14:00:00.000Z",
                 accounts: [
                   account("old.json", "old@example.com", "2026-11-03T11:24:32.000Z"),

@@ -7,7 +7,7 @@ import { formatRelativeTimeLabel, formatShortTimestamp } from "../timestampForma
 /** A usage source rereads each account every few minutes, so an older reading is one it kept after failed reads. */
 const OLD_READING_MS = 15 * 60_000;
 
-/** The time of a reading a usage source served after failed reads, else null. */
+/** The reading time when the reading is more than 15 minutes old, else null. */
 export function oldReadingAt(limits: ServerProviderUsageLimits, now: number): string | null {
   const readAt = limits.readAt;
   return readAt && now - Date.parse(readAt) > OLD_READING_MS ? readAt : null;

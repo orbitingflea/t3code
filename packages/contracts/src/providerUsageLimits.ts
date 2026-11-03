@@ -31,7 +31,7 @@ export type ServerProviderResetCredits = typeof ServerProviderResetCredits.Type;
 /** Clear bars for unavailable accounts; retain last good bars after a failed probe. */
 export const ServerProviderUsageLimits = Schema.Struct({
   checkedAt: IsoDateTime,
-  /** When the numbers were read, if a usage source served a reading older than `checkedAt`. */
+  /** When a usage source read these numbers, if it sent that time; absent otherwise. */
   readAt: Schema.optional(IsoDateTime),
   windows: ForwardCompatibleArray(ServerProviderUsageWindow),
   credentialFingerprint: Schema.optional(TrimmedNonEmptyString),

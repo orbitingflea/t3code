@@ -7,8 +7,8 @@ const FetchedAt = Schema.Struct({ fetched_at: Schema.optional(Schema.String) });
 const decodeFetchedAt = Schema.decodeUnknownOption(Schema.fromJsonString(FetchedAt));
 
 /**
- * The `fetched_at` of a usage source's usage answer: t3switch serves an account's last good
- * reading, up to hours old, while the provider refuses reads.
+ * Returns the `fetched_at` time of a usage source's usage answer as ISO, or undefined.
+ * A usage source may keep serving an account's last good reading, up to hours old, while the provider refuses reads.
  */
 export function usageReadAt(body: string): string | undefined {
   return decodeFetchedAt(body).pipe(
