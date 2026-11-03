@@ -100,9 +100,13 @@ export const chromeBrands = (
   return brands;
 };
 
-/** Libraries that full Chrome needs and chrome-headless-shell does not (libnss3 brings libsmime3). */
+/**
+ * Packages that full Chrome needs and chrome-headless-shell does not (libnss3 brings libsmime3),
+ * and Xvfb for its display (see previewDisplay.ts).
+ */
 export const FULL_CHROME_DEBIAN_PACKAGES: ReadonlyArray<ReadonlyArray<string>> = [
   ["libcups2t64", "libcups2"],
   ["libpango-1.0-0"],
   ["libcairo2"],
+  ["xvfb"],
 ];
