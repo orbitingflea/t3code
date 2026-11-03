@@ -222,6 +222,27 @@ describe("CodexAdapterV2 runtime policy", () => {
     }),
   );
 
+  it.effect("sends the default service tier when fast mode is off", () =>
+    Effect.gen(function* () {
+      const build = (fastMode: boolean, omitServiceTier?: boolean) =>
+        CodexAdapterV2.buildCodexTurnStartParams({
+          nativeThreadId: "native-fast-off",
+          codexInput: [{ type: "text", text: "test" }],
+          runtimePolicy: { runtimeMode: "full-access", interactionMode: "default", cwd: null },
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("codex"),
+            model: "gpt-5.4",
+            options: [{ id: "fastMode", value: fastMode }],
+          },
+          ...(omitServiceTier === undefined ? {} : { omitServiceTier }),
+        });
+
+      assert.equal((yield* build(true)).serviceTier, "fast");
+      assert.equal((yield* build(false)).serviceTier, "default");
+      assert.notProperty(yield* build(false, true), "serviceTier");
+    }),
+  );
+
   it.effect("sends MCP app model context as untrusted Codex context", () =>
     Effect.gen(function* () {
       const policy = { runtimeMode: "full-access", interactionMode: "default", cwd: null } as const;
@@ -676,6 +697,7 @@ function codexReplayPreamble(input: {
           approvalsReviewer: "user",
           sandboxPolicy: { type: "dangerFullAccess" },
           summary: "detailed",
+          serviceTier: "default",
           ...(input.effort === undefined ? {} : { effort: input.effort }),
           collaborationMode: {
             mode: "default",
@@ -1984,6 +2006,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                 model: "gpt-5.4",
                 ...turnPolicies[turnModes[index]!],
                 summary: "detailed",
+                serviceTier: "default",
                 collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
               },
             },
@@ -2907,6 +2930,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                     approvalsReviewer: "user",
                     sandboxPolicy: { type: "dangerFullAccess" },
                     summary: "detailed",
+                    serviceTier: "default",
                     collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
                   },
                 },
@@ -6508,6 +6532,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                   approvalsReviewer: "user",
                   sandboxPolicy: { type: "dangerFullAccess" },
                   summary: "detailed",
+                  serviceTier: "default",
                   collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
                 },
               },
@@ -6651,6 +6676,7 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                     approvalsReviewer: "user",
                     sandboxPolicy: { type: "dangerFullAccess" },
                     summary: "detailed",
+                    serviceTier: "default",
                     collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
                   },
                 },
