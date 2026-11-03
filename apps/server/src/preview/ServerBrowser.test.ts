@@ -847,6 +847,52 @@ it.live(
     ).pipe(Effect.provide(layer)),
 );
 
+it.live("a viewer that reconnects behind a stuck click still connects with control", () => {
+  const started = Promise.withResolvers<void>();
+  const stuck = Promise.withResolvers<Record<string, unknown>>();
+  return Effect.scoped(
+    Effect.gen(function* () {
+      const browser = yield* ServerBrowser.ServerBrowser;
+      const manager = yield* Manager.PreviewManager;
+      yield* Effect.yieldNow;
+      const { tabId } = yield* manager.open({ threadId: scope.thread.threadId, runtime: "server" });
+      const before = yield* Scope.make();
+      const clicking = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Scope.provide(before));
+      const session = contexts[0]!.sessions.at(-1)!;
+      const send = session.send.getMockImplementation()!;
+      session.send.mockImplementation(async (method, input) => {
+        if (method !== "Input.dispatchMouseEvent") return send(method, input);
+        started.resolve();
+        return stuck.promise;
+      });
+      yield* clicking
+        .input({
+          type: "mouse",
+          action: "down",
+          x: 10,
+          y: 10,
+          button: "left",
+          buttons: 1,
+          clickCount: 1,
+          modifiers: 0,
+        })
+        .pipe(Effect.forkScoped);
+      yield* Effect.promise(() => started.promise);
+      // A reload: the old stream ends while its click still waits on the page.
+      yield* Scope.close(before, Exit.void).pipe(Effect.forkScoped({ startImmediately: true }));
+      const reloaded = yield* browser
+        .attachViewer(viewerInput(tabId, true))
+        .pipe(Effect.timeout("5 seconds"));
+      expect(yield* Queue.takeAll(reloaded.output)).toContainEqual(
+        expect.objectContaining({ _tag: "control", controller: "you" }),
+      );
+      // Viewer finalizers wait on the queue, so the click must end before the scope closes.
+    }).pipe(Effect.ensuring(Effect.sync(() => stuck.resolve({})))),
+  ).pipe(Effect.provide(layer));
+});
+
 it.live("reports a pending dialog without evaluating the page and resolves it explicitly", () =>
   Effect.scoped(
     Effect.gen(function* () {
