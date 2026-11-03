@@ -46,7 +46,7 @@ describe("xauthorityEntry", () => {
 describe("PreviewDisplay", () => {
   it("keeps Chrome headless off Linux", async () => {
     const display = new PreviewDisplay({ platform: "darwin", directory: await tempDirectory() });
-    expect(await display.env({ HOME: "/home/test" })).toBeUndefined();
+    expect(await display.env({ LANG: "C.UTF-8" })).toBeUndefined();
   });
 
   it("keeps Chrome headless when Xvfb is not installed", async () => {
@@ -62,11 +62,11 @@ describe("PreviewDisplay", () => {
     const directory = await tempDirectory();
     const display = new PreviewDisplay({ platform: "linux", directory });
     const [env, again] = await Promise.all([
-      display.env({ HOME: "/home/test" }),
-      display.env({ HOME: "/home/other" }),
+      display.env({ LANG: "C.UTF-8" }),
+      display.env({ LANG: "en_GB.UTF-8" }),
     ]);
     expect(env).toMatchObject({
-      HOME: "/home/test",
+      LANG: "C.UTF-8",
       DISPLAY: expect.stringMatching(/^:\d+$/),
       XAUTHORITY: NodePath.join(directory, "Xauthority"),
     });
