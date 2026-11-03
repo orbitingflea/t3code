@@ -34,10 +34,10 @@ const describeFailure = (error: unknown) => {
 };
 
 /**
- * Posts Claude rate_limit_info to T3CODE_CLAUDE_USAGE_EXPORT_URL (Bearer T3CODE_CLAUDE_USAGE_EXPORT_KEY)
- * without waiting for the answer and logs failures at debug level. Skips when the URL is unset, the
- * info does not match the usage-window schema or has no windows, the same home and info were sent
- * in the last 60 s, or the body is over 4096 bytes.
+ * Posts Claude rate_limit_info to T3CODE_CLAUDE_USAGE_EXPORT_URL without waiting and logs failures
+ * at debug level; adds T3CODE_CLAUDE_USAGE_EXPORT_KEY as a Bearer token only if set and not blank.
+ * Skips when the URL is unset or blank, the info fails the usage-window schema or has no windows,
+ * the same home and info went out in the last 60 s, or the body is over 4096 bytes.
  */
 export const makeClaudeUsageExport = () => {
   const lastSentAt = new Map<string, number>();
