@@ -7,6 +7,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import type { Browser, BrowserContext, CDPSession } from "playwright-core";
 
+import { chromeBrands } from "../fork/previewChrome.ts";
 import { sandboxDisabled } from "./PreviewBrowserHost.ts";
 
 // Playwright needs its files on disk. createRequire also resolves it from a Node SEA executable.
@@ -44,11 +45,7 @@ const chromeIdentity = (
   const fullVersion = version?.[1];
   const major = version?.[2];
   if (!version || !fullVersion || !major) return null;
-  const brands = (names: (version: string) => string) => [
-    { brand: "Chromium", version: names(major) },
-    { brand: "Google Chrome", version: names(major) },
-    { brand: "Not A(Brand", version: names("99") },
-  ];
+  const brands = (names: (version: string) => string) => chromeBrands(Number(major), names);
   return {
     userAgent: headlessUserAgent.replace(version[0], `Chrome/${major}.0.0.0`),
     userAgentMetadata: {

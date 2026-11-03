@@ -1,6 +1,7 @@
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
@@ -21,7 +22,7 @@ export const APPARMOR_PROFILE = `# Written by \`t3 browser setup\`: lets T3 Code
 abi <abi/4.0>,
 include <tunables/global>
 
-profile t3-chrome-headless-shell /**/tools/chrome-headless-shell/*/*/chrome-headless-shell flags=(unconfined) {
+profile t3-chrome-headless-shell /**/tools/{chrome-headless-shell/*/*/chrome-headless-shell,chrome/*/*/chrome} flags=(unconfined) {
   userns,
 
   include if exists <local/t3-chrome-headless-shell>
@@ -134,5 +135,7 @@ export const sandboxBlocked = Effect.gen(function* () {
     Effect.orElseSucceed(() => false),
   );
   if (!restricted) return false;
-  return !(yield* fs.exists(APPARMOR_PROFILE_PATH).pipe(Effect.orElseSucceed(() => false)));
+  // An older profile may not cover the browser T3 now installs; setup rewrites it.
+  const profile = yield* fs.readFileString(APPARMOR_PROFILE_PATH).pipe(Effect.option);
+  return Option.getOrUndefined(profile) !== APPARMOR_PROFILE;
 }).pipe(Effect.withSpan("PreviewBrowserHost.sandboxBlocked"));
