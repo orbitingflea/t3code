@@ -12,8 +12,9 @@ const control = {
 } as const;
 
 it("names the viewer that holds control", () => {
-  expect(previewControlLabel(control)).toBe(
-    "Another viewer has control (viewer a3f9c2d1, still connecting; this viewer is 77b0e1aa)",
+  expect(previewControlLabel(control)).toBe("Viewer a3f9c2d1 has control (still connecting)");
+  expect(previewControlLabel({ ...control, holder: { ...control.holder, connected: true } })).toBe(
+    "Viewer a3f9c2d1 has control",
   );
   expect(previewControlLabel({ ...control, controller: "you" })).toBe("You have control");
 });
