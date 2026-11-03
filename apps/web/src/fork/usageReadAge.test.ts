@@ -11,8 +11,14 @@ describe("oldReadingAt", () => {
     expect(oldReadingAt({ ...limits, readAt }, now)).toBe(readAt);
   });
 
-  it("stays quiet for a fresh reading or one without a time", () => {
-    expect(oldReadingAt({ ...limits, readAt: "2026-11-03T13:50:00.000Z" }, now)).toBeNull();
+  it("names a reading just over 20 minutes old", () => {
+    const readAt = "2026-11-03T13:39:00.000Z";
+    expect(oldReadingAt({ ...limits, readAt }, now)).toBe(readAt);
+  });
+
+  it("stays quiet for a reading up to 20 minutes old or one without a time", () => {
+    expect(oldReadingAt({ ...limits, readAt: "2026-11-03T13:41:00.000Z" }, now)).toBeNull();
+    expect(oldReadingAt({ ...limits, readAt: "2026-11-03T13:40:00.000Z" }, now)).toBeNull();
     expect(oldReadingAt(limits, now)).toBeNull();
   });
 });

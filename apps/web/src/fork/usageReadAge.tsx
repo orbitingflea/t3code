@@ -5,9 +5,9 @@ import { usePrimarySettings } from "../hooks/useSettings";
 import { formatRelativeTimeLabel, formatShortTimestamp } from "../timestampFormat";
 
 /** Readings older than this show their age. */
-const OLD_READING_MS = 15 * 60_000;
+const OLD_READING_MS = 20 * 60_000;
 
-/** The reading time when the reading is more than 15 minutes old, else null. */
+/** The reading time when the reading is more than 20 minutes old, else null. */
 export function oldReadingAt(limits: ServerProviderUsageLimits, now: number): string | null {
   const readAt = limits.readAt;
   return readAt && now - Date.parse(readAt) > OLD_READING_MS ? readAt : null;
