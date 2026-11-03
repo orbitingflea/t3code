@@ -1,22 +1,20 @@
-// @effect-diagnostics nodeBuiltinImport:off globalTimers:off - Owns an Xvfb process next to Playwright, outside the Effect runtime.
-import * as NodeChildProcess from "node:child_process";
-import * as NodeCrypto from "node:crypto";
-import * as NodeFSP from "node:fs/promises";
-import * as NodePath from "node:path";
-import type * as NodeStream from "node:stream";
-
-import type { BrowserContext, Page } from "playwright-core";
-
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
+import type { BrowserContext, Page } from "playwright-core";
 
 // Cloudflare Turnstile on grok.com loops in Chrome's new headless mode and passes in headed
 // Chrome, so on Linux the preview browser runs headed on a private Xvfb display. Without Xvfb
 // it stays headless.
 const SCREEN = "1920x1080x24";
-const START_TIMEOUT_MS = 10_000;
 
 /** On Linux, ["Xvfb"] when no PATH directory holds it, so `t3 browser setup` installs it; elsewhere []. */
 export const missingDisplayServer = Effect.gen(function* () {
@@ -33,40 +31,20 @@ export const missingDisplayServer = Effect.gen(function* () {
 }).pipe(Effect.withSpan("previewDisplay.missingDisplayServer"));
 
 /** One Xauthority entry that matches any display (FamilyWild), holding a secret MIT-MAGIC-COOKIE-1. */
-export const xauthorityEntry = (cookie: Buffer) => {
-  const field = (value: Buffer) => {
-    const length = Buffer.alloc(2);
-    length.writeUInt16BE(value.length);
-    return [length, value];
-  };
-  const family = Buffer.alloc(2);
-  family.writeUInt16BE(0xffff);
-  return Buffer.concat([
-    family,
-    ...field(Buffer.alloc(0)),
-    ...field(Buffer.alloc(0)),
-    ...field(Buffer.from("MIT-MAGIC-COOKIE-1")),
-    ...field(cookie),
-  ]);
+export const xauthorityEntry = (cookie: Uint8Array) => {
+  const name = new TextEncoder().encode("MIT-MAGIC-COOKIE-1");
+  const fields = [new Uint8Array(0), new Uint8Array(0), name, cookie];
+  const entry = new Uint8Array(2 + fields.reduce((size, field) => size + 2 + field.length, 0));
+  const view = new DataView(entry.buffer);
+  view.setUint16(0, 0xffff);
+  let offset = 2;
+  for (const field of fields) {
+    view.setUint16(offset, field.length);
+    entry.set(field, offset + 2);
+    offset += 2 + field.length;
+  }
+  return entry;
 };
-
-const readLine = (stream: NodeStream.Readable, timeoutMs: number) =>
-  new Promise<string>((resolve, reject) => {
-    let text = "";
-    const done = (error?: Error) => {
-      clearTimeout(timer);
-      stream.off("data", onData).off("end", onEnd);
-      if (error) reject(error);
-      else resolve(text.split("\n")[0]!.trim());
-    };
-    const onData = (chunk: Buffer) => {
-      text += chunk.toString();
-      if (text.includes("\n")) done();
-    };
-    const onEnd = () => done(new Error("Xvfb exited before it chose a display."));
-    const timer = setTimeout(() => done(new Error("Xvfb did not start in time.")), timeoutMs);
-    stream.on("data", onData).on("end", onEnd);
-  });
 
 // Headed Chrome can quit when a persistent profile's last window closes, so the profile's start page stays open.
 const startPages = new WeakSet<Page>();
@@ -76,82 +54,99 @@ export const keepStartPage = (context: BrowserContext) => {
 };
 export const isStartPage = (page: Page) => startPages.has(page);
 
-interface Started {
-  readonly env: NodeJS.ProcessEnv;
-  readonly child: NodeChildProcess.ChildProcess;
+class PreviewDisplayError extends Error {
+  override readonly name = "PreviewDisplayError";
 }
 
-export class PreviewDisplay {
-  private readonly options: {
-    readonly platform: NodeJS.Platform;
-    readonly directory: string;
-    readonly command?: string;
-  };
-  private started: Promise<Started | undefined> | undefined;
-  private closed = false;
+/**
+ * Starts one Xvfb on first use and again after it exits; Xvfb stops with the scope.
+ * `env` gives Chrome's environment on the display, or undefined when Chrome stays headless.
+ */
+export const make = Effect.fn("previewDisplay.make")(function* (
+  directory: string,
+  command = "Xvfb",
+) {
+  const platform = yield* HostProcess.Platform;
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const scope = yield* Scope.Scope;
+  const runPromise = Effect.runPromiseWith(yield* Effect.context<never>());
+  const lock = yield* Semaphore.make(1);
+  let current:
+    | {
+        readonly env: NodeJS.ProcessEnv;
+        readonly running: Effect.Effect<boolean>;
+        readonly scope: Scope.Closeable;
+      }
+    | undefined;
 
-  constructor(options: PreviewDisplay["options"]) {
-    this.options = options;
-  }
-
-  /** Chrome's environment on the display, or undefined when Chrome stays headless. */
-  async env(base: NodeJS.ProcessEnv): Promise<NodeJS.ProcessEnv | undefined> {
-    if (this.options.platform !== "linux" || this.closed) return undefined;
-    this.started ??= this.start().catch((cause) => {
-      this.started = undefined;
-      throw cause;
-    });
-    const pending = this.started;
-    const started = await pending;
-    // No Xvfb yet: check again at the next launch, so `t3 browser setup` takes effect without a restart.
-    if (!started && this.started === pending) this.started = undefined;
-    return started && { ...base, ...started.env };
-  }
-
-  private async start(): Promise<Started | undefined> {
-    await NodeFSP.mkdir(this.options.directory, { recursive: true, mode: 0o700 });
-    const authority = NodePath.join(this.options.directory, "Xauthority");
-    await NodeFSP.writeFile(authority, xauthorityEntry(NodeCrypto.randomBytes(16)), {
-      mode: 0o600,
-    });
-    const child = NodeChildProcess.spawn(
-      this.options.command ?? "Xvfb",
-      ["-displayfd", "3", "-auth", authority, "-nolisten", "tcp", "-screen", "0", SCREEN],
-      { stdio: ["ignore", "ignore", "pipe", "pipe"] },
-    );
-    const spawned = await new Promise<NodeJS.ErrnoException | undefined>((resolve) => {
-      child.once("spawn", () => resolve(undefined));
-      child.once("error", resolve);
-    });
-    if (spawned?.code === "ENOENT") return undefined;
-    if (spawned) throw spawned;
-    let output = "";
-    child.stderr!.on("data", (chunk: Buffer) => {
-      output = (output + chunk.toString()).slice(-2000);
-    });
-    const stop = () => child.kill();
-    process.once("exit", stop);
-    const started = this.started;
-    child.once("exit", () => {
-      process.off("exit", stop);
-      // A later launch starts a new display; Chrome on this one has lost its screen.
-      if (this.started === started) this.started = undefined;
-    });
-    try {
-      const display = await readLine(child.stdio[3] as NodeStream.Readable, START_TIMEOUT_MS);
-      if (!/^\d+$/.test(display)) throw new Error(`Xvfb reported display "${display}".`);
-      return { child, env: { DISPLAY: `:${display}`, XAUTHORITY: authority } };
-    } catch (cause) {
-      child.kill();
-      throw new Error(`T3's browser display did not start: ${String(cause)}\n${output}`.trim(), {
-        cause,
-      });
+  const start = Effect.gen(function* () {
+    yield* fs.makeDirectory(directory, { recursive: true, mode: 0o700 });
+    const authority = path.join(directory, "Xauthority");
+    const cookie = crypto.getRandomValues(new Uint8Array(16));
+    yield* fs.writeFile(authority, xauthorityEntry(cookie), { mode: 0o600 });
+    const child = yield* Scope.fork(scope);
+    const spawned = yield* spawner
+      .spawn(
+        ChildProcess.make(
+          command,
+          ["-displayfd", "1", "-auth", authority, "-nolisten", "tcp", "-screen", "0", SCREEN],
+          { stdin: "ignore", stdout: "pipe", stderr: "pipe", forceKillAfter: "2 seconds" },
+        ),
+      )
+      .pipe(
+        Scope.provide(child),
+        Effect.asSome,
+        // No Xvfb on this host: Chrome stays headless, and the next launch looks again.
+        Effect.catchReason("PlatformError", "NotFound", () => Effect.succeedNone),
+      );
+    if (Option.isNone(spawned)) {
+      yield* Scope.close(child, Exit.void);
+      return undefined;
     }
-  }
+    const handle = spawned.value;
+    let output = "";
+    yield* handle.stderr.pipe(
+      Stream.decodeText(),
+      Stream.runForEach((text) => Effect.sync(() => (output = (output + text).slice(-2000)))),
+      Effect.ignore,
+      Effect.forkIn(child),
+    );
+    const display = yield* handle.stdout.pipe(
+      Stream.decodeText(),
+      Stream.splitLines,
+      Stream.runHead,
+      Effect.timeout("10 seconds"),
+      Effect.map(Option.getOrElse(() => "")),
+      Effect.orElseSucceed(() => ""),
+    );
+    if (!/^\d+$/.test(display.trim())) {
+      yield* Scope.close(child, Exit.void);
+      return yield* Effect.fail(
+        new PreviewDisplayError(`T3's browser display did not start.\n${output}`.trim()),
+      );
+    }
+    return {
+      env: { DISPLAY: `:${display.trim()}`, XAUTHORITY: authority },
+      running: handle.isRunning.pipe(Effect.orElseSucceed(() => false)),
+      scope: child,
+    };
+  });
 
-  async close() {
-    this.closed = true;
-    const started = await this.started?.catch(() => undefined);
-    started?.child.kill();
-  }
-}
+  const env = (base: NodeJS.ProcessEnv) =>
+    lock.withPermits(1)(
+      Effect.gen(function* () {
+        if (platform !== "linux") return undefined;
+        if (current && !(yield* current.running)) {
+          // Chrome on the old display has lost its screen; the next launch gets a new one.
+          yield* Scope.close(current.scope, Exit.void);
+          current = undefined;
+        }
+        current ??= yield* start;
+        return current && { ...base, ...current.env };
+      }),
+    );
+
+  return { env: (base: NodeJS.ProcessEnv) => runPromise(env(base)) };
+});
