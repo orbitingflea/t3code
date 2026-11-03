@@ -11,7 +11,7 @@ import * as TestConsole from "effect/testing/TestConsole";
 import { Command } from "effect/cli";
 import { ChildProcessSpawner } from "effect/process";
 
-import { browserCommand } from "./browser.ts";
+import { browserCommand } from "../cli/browser.ts";
 
 // Every check passes, so setup changes nothing and only reports.
 const readyHostSpawner = ChildProcessSpawner.make(() =>
