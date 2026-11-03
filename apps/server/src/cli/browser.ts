@@ -125,9 +125,13 @@ const browserSetupCommand = Command.make("setup", { baseDir: baseDirFlag }).pipe
         PreviewBrowserHost.SETUP_SUBCOMMAND,
         Option.isSome(baseDir) || env.T3CODE_HOME !== undefined ? ["--base-dir", baseDirPath] : [],
       );
-      // Root, unless sudo came from another user, is likely the server's own account.
+      // Setup often runs as root for another account; the server's account owns its T3 home.
+      const serverIsRoot = yield* fs.stat(baseDirPath).pipe(
+        Effect.map((info) => Option.contains(info.uid, 0)),
+        Effect.orElseSucceed(() => false),
+      );
       const rootWarning =
-        isRoot && (env.SUDO_USER ?? "root") === "root" && !PreviewBrowserHost.sandboxDisabled(env)
+        serverIsRoot && !PreviewBrowserHost.sandboxDisabled(env)
           ? new PreviewBrowserHost.PreviewBrowserRootError().message
           : undefined;
 
