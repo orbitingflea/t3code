@@ -9,6 +9,7 @@ import { Command } from "effect/cli";
 import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
+import { browserSetupRootWarning } from "../fork/browserSetupRootWarning.ts";
 import { FULL_CHROME_PRODUCT } from "../fork/previewChrome.ts";
 import { missingDisplayServer } from "../fork/previewDisplay.ts";
 import * as PreviewBrowserHost from "../preview/PreviewBrowserHost.ts";
@@ -125,15 +126,10 @@ const browserSetupCommand = Command.make("setup", { baseDir: baseDirFlag }).pipe
         PreviewBrowserHost.SETUP_SUBCOMMAND,
         Option.isSome(baseDir) || env.T3CODE_HOME !== undefined ? ["--base-dir", baseDirPath] : [],
       );
-      // Setup often runs as root for another account; the server's account owns its T3 home.
-      const serverIsRoot = yield* fs.stat(baseDirPath).pipe(
-        Effect.map((info) => Option.contains(info.uid, 0)),
-        Effect.orElseSucceed(() => false),
-      );
-      const rootWarning =
-        serverIsRoot && !PreviewBrowserHost.sandboxDisabled(env)
-          ? new PreviewBrowserHost.PreviewBrowserRootError().message
-          : undefined;
+      const rootWarning = yield* browserSetupRootWarning({
+        baseDir: baseDirPath,
+        baseDirGiven: Option.isSome(baseDir) || env.T3CODE_HOME !== undefined,
+      });
 
       const needsProfile = yield* PreviewBrowserHost.sandboxBlocked;
       const browser = yield* installedBrowser(baseDirPath);
