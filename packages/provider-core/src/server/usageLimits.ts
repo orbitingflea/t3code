@@ -3,7 +3,7 @@ import type {
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
 } from "@t3tools/contracts";
-import { withRuntimeWindows } from "./fork/usageReadAt.ts";
+import { withRuntimeUpdateReadAt, withRuntimeWindows } from "./fork/usageReadAt.ts";
 
 const WINDOW_KIND_ORDER: Record<ServerProviderUsageWindow["kind"], number> = {
   session: 0,
@@ -48,7 +48,8 @@ export function makeUnavailableUsageLimits(input: {
   };
 }
 
-export function applyUsageLimitsUpdate(input: {
+export const applyUsageLimitsUpdate = withRuntimeUpdateReadAt(mergeUsageLimitsUpdate);
+function mergeUsageLimitsUpdate(input: {
   readonly previous: ServerProviderUsageLimits | undefined;
   readonly update: ProviderUsageLimitsUpdate;
   readonly checkedAt: string;
