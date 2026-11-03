@@ -24,6 +24,7 @@ import {
   type KeyboardEvent,
   type MouseEvent,
   type PointerEvent,
+  type ReactNode,
   type Ref,
   useEffect,
   useEffectEvent,
@@ -152,6 +153,8 @@ export function ServerBrowserSurface(props: {
   readonly onPopup?: (tabId: string) => void;
   readonly className?: string;
   readonly pdfUrl?: string | null;
+  /** Shown in place of the page, below the control bar. */
+  readonly overlay?: ReactNode;
   readonly ref?: Ref<ServerBrowserHandle>;
 }) {
   const {
@@ -167,6 +170,7 @@ export function ServerBrowserSurface(props: {
     onPopup,
     className,
     pdfUrl = null,
+    overlay,
     ref,
   } = props;
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -896,6 +900,7 @@ export function ServerBrowserSurface(props: {
             )}
           </div>
         ) : null}
+        {overlay ? <div className="visible absolute inset-0 z-10">{overlay}</div> : null}
       </div>
       {visible && hostSetup ? (
         <div className="visible absolute inset-0 z-20 flex flex-col items-center justify-center gap-3 bg-background p-4 text-center">
