@@ -1,8 +1,8 @@
 import type { PreviewBrowserRelease } from "../preview/PreviewBrowser.ts";
 
-// Full Chrome for Testing passes Cloudflare where chrome-headless-shell is blocked after one page.
+// On x.ai, Cloudflare blocks chrome-headless-shell after one page and lets full Chrome for Testing through.
 // macOS keeps the shell: the Chrome app bundle holds symlinks the installer will not unpack.
-// Pin from each chrome zip in known-good-versions-with-downloads.json, never below 156.0.8078.70.
+// Pin from each chrome zip in known-good-versions-with-downloads.json.
 const VERSION = "156.0.8078.80";
 const ARCHIVES: Partial<Record<string, { readonly bytes: number; readonly sha256: string }>> = {
   linux64: {
@@ -57,7 +57,7 @@ const BRAND_ORDERS = [
 
 /**
  * Google Chrome's brand list for a major version, as Chromium's GenerateBrandVersionList builds
- * it: the GREASE brand and the order both follow from the major version.
+ * it: the GREASE brand (a fake name sites must accept) and the order follow from the major version.
  */
 export const chromeBrands = (
   major: number,

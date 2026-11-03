@@ -138,7 +138,7 @@ export const sandboxBlocked = Effect.gen(function* () {
     Effect.orElseSucceed(() => false),
   );
   if (!restricted) return false;
-  // An older profile may not cover the browser T3 now installs; setup rewrites it.
+  // Any other profile may miss the installed browser's path; setup rewrites it.
   const profile = yield* fs.readFileString(APPARMOR_PROFILE_PATH).pipe(Effect.option);
   return Option.getOrUndefined(profile) !== APPARMOR_PROFILE;
 }).pipe(Effect.withSpan("PreviewBrowserHost.sandboxBlocked"));
