@@ -13,11 +13,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 
 // Cloudflare Turnstile on grok.com loops in Chrome's new headless mode and passes in headed
-// Chrome, so on Linux the preview browser runs headed on a private Xvfb display.
+// Chrome, so on Linux the preview browser runs headed on a private Xvfb display. Without Xvfb
+// it stays headless.
 const SCREEN = "1920x1080x24";
 const START_TIMEOUT_MS = 10_000;
 
-/** ["Xvfb"] when no PATH directory holds it, so `t3 browser setup` installs it. */
+/** On Linux, ["Xvfb"] when no PATH directory holds it, so `t3 browser setup` installs it; elsewhere []. */
 export const missingDisplayServer = Effect.gen(function* () {
   if ((yield* HostProcess.Platform) !== "linux") return [];
   const fs = yield* FileSystem.FileSystem;
@@ -31,7 +32,7 @@ export const missingDisplayServer = Effect.gen(function* () {
   return ["Xvfb"];
 }).pipe(Effect.withSpan("previewDisplay.missingDisplayServer"));
 
-/** One Xauthority entry for any display (FamilyWild), so only holders of the file can connect. */
+/** One Xauthority entry that matches any display (FamilyWild), holding a secret MIT-MAGIC-COOKIE-1. */
 export const xauthorityEntry = (cookie: Buffer) => {
   const field = (value: Buffer) => {
     const length = Buffer.alloc(2);
@@ -67,7 +68,7 @@ const readLine = (stream: NodeStream.Readable, timeoutMs: number) =>
     stream.on("data", onData).on("end", onEnd);
   });
 
-// Headed Chrome quits when a persistent profile's last window closes, so its start page stays open.
+// Headed Chrome can quit when a persistent profile's last window closes, so the profile's start page stays open.
 const startPages = new WeakSet<Page>();
 export const keepStartPage = (context: BrowserContext) => {
   const page = context.pages()[0];
