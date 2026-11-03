@@ -153,7 +153,7 @@ function SegmentPopover({
   const remaining = remainingPercent(window);
   const timeLeft = paceRemainingPercent(window, now);
   const resetsIn = formatResetsIn(window, now);
-  const oldReading = useOldReadingLabel(account.limits, now);
+  const oldReading = useOldReadingLabel(window, now);
   const where =
     account.environments.length > 0
       ? account.environments.map((environment) => environment.label).join(", ")
@@ -413,7 +413,7 @@ function SegmentTriggers({
               {remaining}%
             </span>
           ) : null}
-          <OldReadingTag limits={account.limits} now={now} />
+          <OldReadingTag window={window} now={now} />
           {resetsIn || credits ? (
             <span className="ms-auto flex min-w-0 items-center gap-1.5 overflow-hidden rounded-sm bg-background/85 px-1.5 py-0.5 text-2xs whitespace-nowrap text-foreground tabular-nums">
               {resetsIn?.replace("resets in ", "↻ ") ?? ""}
@@ -474,7 +474,7 @@ function LegendRow({
       </span>
       <AccountName account={account} className="min-w-0 truncate font-medium text-foreground" />
       <span className="shrink-0 font-semibold text-foreground tabular-nums">{remaining}%</span>
-      <OldReadingTag limits={account.limits} now={now} />
+      <OldReadingTag window={window} now={now} />
       <span className="ms-auto flex shrink-0 items-center gap-1.5 text-2xs text-muted-foreground tabular-nums">
         {resetsIn?.replace("resets in ", "↻ ") ?? ""}
         {credits ? (

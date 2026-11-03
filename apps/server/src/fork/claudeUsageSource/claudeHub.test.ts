@@ -127,16 +127,15 @@ describe("Claude through a CLIProxyAPI hub", () => {
           body: request.url?.includes("anthropic")
             ? { five_hour: { utilization: 10, resets_at: null }, fetched_at }
             : request.url?.endsWith("/usage")
-              ? { rate_limit: null, fetched_at }
+              ? { rate_limit: { primary_window: { used_percent: 12 } }, fetched_at }
               : { credits: [] },
         }),
       });
       const api = yield* test.api;
       const accounts = yield* api.readAccounts(config);
-      expect(accounts.map((account) => account.usageLimits.readAt)).toEqual([
-        "2026-11-03T11:24:32.000Z",
-        "2026-11-03T11:24:32.000Z",
-      ]);
+      expect(
+        accounts.map((account) => account.usageLimits.windows.map((window) => window.readAt)),
+      ).toEqual([["2026-11-03T11:24:32.000Z"], ["2026-11-03T11:24:32.000Z"]]);
       expect(accounts[0]?.usageLimits.checkedAt).toBe("2026-11-03T14:00:00.000Z");
       const login = yield* api.claude.usage(config, claude);
       expect(login.readAt).toBe("2026-11-03T11:24:32.000Z");
@@ -153,7 +152,7 @@ describe("Claude through a CLIProxyAPI hub", () => {
         }),
       });
       const [account] = yield* (yield* test.api).readAccounts(config);
-      expect(account?.usageLimits).not.toHaveProperty("readAt");
+      expect(account?.usageLimits.windows[0]).not.toHaveProperty("readAt");
     }),
   );
 

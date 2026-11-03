@@ -6,17 +6,26 @@ import { render } from "../../test/render";
 import { UsageLimitsPooled } from "../components/usage/UsageLimitsPooled";
 
 describe("UsageLimitsPooled usage source accounts", () => {
-  it("shows when a kept reading was read", async () => {
+  it("shows a kept reading's time only on windows from that reading", async () => {
     const now = Date.parse("2026-11-03T14:00:00.000Z");
-    const account = (id: string, email: string, readAt: string) => ({
+    const readAt = "2026-11-03T11:24:32.000Z";
+    const account = (
+      id: string,
+      email: string,
+      windows: ReadonlyArray<{ readonly id: string; readonly readAt?: string }>,
+    ) => ({
       id,
       driver: ProviderDriverKind.make("claudeAgent"),
       email,
       plan: "Claude Subscription",
       usageLimits: {
         checkedAt: "2026-11-03T14:00:00.000Z",
-        readAt,
-        windows: [{ id: "session", kind: "session" as const, label: "Session", usedPercent: 40 }],
+        windows: windows.map((window) => ({
+          ...window,
+          kind: window.id === "five_hour" ? ("session" as const) : ("weekly" as const),
+          label: window.id === "five_hour" ? "Session" : "Weekly",
+          usedPercent: window.id === "five_hour" ? 40 : 77,
+        })),
       },
     });
     const presentations = new Map([
@@ -33,8 +42,15 @@ describe("UsageLimitsPooled usage source accounts", () => {
                 label: "usage source",
                 checkedAt: "2026-11-03T14:00:00.000Z",
                 accounts: [
-                  account("old.json", "old@example.com", "2026-11-03T11:24:32.000Z"),
-                  account("fresh.json", "fresh@example.com", "2026-11-03T13:58:00.000Z"),
+                  // A running session refreshed the weekly window; the session window is still the reading's.
+                  account("old.json", "old@example.com", [
+                    { id: "five_hour", readAt },
+                    { id: "seven_day" },
+                  ]),
+                  account("fresh.json", "fresh@example.com", [
+                    { id: "five_hour", readAt: "2026-11-03T13:58:00.000Z" },
+                    { id: "seven_day", readAt: "2026-11-03T13:58:00.000Z" },
+                  ]),
                 ],
               },
             ],
@@ -47,9 +63,14 @@ describe("UsageLimitsPooled usage source accounts", () => {
     );
 
     await expect.element(screen.getByText("Numbers read 2h ago").first()).toBeVisible();
-    // The old account's bar segment and legend row; the fresh account has no tag.
+    // The old session window's bar segment and legend row only.
     expect(screen.getByText("Numbers read", { exact: false }).elements()).toHaveLength(2);
-    await userEvent.hover(screen.getByRole("button", { name: /^OE/ }).first());
-    await expect.element(screen.getByText("As of")).toBeVisible();
+    const [session, weekly] = screen.getByRole("button", { name: /^OE/ }).elements();
+    await userEvent.hover(session!);
+    await expect.element(screen.getByRole("dialog").getByText("60%")).toBeVisible();
+    await expect.element(screen.getByRole("dialog").getByText("As of")).toBeVisible();
+    await userEvent.hover(weekly!);
+    await expect.element(screen.getByRole("dialog").getByText("23%")).toBeVisible();
+    expect(screen.getByText("As of").elements()).toHaveLength(0);
   });
 });

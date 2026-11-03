@@ -3,7 +3,7 @@ import type {
   ServerProviderUsageLimits,
   ServerProviderUsageWindow,
 } from "@t3tools/contracts";
-import { withRuntimeUpdateReadAt, withRuntimeWindows } from "./fork/usageReadAt.ts";
+import { withRuntimeUpdateReadAt } from "./fork/usageReadAt.ts";
 
 const WINDOW_KIND_ORDER: Record<ServerProviderUsageWindow["kind"], number> = {
   session: 0,
@@ -116,7 +116,7 @@ export function resolveUsageLimitsAfterProbe(input: {
     !probed.unavailable &&
     Date.parse(published.checkedAt) > Date.parse(probed.checkedAt)
   ) {
-    return withRuntimeWindows(probed, published);
+    return { ...probed, checkedAt: published.checkedAt, windows: published.windows };
   }
   return probed;
 }
