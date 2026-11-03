@@ -5,8 +5,9 @@ const EVENT = "t3-preview-page-copy";
 // Long enough for a copy button that awaits a fetch first; a new press or key ends it sooner.
 const PAGE_COPY_WINDOW_MS = 2_000;
 
-// The page can see and call this, but it can only send what it could already write itself;
-// the isolated world decides whether a viewer click asked for it.
+// Within a press window the server forwards text the page reports: wrapped writes that
+// succeeded, execCommand copy, or copy events. The page can dispatch this event with any text
+// in that window, the same text it could write with writeText after that press.
 const MAIN_SCRIPT = `(() => {
   const proto = globalThis.Clipboard?.prototype;
   if (!proto) return;
