@@ -82,6 +82,7 @@ import * as PreviewAgentActivity from "./PreviewAgentActivity.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
 import * as PreviewDisplay from "../fork/previewDisplay.ts";
+import * as PreviewPageCopy from "../fork/previewPageCopy.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
 import { presentAsChrome, ServerBrowserContexts } from "./ServerBrowserContexts.ts";
@@ -1249,6 +1250,7 @@ const make = Effect.gen(function* () {
       worldName: CLIPBOARD_WORLD,
       runImmediately: true,
     });
+    await PreviewPageCopy.recordPageCopies(cdp, CLIPBOARD_WORLD);
   };
 
   /** Out-of-process frames need their own copy-recording session until target closure. */
@@ -2344,6 +2346,8 @@ const make = Effect.gen(function* () {
             viewer.pressedButtons.set(button, { x: num(message.x), y: num(message.y) });
           else if (action === "up") viewer.pressedButtons.delete(button);
         }
+        if (action === "up")
+          void PreviewPageCopy.forwardPressCopy(tab, viewer, button, CLIPBOARD_WORLD);
         return;
       }
       case "wheel":
