@@ -2616,8 +2616,9 @@ const make = Effect.gen(function* () {
     // An idle page does not repaint for a new screencast, so the viewer
     // starts from a still unless a live frame beat it.
     if (!screencastStarted) yield* Effect.promise(pushStill);
-    // Runs after every awaited step of the connect and is not awaited itself, so a connect that
-    // hangs, or waits behind a stuck action, never holds control.
+    // Runs after the connect's last await, so a connect that never finishes never takes control.
+    // Not awaited, so a free tab passes to this viewer at once even while an action is stuck.
+    // This viewer's input then waits behind that action.
     if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
       tab.control.attach(viewer.id).catch(constVoid);
     }

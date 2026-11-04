@@ -22,9 +22,10 @@ const disableHmrTransport = {
   },
 } satisfies Plugin;
 
-// Vite's proxy does not read a client socket before the upgrade, so it misses a client that leaves
-// then, and the chat server keeps a preview viewer that is gone and may still hold control.
-// Read until the upgrade, keep the bytes for the upgraded pipe, and cancel when the client leaves.
+// Before the upgrade, Vite's proxy does not read the client socket and does not cancel its request
+// to the chat server when the client leaves. The chat server then keeps a preview viewer that is
+// gone, and that viewer may still hold control. This reads until the upgrade, keeps the bytes for
+// the upgraded pipe, and cancels the request when the client leaves.
 const endUpgradeWithClient: ProxyOptions["configure"] = (proxy) => {
   proxy.on("proxyReqWs", (proxyReq, _req, socket) => {
     const early: Buffer[] = [];
