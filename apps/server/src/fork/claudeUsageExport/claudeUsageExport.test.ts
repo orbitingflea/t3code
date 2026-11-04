@@ -9,12 +9,12 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { makeClaudeUsageExport } from "./claudeUsageExport.ts";
 
-const URL_ = "http://127.0.0.1:6095/usage-push?box=era";
-const KEY = "test-box-key";
-const HOME = "/srv/box/.claude";
+const URL_ = "https://usage.example.com/push?source=test";
+const KEY = "test-key";
+const HOME = "/home/user/.claude";
 const RECEIVED_AT = Date.parse("2026-11-03T14:21:07Z");
 
-// A real rate_limit_event from a sandbox provider log, ids replaced.
+// A real rate_limit_event from a provider log, ids replaced.
 const realEvent = {
   type: "rate_limit_event",
   rate_limit_info: {
@@ -177,7 +177,7 @@ describe("claude usage event export", () => {
         ...info,
         unifiedWindows: { seven_day: { ...info.unifiedWindows.seven_day, utilization: 0.29 } },
       };
-      const otherHome = "/srv/box/.claude-2";
+      const otherHome = "/home/user/.claude-2";
 
       yield* exportEvent(HOME, info);
       yield* http.nextCall;

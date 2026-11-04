@@ -30,7 +30,7 @@ The services read `~/.whiteboard/config.json` when it exists. Every field is opt
 
 The default room is `main`; clients connect at `/connect/<room>`, read with `GET /api/board?room=<room>`, and write with `POST /api/board/edit?room=<room>`. Omitting `room` selects `main`. Each room persists at `<dataDir>/room-<room>.json`.
 
-A room slug comes from a directory path: lowercase the path, replace each run of characters that are not letters or digits with a hyphen, trim hyphens at both ends, and use `main` when the result is empty. The chat panel sends the working-directory path of the active conversation's project, so `/home/alice/code/wboard` becomes `home-alice-code-wboard`, and the page title shows the path's last segment as `[Board: wboard]`. The same message carries the chat session id, which the browser uses only to remember that session's last board position and zoom in `localStorage`.
+A room slug comes from a directory path: lowercase the path, replace each run of characters that are not letters or digits with a hyphen, trim hyphens at both ends, and use `main` when the result is empty. The chat panel sends the working-directory path of the active conversation's project, so `/srv/code/wboard` becomes `srv-code-wboard`, and the page title shows the path's last segment as `[Board: wboard]`. The same message carries the chat session id, which the browser uses only to remember that session's last board position and zoom in `localStorage`.
 
 ```bash
 curl -s 'http://localhost:6060/api/board?room=<room>'
@@ -43,7 +43,7 @@ Install the dependencies first with `npm ci` in this directory; they are separat
 
 The sync server and the web server each run as a systemd user service. Save the two unit files below under `~/.config/systemd/user/`, with `WorkingDirectory` set to this directory.
 
-`wb-sync.service`:
+`whiteboard-sync.service`:
 
 ```ini
 [Unit]
@@ -59,7 +59,7 @@ RestartSec=5
 WantedBy=default.target
 ```
 
-`wb-web.service`:
+`whiteboard-web.service`:
 
 ```ini
 [Unit]
@@ -80,16 +80,16 @@ Then enable both. `enable-linger` keeps user services running after you log out.
 ```bash
 loginctl enable-linger "$USER"
 systemctl --user daemon-reload
-systemctl --user enable --now wb-sync wb-web
+systemctl --user enable --now whiteboard-sync whiteboard-web
 ```
 
-Restart after a configuration change with `systemctl --user restart wb-sync wb-web`; read a log with `journalctl --user -u wb-sync -f` or `journalctl --user -u wb-web -f`.
+Restart after a configuration change with `systemctl --user restart whiteboard-sync whiteboard-web`; read a log with `journalctl --user -u whiteboard-sync -f` or `journalctl --user -u whiteboard-web -f`.
 
 The whiteboard page is at `http://localhost:<webPort>/`. The same port serves the chat under `/chat/` and the sync websocket under `/sync/`, so exposing `webPort` alone is enough. The Vite dev server binds localhost only. Its HMR transport is intentionally disabled for this persistent page, so refresh manually after changing client source.
 
 ## Embedded chat
 
-The chat panel is an iframe holding a T3 Code instance served on `chatPort`. This directory is `fork/whiteboard/` of a T3 Code fork ([orbitingflea/t3code](https://github.com/orbitingflea/t3code)); the T3 Code at the repository root, two levels up, carries the whiteboard's embedding changes, and `run-t3.sh` here starts it. The instance keeps its own data directory and never reads a personal T3 installation. Vite proxies `/chat/` on `webPort` to it, together with the chat's own `/api`, `/ws`, and `/.well-known` paths, so the iframe loads from the whiteboard's origin. See [run-t3.md](run-t3.md) for how to build and run it.
+The chat panel is an iframe holding a T3 Code instance served on `chatPort`. This directory is `fork/whiteboard/` of this repository, a T3 Code fork; the T3 Code at the repository root, two levels up, carries the whiteboard's embedding changes, and `run-t3.sh` here starts it. The instance keeps its own data directory and never reads a personal T3 installation. Vite proxies `/chat/` on `webPort` to it, together with the chat's own `/api`, `/ws`, and `/.well-known` paths, so the iframe loads from the whiteboard's origin. See [run-t3.md](run-t3.md) for how to build and run it.
 
 ## Tests
 

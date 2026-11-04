@@ -44,7 +44,7 @@ It is read-only and checks that each started process is alive, the sync API answ
 - **Probes.** With the run's env loaded, `node fork/whiteboard/probes/board-math.mjs` and `node fork/whiteboard/probes/board-reference.mjs`. Set `WHITEBOARD_PROBE_SCREENSHOT` (and `WHITEBOARD_PROBE_OFFSCREEN_SCREENSHOT` for the reference probe) to paths under `<run>/evidence/`.
 - **Chat journey.** `node .agents/skills/verify-whiteboard/scripts/chat-journey.mjs <run>` drives a `--chat` run end to end. See [chat-embedding](features/chat-embedding.md).
 
-Use only the URLs in the run's env. The probes default to ports 6060 and 6061, and `wb` with the real HOME uses `~/.whiteboard/config.json`; both reach the live whiteboard served from `~/.whiteboard/app`, which people are using.
+Use only the URLs in the run's env. The probes default to ports 6060 and 6061, and `wb` with the real HOME uses `~/.whiteboard/config.json`; both can reach a live whiteboard on this machine, and people may be using it.
 
 ## Evidence
 

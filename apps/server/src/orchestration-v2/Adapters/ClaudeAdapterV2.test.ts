@@ -277,9 +277,9 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
       nativeThreadId: "native-thread-plugin",
       resume: false,
       cwd: "/workspace",
-      environment: { T3CODE_CLAUDE_PLUGIN_ROOT: " /opt/whiteboard " },
+      environment: { T3CODE_CLAUDE_PLUGIN_ROOT: " /path/to/whiteboard " },
     });
-    assert.deepEqual(options.plugins, [{ type: "local", path: "/opt/whiteboard" }]);
+    assert.deepEqual(options.plugins, [{ type: "local", path: "/path/to/whiteboard" }]);
   });
 
   it("passes every --add-dir launch directory to Claude", () => {

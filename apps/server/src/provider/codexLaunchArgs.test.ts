@@ -11,8 +11,8 @@ import {
 describe("resolveCodexSkillRoot", () => {
   it("returns the configured skill root without surrounding whitespace", () => {
     NodeAssert.equal(
-      resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: " /opt/whiteboard/skills " }),
-      "/opt/whiteboard/skills",
+      resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: " /path/to/whiteboard/skills " }),
+      "/path/to/whiteboard/skills",
     );
   });
 
