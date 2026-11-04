@@ -34,7 +34,7 @@ export function OldReadingTag({
   if (!readAt) return null;
   const age = formatRelativeTimeLabel(readAt, now);
   return (
-    <span className="inline-flex shrink-0 items-center gap-0.5 text-2xs text-muted-foreground tabular-nums">
+    <span className="inline-flex shrink-0 items-center gap-0.5 rounded-sm bg-background/85 px-1 py-0.5 text-2xs text-muted-foreground tabular-nums">
       <ClockIcon className="size-3" aria-hidden />
       <span className="sr-only">Numbers read </span>
       {age}
