@@ -711,7 +711,13 @@ describe("pools", () => {
                   hubAccount("work", codex, "a@example.com"),
                   hubAccount("claude-c@example.com.json", claude, "c@example.com"),
                   hubAccount("personal", claude, "d@example.com"),
+                  hubAccount("named", claude, "e@example.com", "Claude"),
                 ],
+              },
+              {
+                ...source,
+                id: UsageLimitSourceId.make("hub-2"),
+                accounts: [hubAccount("named", claude, "e@example.com")],
               },
             ],
           },
@@ -726,6 +732,7 @@ describe("pools", () => {
       ["claudeAgent", "Team"],
       ["claudeAgent", null],
       ["claudeAgent", null],
+      ["claudeAgent", "Claude"],
     ]);
   });
 

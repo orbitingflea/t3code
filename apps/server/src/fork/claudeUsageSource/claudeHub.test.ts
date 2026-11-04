@@ -1,5 +1,6 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
+import { UsageLimitSourceError } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -159,6 +160,8 @@ describe("Claude through a CLIProxyAPI hub", () => {
   it.effect("finds a Claude login only by its exact email and organization", () =>
     Effect.gen(function* () {
       const login = { email: "FIRST@example.com", organizationId: "org-1" };
+      const hub = Effect.succeed(config);
+      const unreadable = Effect.fail(new UsageLimitSourceError({ detail: "unreadable key" }));
       for (const [hubAccounts, expected] of [
         [[{ ...claude, organization_uuid: "org-2" }, claude], "first.json"],
         [[{ ...claude, organization_uuid: "org-2" }], undefined],
@@ -167,12 +170,16 @@ describe("Claude through a CLIProxyAPI hub", () => {
         [[claude, { ...claude, id: "copy.json" }], undefined],
       ] as const) {
         const api = yield* fixture({ accounts: hubAccounts }).api;
-        expect((yield* api.claude.findLogin([config], login))?.account.id).toBe(expected);
+        expect((yield* api.claude.findLogin([hub], login))?.account.id).toBe(expected);
       }
+      const earlier = yield* fixture({ accounts: [claude] }).api;
+      expect((yield* earlier.claude.findLogin([hub, unreadable], login))?.account.id).toBe(
+        "first.json",
+      );
       const test = fixture({ accounts: [claude] });
       const api = yield* test.api;
       expect(
-        yield* api.claude.findLogin([config], { ...login, organizationId: undefined }),
+        yield* api.claude.findLogin([unreadable], { ...login, organizationId: undefined }),
       ).toBeUndefined();
       expect(test.requests).toEqual([]);
       const unreachable = yield* makeCliproxyApi.pipe(
@@ -188,7 +195,7 @@ describe("Claude through a CLIProxyAPI hub", () => {
         ),
         Effect.provide(NodeCrypto.layer),
       );
-      const error = yield* Effect.flip(unreachable.claude.findLogin([config], login));
+      const error = yield* Effect.flip(unreachable.claude.findLogin([hub], login));
       expect(error._tag).toBe("UsageLimitSourceError");
     }),
   );

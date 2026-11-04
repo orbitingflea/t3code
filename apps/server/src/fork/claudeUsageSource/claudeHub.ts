@@ -227,14 +227,16 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
   /**
    * The source account holding a directly signed-in Claude login, if exactly one source has it.
    * A source that cannot list its accounts fails the lookup; it never counts as no match.
+   * Each hub is read only when its turn comes, so a later hub cannot fail an earlier match.
    */
   const findLogin = Effect.fn("ClaudeHub.findLogin")(function* (
-    hubs: ReadonlyArray<CliproxyHub>,
+    hubs: ReadonlyArray<Effect.Effect<CliproxyHub, UsageLimitSourceError>>,
     login: ClaudeLogin,
   ) {
     const { email, organizationId } = login;
     if (!email || !organizationId) return undefined;
-    for (const hub of hubs) {
+    for (const readHub of hubs) {
+      const hub = yield* readHub;
       const accounts = yield* authFiles(hub).pipe(
         Effect.mapError((error) =>
           isUsageLimitSourceError(error)

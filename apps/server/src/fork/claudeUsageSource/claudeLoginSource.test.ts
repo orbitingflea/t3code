@@ -82,8 +82,13 @@ const layerTest = ProviderOrchestrationAdapterInfrastructure.layer.pipe(
   ),
 );
 
+const unreadableKey = {
+  managementKey: { provider: SecretProviderId.make("vault"), reference: "hub-key" },
+};
+
 const redeemClaudeReset = (claim: {
   usageSourceOnly?: boolean;
+  unreadableLaterSource?: boolean;
   source?: Partial<Pick<UsageLimitSourceConfig, "enabled" | "managementKey">>;
   hub?: {
     accounts: ReadonlyArray<{ email: string; organization_uuid?: string }>;
@@ -214,6 +219,16 @@ const redeemClaudeReset = (claim: {
                     enabled: true,
                     ...claim.source,
                   },
+                  ...(claim.unreadableLaterSource
+                    ? {
+                        [UsageLimitSourceId.make("later")]: {
+                          kind: "cliproxy",
+                          url: "http://later.test",
+                          enabled: true,
+                          ...unreadableKey,
+                        },
+                      }
+                    : {}),
                 },
               }
             : {},
@@ -261,19 +276,22 @@ describe("Claude logins held by a usage source", () => {
 
   it.live.skipIf(windowsHost)("reads and redeems the login only through that source", () =>
     Effect.gen(function* () {
-      const { before, outcome, after, direct, viaHub } = yield* redeemClaudeReset({
-        hub: { accounts: [{ email: "TEST@example.com", organization_uuid: "fake-org" }] },
-      });
-      expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
-      expect(before.usageLimits?.windows.map((window) => window.id)).toContain("monthly_spend");
-      expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
-      expect(outcome).toMatchObject({ _tag: "Success", success: "reset" });
-      expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);
-      expect(direct).toEqual([]);
-      expect(viaHub).toContain(
-        "https://api.anthropic.com/api/organizations/fake-org/reset_rate_limits",
-      );
-      expect(viaHub).toContain("reset-quota");
+      for (const unreadableLaterSource of [false, true]) {
+        const { before, outcome, after, direct, viaHub } = yield* redeemClaudeReset({
+          unreadableLaterSource,
+          hub: { accounts: [{ email: "TEST@example.com", organization_uuid: "fake-org" }] },
+        });
+        expect(before.usageLimits?.windows[0]?.usedPercent).toBe(100);
+        expect(before.usageLimits?.windows.map((window) => window.id)).toContain("monthly_spend");
+        expect(before.usageLimits?.resetCredits?.nextCreditId).toBe("grant_a");
+        expect(outcome).toMatchObject({ _tag: "Success", success: "reset" });
+        expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);
+        expect(direct).toEqual([]);
+        expect(viaHub).toContain(
+          "https://api.anthropic.com/api/organizations/fake-org/reset_rate_limits",
+        );
+        expect(viaHub).toContain("reset-quota");
+      }
     }),
   );
 
@@ -298,9 +316,6 @@ describe("Claude logins held by a usage source", () => {
 
   it.live.skipIf(windowsHost)("shows a usage source failure instead of reading Claude", () =>
     Effect.gen(function* () {
-      const unreadableKey = {
-        managementKey: { provider: SecretProviderId.make("vault"), reference: "hub-key" },
-      };
       for (const { source, ...failure } of [
         { usageStatus: 503 },
         { listStatus: 500 },

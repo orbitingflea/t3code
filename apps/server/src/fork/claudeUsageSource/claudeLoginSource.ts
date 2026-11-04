@@ -37,8 +37,10 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
   processEnv: NodeJS.ProcessEnv,
 ) {
   const { claude } = yield* makeCliproxyApi;
-  const serverSettings = yield* Effect.serviceOption(Settings.ServerSettingsService);
-  const secrets = yield* Effect.serviceOption(SecretResolver.SecretResolver);
+  const sources = Option.all({
+    settings: yield* Effect.serviceOption(Settings.ServerSettingsService),
+    secrets: yield* Effect.serviceOption(SecretResolver.SecretResolver),
+  });
   const fileSystem = yield* FileSystem.FileSystem;
   const sourceOnly = processEnv.T3CODE_CLAUDE_USAGE_SOURCE_ONLY === "1";
   const sourceCredits = yield* Ref.make(Option.none<ServerProviderResetCredits | undefined>());
@@ -54,39 +56,28 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
 
   /** A source whose key its secret provider cannot give fails, so it never counts as no match. */
   const readHub = Effect.fn("ClaudeLoginSource.readHub")(function* (
+    secrets: SecretResolver.SecretResolver["Service"],
     config: UsageLimitSourceConfig,
   ) {
-    if (typeof config.managementKey === "string") {
-      return { url: config.url, managementKey: config.managementKey };
-    }
-    const managementKey = Option.isSome(secrets)
-      ? yield* requireSettingsSecret(secrets.value, config.managementKey).pipe(Effect.option)
-      : Option.none<string>();
-    if (Option.isNone(managementKey)) {
-      return yield* new UsageLimitSourceError({
-        detail: "Could not read the management key from its secret provider.",
-      });
-    }
-    return { url: config.url, managementKey: managementKey.value };
+    const managementKey = yield* requireSettingsSecret(secrets, config.managementKey).pipe(
+      Effect.mapError((error) => new UsageLimitSourceError({ detail: error.message })),
+    );
+    return { url: config.url, managementKey };
   });
 
   const findSource = Effect.fn("ClaudeLoginSource.findSource")(function* () {
     const login = yield* readLogin;
-    const source = Option.isNone(serverSettings)
+    const source = Option.isNone(sources)
       ? undefined
-      : yield* serverSettings.value.getSettings.pipe(
+      : yield* sources.value.settings.getSettings.pipe(
           Effect.mapError(
             () => new UsageLimitSourceError({ detail: "The usage sources could not be read." }),
           ),
           Effect.flatMap((settings) =>
-            Effect.forEach(
-              Object.values(settings.usageLimitSources).filter((config) => config.enabled),
-              readHub,
-            ),
-          ),
-          Effect.flatMap((hubs) =>
             claude.findLogin(
-              hubs.filter((hub) => hub.managementKey.length > 0),
+              Object.values(settings.usageLimitSources)
+                .filter((config) => config.enabled && config.managementKey !== "")
+                .map((config) => readHub(sources.value.secrets, config)),
               login,
             ),
           ),
