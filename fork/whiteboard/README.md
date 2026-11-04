@@ -30,7 +30,7 @@ The services read `~/.whiteboard/config.json` when it exists. Every field is opt
 
 The default room is `main`; clients connect at `/connect/<room>`, read with `GET /api/board?room=<room>`, and write with `POST /api/board/edit?room=<room>`. Omitting `room` selects `main`. Each room persists at `<dataDir>/room-<room>.json`.
 
-A room slug comes from a directory path: lowercase the path, replace each run of characters that are not letters or digits with a hyphen, trim hyphens at both ends, and use `main` when the result is empty. The chat panel sends the working-directory path of the active conversation's project, so `/srv/code/wboard` becomes `srv-code-wboard`, and the page title shows the path's last segment as `[Board: wboard]`. The same message carries the chat session id, which the browser uses only to remember that session's last board position and zoom in `localStorage`.
+A room slug comes from a directory path: lowercase the path, replace each run of characters that are not letters or digits with a hyphen, trim hyphens at both ends, and use `main` when the result is empty. The chat panel sends the working-directory path of the active conversation's project, so `/srv/code/wboard` becomes `srv-code-wboard`, and the page title shows the path's last segment as `T3 (wboard)`. The same message carries the chat session id, which the browser uses only to remember that session's last board position and zoom in `localStorage`.
 
 ```bash
 curl -s 'http://localhost:6060/api/board?room=<room>'
