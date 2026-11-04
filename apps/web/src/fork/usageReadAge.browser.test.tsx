@@ -6,7 +6,7 @@ import { render } from "../../test/render";
 import { UsageLimitsPooled } from "../components/usage/UsageLimitsPooled";
 
 describe("UsageLimitsPooled usage source accounts", () => {
-  it("shows a kept reading's time only on windows from that reading", async () => {
+  it("shows a kept reading's age only in the popup of windows from that reading", async () => {
     const now = Date.parse("2026-11-03T14:00:00.000Z");
     const readAt = "2026-11-03T11:24:32.000Z";
     const account = (
@@ -62,13 +62,13 @@ describe("UsageLimitsPooled usage source accounts", () => {
       <UsageLimitsPooled presentations={presentations} now={now} />,
     );
 
-    await expect.element(screen.getByText("Numbers read 2h ago").first()).toBeVisible();
-    // The old session window's bar segment and legend row only.
-    expect(screen.getByText("Numbers read", { exact: false }).elements()).toHaveLength(2);
     const [session, weekly] = screen.getByRole("button", { name: /^OE/ }).elements();
+    await expect.element(session!).toBeVisible();
+    expect(screen.getByText(/ago/).elements()).toHaveLength(0);
     await userEvent.hover(session!);
     await expect.element(screen.getByRole("dialog").getByText("60%")).toBeVisible();
     await expect.element(screen.getByRole("dialog").getByText("As of")).toBeVisible();
+    await expect.element(screen.getByRole("dialog").getByText(/ · 2h ago$/)).toBeVisible();
     await userEvent.hover(weekly!);
     await expect.element(screen.getByRole("dialog").getByText("23%")).toBeVisible();
     expect(screen.getByText("As of").elements()).toHaveLength(0);
