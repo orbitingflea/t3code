@@ -672,6 +672,7 @@ describe("pools", () => {
     expect(accounts[0]?.displayName).toBe("claude-team-seat");
   });
 
+<<<<<<< origin/main
   it("names hub accounts by their label over the native instance name, else as upstream", () => {
     const codex = ProviderDriverKind.make("codex");
     const hubAccount = (id: string, driver: typeof claude, email: string, label?: string) => ({
@@ -680,6 +681,27 @@ describe("pools", () => {
       email,
       ...(label ? { label } : {}),
       ...(driver === codex ? { workspaceId: "ws" } : {}),
+=======
+  it("labels a default-named instance merged with a hub account by e-mail, keeping a chosen name", () => {
+    const native = provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claudeAgent"),
+      displayName: "Claude",
+      auth: { status: "authenticated", email: "a@example.com" },
+      usageLimits: { checkedAt, windows: [window] },
+    });
+    const named = provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude-work"),
+      displayName: "Work",
+      auth: { status: "authenticated", email: "b@example.com" },
+      usageLimits: { checkedAt, windows: [window] },
+    });
+    const hubAccount = (email: string) => ({
+      id: `claude-${email}.json`,
+      driver: claude,
+      email,
+>>>>>>> upstream/main
       usageLimits: { checkedAt, windows: [window] },
     });
     const input = new Map([
@@ -688,6 +710,7 @@ describe("pools", () => {
         {
           ...laptop,
           serverConfig: {
+<<<<<<< origin/main
             providers: [
               provider({
                 driver: claude,
@@ -702,15 +725,24 @@ describe("pools", () => {
                 usageLimits: { checkedAt, windows: [window] },
               }),
             ],
+=======
+            providers: [native, named],
+>>>>>>> upstream/main
             usageLimitSources: [
               {
                 ...source,
                 accounts: [
+<<<<<<< origin/main
                   hubAccount("work", claude, "a@example.com", "Work"),
                   hubAccount("team", claude, "b@example.com", "Team"),
                   hubAccount("work", codex, "a@example.com"),
                   hubAccount("claude-c@example.com.json", claude, "c@example.com"),
                   hubAccount("personal", claude, "d@example.com"),
+=======
+                  hubAccount("a@example.com"),
+                  hubAccount("b@example.com"),
+                  hubAccount("c@example.com"),
+>>>>>>> upstream/main
                 ],
               },
             ],
@@ -719,6 +751,7 @@ describe("pools", () => {
       ],
     ]);
     expect(
+<<<<<<< origin/main
       collectLimitAccounts(input).map((account) => [account.driver, account.displayName]),
     ).toEqual([
       ["claudeAgent", "Work"],
@@ -726,6 +759,13 @@ describe("pools", () => {
       ["claudeAgent", "Team"],
       ["claudeAgent", null],
       ["claudeAgent", null],
+=======
+      collectLimitAccounts(input).map(({ displayName, email }) => ({ displayName, email })),
+    ).toEqual([
+      { displayName: null, email: "a@example.com" },
+      { displayName: "Work", email: "b@example.com" },
+      { displayName: null, email: "c@example.com" },
+>>>>>>> upstream/main
     ]);
   });
 
@@ -1237,6 +1277,28 @@ describe("/usage-limits", () => {
       creditId: "hub-credit",
     });
     expect(report?.accounts[0]?.limits.resetCredits?.availableCount).toBe(3);
+  });
+
+  it("labels hub rows by account id without .json", () => {
+    const hub = [
+      {
+        ...sources[0]!,
+        label: "CLIProxyAPI",
+        accounts: [
+          {
+            id: "claude-b@example.com.json",
+            driver: selected.driver,
+            email: "b@example.com",
+            usageLimits: limits,
+          },
+          { id: "team-seat.json", driver: selected.driver, usageLimits: limits },
+        ],
+      },
+    ];
+    const report = collectProviderUsageLimits(selected.instanceId, [selected], hub, now);
+    expect(
+      report?.accounts.filter((account) => account.sourceLabel).map((account) => account.label),
+    ).toEqual(["CLIProxyAPI · claude-b@example.com", "CLIProxyAPI · team-seat"]);
   });
 
   it("keeps unidentified custom instances separate, filtering by driver", () => {
