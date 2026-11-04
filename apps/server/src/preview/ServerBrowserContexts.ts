@@ -80,6 +80,7 @@ export class ServerBrowserContexts {
   private readonly clearing = new Map<string, Promise<void>>();
   private browser: Promise<Browser> | undefined;
   private closing: Promise<void> | undefined;
+  private restarting: Promise<void> | undefined;
 
   constructor(options: Options) {
     this.options = options;
@@ -142,7 +143,7 @@ export class ServerBrowserContexts {
     const key = JSON.stringify([profileId, isolationKey ?? null]);
     const cached = this.contexts.get(key);
     if (cached) return cached;
-    const cleared = this.clearing.get(key)?.catch(constVoid) ?? Promise.resolve();
+    const cleared = Promise.all([this.clearing.get(key)?.catch(constVoid), this.restarting]);
     const pending = cleared
       .then(() => this.createContext(profileId, isolationKey))
       .then(async (context) => {
@@ -241,12 +242,21 @@ export class ServerBrowserContexts {
     return this.closing;
   }
 
-  private async dispose() {
-    await Promise.allSettled(
-      [...this.contexts.values()].map(async (pending) => (await pending).close()),
-    );
-    const browser = await this.browser?.catch(() => undefined);
-    await browser?.close().catch(constVoid);
+  /** Closes every context and the shared browser; the next context launches them again. */
+  restart() {
+    const pending = [...this.contexts.values()];
     this.contexts.clear();
+    // New contexts wait, since two Chromes cannot share a profile directory.
+    this.restarting = (async () => {
+      await Promise.allSettled(pending.map(async (context) => (await context).close()));
+      const browser = await this.browser?.catch(() => undefined);
+      this.browser = undefined;
+      await browser?.close().catch(constVoid);
+    })();
+    return this.restarting;
+  }
+
+  private async dispose() {
+    await this.restart();
   }
 }

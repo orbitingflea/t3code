@@ -62,7 +62,7 @@ it.layer(NodeServices.layer)("preview display", (it) => {
       const path = yield* Path.Path;
       const { root, display } = yield* directory;
       const command = path.join(root, "Xvfb");
-      const preview = yield* PreviewDisplay.make(display, command);
+      const preview = yield* PreviewDisplay.make(display, { command });
       expect(yield* Effect.promise(() => preview.env({}))).toBeUndefined();
       yield* fs.symlink(xvfb!, command);
       expect((yield* Effect.promise(() => preview.env({})))?.DISPLAY).toMatch(/^:\d+$/);

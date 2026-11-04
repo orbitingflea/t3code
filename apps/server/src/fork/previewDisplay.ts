@@ -12,8 +12,8 @@ import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type { BrowserContext, Page } from "playwright-core";
 
 // Cloudflare Turnstile on grok.com loops in Chrome's new headless mode and passes in headed
-// Chrome, so on Linux the preview browser runs headed on a private Xvfb display. Without Xvfb
-// it stays headless.
+// Chrome, so in the Xvfb mode on Linux the preview browser runs headed on a private Xvfb display.
+// Without Xvfb it stays headless.
 const SCREEN = "1920x1080x24";
 
 /** On Linux, ["Xvfb"] when no PATH directory holds it, so `t3 browser setup` installs it; elsewhere []. */
@@ -59,12 +59,16 @@ class PreviewDisplayError extends Error {
 }
 
 /**
- * Starts one Xvfb on first use and again after it exits; Xvfb stops with the scope.
- * `env` gives Chrome's environment on the display, or undefined when Chrome stays headless.
+ * Starts one Xvfb on first use and again after it exits; Xvfb stops with the scope, and when
+ * `enabled` turns false. `env` gives Chrome's environment on the display, or undefined when
+ * Chrome stays headless.
  */
 export const make = Effect.fn("previewDisplay.make")(function* (
   directory: string,
-  command = "Xvfb",
+  {
+    command = "Xvfb",
+    enabled = Effect.succeed(true),
+  }: { readonly command?: string; readonly enabled?: Effect.Effect<boolean> } = {},
 ) {
   const platform = yield* HostProcess.Platform;
   const fs = yield* FileSystem.FileSystem;
@@ -138,6 +142,11 @@ export const make = Effect.fn("previewDisplay.make")(function* (
     lock.withPermits(1)(
       Effect.gen(function* () {
         if (platform !== "linux") return undefined;
+        if (!(yield* enabled)) {
+          if (current) yield* Scope.close(current.scope, Exit.void);
+          current = undefined;
+          return undefined;
+        }
         if (current && !(yield* current.running)) {
           // Chrome on the old display has lost its screen; the next launch gets a new one.
           yield* Scope.close(current.scope, Exit.void);

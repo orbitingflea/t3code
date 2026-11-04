@@ -76,7 +76,7 @@ it("builds the brand list real Chrome sends", () => {
 });
 
 it.layer(NodeServices.layer)("full Chrome install", (it) => {
-  it.effect("installs the chrome executable under tools/chrome and drops the shell", () =>
+  it.effect("installs the chrome executable under tools/chrome and keeps the shell", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
@@ -119,7 +119,7 @@ it.layer(NodeServices.layer)("full Chrome install", (it) => {
       expect(yield* browser.executable).toBe(
         path.join(baseDir, "tools", "chrome", "fixture", "1.2.3", "chrome"),
       );
-      expect(yield* fs.exists(shell)).toBe(false);
+      expect(yield* fs.exists(shell)).toBe(true);
     }).pipe(Effect.scoped),
   );
 });
