@@ -48,6 +48,7 @@ import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 const sessionId = "automatic-delivery-session";
 const settings = Schema.decodeSync(ClaudeSettings)({});
 const decodeScheduledTask = Schema.decodeEffect(ScheduledTaskUpsertInput);
+// Claude Code writes this for calls an abort cuts before they run; a steer must never cause it.
 const refusal =
   "The user doesn't want to take this action right now. STOP what you are doing and wait for the user to tell you how to proceed.";
 const statusIds = ["status-1", "status-2", "status-3", "status-4"];
@@ -105,7 +106,7 @@ const toolResult = (id: string, cancelled: boolean) =>
     ...(cancelled ? { tool_result_meta: [{ id, non_execution_kind: "cancelled" }] } : {}),
   });
 
-const result = (uuid: string, aborted: boolean) =>
+const result = (uuid: string, aborted: boolean, userMessageUuids?: ReadonlyArray<string>) =>
   frame({
     type: "result",
     subtype: "success",
@@ -122,6 +123,7 @@ const result = (uuid: string, aborted: boolean) =>
     total_cost_usd: 0,
     usage: { input_tokens: 1, output_tokens: 1 },
     modelUsage: {},
+    ...(userMessageUuids === undefined ? {} : { user_message_uuids: userMessageUuids }),
   });
 
 const deliveries = [
@@ -132,7 +134,7 @@ const deliveries = [
 ] as const;
 
 it.effect.each(deliveries)(
-  "delivers %s with Claude's native pending-tool cancellation behavior",
+  "delivers %s while Claude's pending tool calls finish without cancellation",
   (delivery) =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -400,7 +402,7 @@ it.effect.each(deliveries)(
           yield* worker.drain();
           const explicitSteer =
             delivery === "user steering" || delivery === "promoted queued message";
-          assert.equal(batchAbort.signal.aborted, explicitSteer);
+          assert.isFalse(batchAbort.signal.aborted);
           assert.equal(offers.length, explicitSteer ? 2 : 1);
           const finished = yield* watch(
             (event) =>
@@ -411,8 +413,16 @@ it.effect.each(deliveries)(
           yield* Queue.offer(sdkMessages, toolResult("build", false));
           for (const id of statusIds)
             yield* Queue.offer(sdkMessages, toolResult(id, batchAbort.signal.aborted));
-          if (explicitSteer) yield* Queue.offer(sdkMessages, result("aborted", true));
-          yield* Queue.offer(sdkMessages, result("completed", false));
+          // Claude Code folds a no-priority steer in after the tool results and answers it in the
+          // same turn, so the turn's result lists the steer's uuid too.
+          yield* Queue.offer(
+            sdkMessages,
+            result(
+              "completed",
+              false,
+              explicitSteer ? offers.map((offer) => offer.uuid ?? "") : undefined,
+            ),
+          );
           yield* Fiber.join(finished);
           yield* worker.drain();
           yield* orchestrator.resumeQueuedRuns;
@@ -444,15 +454,12 @@ it.effect.each(deliveries)(
           );
           assert.equal(reads.length, 4);
           for (const read of reads) {
-            assert.equal(read.status, explicitSteer ? "cancelled" : "completed");
-            assert.equal(read.toolNonExecutionKind, explicitSteer ? "cancelled" : undefined);
-            assert.equal(read.type === "dynamic_tool" && read.output === refusal, explicitSteer);
+            assert.equal(read.status, "completed");
+            assert.isUndefined(read.toolNonExecutionKind);
+            assert.isFalse(read.type === "dynamic_tool" && read.output === refusal);
           }
           assert.equal(offers.length, 2);
-          assert.equal(
-            offers.filter((offer) => offer.priority === "now").length,
-            explicitSteer ? 1 : 0,
-          );
+          assert.isTrue(offers.every((offer) => offer.priority === undefined));
           if (!explicitSteer) {
             assert.equal(after.runs.length, 2);
             if (delivery === "child completion") {

@@ -30,6 +30,10 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../../config.ts";
 import {
+  claudeRecordingPromptUuid,
+  recordClaudeFramesUntilInit,
+} from "../../fork/claudeSteerQueue.testkit.ts";
+import {
   isWindowsClaudeLauncherShimPath,
   resolveClaudeSdkExecutablePath,
 } from "../../provider/Drivers/ClaudeExecutable.ts";
@@ -1681,10 +1685,10 @@ async function recordClaudeActiveSteeringQuery(input: {
   }
 
   const promptQueue = new RecordingPromptQueue();
-  const offerPrompt = (index: number, priority?: SDKUserMessage["priority"]) => {
+  const offerPrompt = (index: number) => {
     const message = ClaudeAdapterV2.makeClaudeUserMessage({
       text: input.prompts[index]!,
-      ...(priority === undefined ? {} : { priority }),
+      uuid: claudeRecordingPromptUuid(),
     });
     input.entries.push({
       type: "expect_outbound",
@@ -1695,7 +1699,7 @@ async function recordClaudeActiveSteeringQuery(input: {
   };
   const offerSteeringPrompts = () => {
     for (let index = 1; index < input.prompts.length; index += 1) {
-      offerPrompt(index, "now");
+      offerPrompt(index);
     }
   };
 
@@ -1760,6 +1764,13 @@ async function recordClaudeActiveSteeringQuery(input: {
   const iterator = queryRuntime[Symbol.asyncIterator]();
   try {
     offerPrompt(0);
+    await recordClaudeFramesUntilInit(iterator, (message) =>
+      input.entries.push({
+        type: "emit_inbound",
+        label: message.type,
+        frame: sanitizeSdkMessageForReplay({ message, scenario: input.scenario }),
+      }),
+    );
     offerSteeringPrompts();
     const completed = await recordMessagesUntilTurnResults({
       iterator,
