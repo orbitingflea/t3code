@@ -1,6 +1,6 @@
 import type { PreviewBrowserRelease } from "../preview/PreviewBrowser.ts";
 
-// On x.ai, Cloudflare blocks chrome-headless-shell after one page and lets full Chrome for Testing through.
+// On some sites, Cloudflare blocks chrome-headless-shell after one page and lets full Chrome for Testing through.
 // The preview browser's Xvfb mode therefore runs Chrome for Testing (see previewBrowserMode.ts).
 // macOS keeps the shell: the Chrome app bundle holds symlinks the installer will not unpack.
 // Pin from each chrome zip in known-good-versions-with-downloads.json.

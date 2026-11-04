@@ -1212,9 +1212,9 @@ export const ServerSettings = Schema.Struct({
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
-   * Fork: on Linux and Windows, "xvfb" runs full Chrome for Testing, which gets past x.ai and other
-   * sites that block chrome-headless-shell. On Linux with Xvfb, Chrome opens a window on a private
-   * Xvfb display. That window gets past grok.com, whose Cloudflare check loops in headless Chrome.
+   * Fork: on Linux and Windows, "xvfb" runs full Chrome for Testing, which gets past sites that
+   * block chrome-headless-shell. On Linux with Xvfb, Chrome opens a window on a private
+   * Xvfb display. That window also gets past sites whose Cloudflare check loops in headless Chrome.
    * On macOS it runs chrome-headless-shell, the same browser as "native".
    */
   previewBrowserMode: PreviewBrowserMode.pipe(
