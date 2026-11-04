@@ -1,6 +1,7 @@
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import { claudeTaskOutputRoot, tailClaudeTaskOutput } from "./ClaudeTaskOutputTail.ts";
+import { exportClaudeUsageEvent } from "../../fork/claudeUsageExport/claudeUsageExport.ts";
 import {
   dynamicToolTitle,
   formatReadToolLabel,
@@ -8286,6 +8287,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           if (message.type === "rate_limit_event") {
             const rateLimitInfo = message.rate_limit_info;
             if (!rateLimitInfo) return;
+            yield* exportClaudeUsageEvent(homePath, rateLimitInfo);
             const names = adapterOptions.scopedLimitNames
               ? yield* Ref.get(adapterOptions.scopedLimitNames)
               : { overageIncluded: undefined };
