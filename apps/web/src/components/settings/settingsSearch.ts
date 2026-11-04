@@ -934,7 +934,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "preview-browser-mode",
     title: "Preview browser",
     to: "/settings/browser",
-    searchTerms: ["preview browser chrome native fast slow"],
+    searchTerms: ["preview browser chrome native headless fast slow"],
     scope: "environment-defaults",
   },
   {
