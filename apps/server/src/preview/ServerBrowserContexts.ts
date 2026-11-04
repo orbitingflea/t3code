@@ -242,7 +242,7 @@ export class ServerBrowserContexts {
     return this.closing;
   }
 
-  /** Closes every context and the shared browser; the next context launches them again. */
+  /** Closes every context and the shared browser. Later requests reopen only what they need. */
   restart() {
     const pending = [...this.contexts.values()];
     this.contexts.clear();

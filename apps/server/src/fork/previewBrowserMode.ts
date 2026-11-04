@@ -10,8 +10,9 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { fullChromeRelease } from "./previewChrome.ts";
 
 // The preview browser's two modes. "native" is upstream's: chrome-headless-shell, headless.
-// "xvfb" runs full Chrome for Testing, headed on a private Xvfb display on Linux
-// (previewDisplay.ts), for sites that block headless browsers. Both installs stay on disk.
+// "xvfb" runs full Chrome for Testing on Linux and Windows, for sites that block headless browsers.
+// On Linux it runs headed on a private Xvfb display (previewDisplay.ts). On Windows it stays
+// headless. macOS has only the shell, so both modes run it there. Both installs stay on disk.
 
 /** The selected mode; reads that fail count as native. */
 export const selectedMode = Effect.gen(function* () {
