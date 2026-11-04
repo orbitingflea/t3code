@@ -153,7 +153,7 @@ export function ServerBrowserSurface(props: {
   readonly onPopup?: (tabId: string) => void;
   readonly className?: string;
   readonly pdfUrl?: string | null;
-  /** Shown in place of the page, below the control bar. */
+  /** Shown in place of the page; the control bar stays in view above or below it. */
   readonly overlay?: ReactNode;
   readonly ref?: Ref<ServerBrowserHandle>;
 }) {
