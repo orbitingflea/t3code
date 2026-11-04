@@ -153,7 +153,11 @@ export const takePageCopy = async (sessions: Iterable<CDPSession>, worldName: st
   return copies.flat().find((text) => text.length > 0);
 };
 
-/** After the viewer releases a left press, sends what the page reported copying if they still control the tab. */
+/**
+ * After the viewer releases a left press, sends what the page reported copying. Sends nothing
+ * for other buttons, for desktop app tabs, when the page reported no text, or when the viewer
+ * no longer controls the tab.
+ */
 export const forwardPressCopy = async (
   tab: {
     readonly cdp: CDPSession;
