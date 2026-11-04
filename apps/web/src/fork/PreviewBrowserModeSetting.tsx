@@ -30,7 +30,7 @@ export function PreviewBrowserModeSetting() {
       serverScoped
       settingKeys={["previewBrowserMode"]}
       {...searchableSetting("preview-browser-mode")}
-      description="The browser the server runs for preview tabs. On platforms where T3 has no Chrome for Testing build, both choices run T3 native. Switching closes server browser tabs."
+      description="The browser the server runs for preview tabs. Chrome (slow) is full Chrome, for pages that don't work in T3 native. On platforms where T3 has no Chrome for Testing build, both choices run T3 native. Switching closes server browser tabs."
       resetAction={
         mode !== DEFAULT_SERVER_SETTINGS.previewBrowserMode ? (
           <SettingResetButton
