@@ -30,7 +30,7 @@ export function PreviewBrowserModeSetting() {
       serverScoped
       settingKeys={["previewBrowserMode"]}
       {...searchableSetting("preview-browser-mode")}
-      description="T3 native is fast. Chrome + Xvfb is slower but passes sites that block headless browsers, such as grok.com. Switching closes server browser tabs."
+      description="T3 native is fast. Chrome + Xvfb is slower but passes sites such as grok.com on Linux with Xvfb. Switching closes server browser tabs."
       resetAction={
         mode !== DEFAULT_SERVER_SETTINGS.previewBrowserMode ? (
           <SettingResetButton

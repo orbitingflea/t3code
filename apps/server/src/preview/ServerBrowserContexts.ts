@@ -246,7 +246,7 @@ export class ServerBrowserContexts {
   restart() {
     const pending = [...this.contexts.values()];
     this.contexts.clear();
-    // New contexts wait, since two Chromes cannot share a profile directory.
+    // Contexts from `contextFor` wait, since two Chromes cannot share a profile directory.
     this.restarting = (async () => {
       await Promise.allSettled(pending.map(async (context) => (await context).close()));
       const browser = await this.browser?.catch(() => undefined);
