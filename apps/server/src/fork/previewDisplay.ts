@@ -13,7 +13,7 @@ import type { BrowserContext, Page } from "playwright-core";
 
 // Cloudflare Turnstile on grok.com loops in Chrome's new headless mode and passes in headed
 // Chrome, so in the Xvfb mode on Linux the preview browser runs headed on a private Xvfb display.
-// Without Xvfb it stays headless.
+// When Xvfb is not installed, or in native mode, Chrome runs headless.
 const SCREEN = "1920x1080x24";
 
 /** On Linux, ["Xvfb"] when no PATH directory holds it, so `t3 browser setup` installs it; elsewhere []. */
