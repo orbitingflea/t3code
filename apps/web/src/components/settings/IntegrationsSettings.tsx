@@ -116,6 +116,7 @@ import { searchableSetting } from "./settingsSearch";
 import { AdvancedSettings } from "./AdvancedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
+import { PreviewBrowserModeSetting } from "~/fork/PreviewBrowserModeSetting";
 import type { ImportOutcome } from "./browserImportWizard.logic";
 
 const FILL_VALUE = "fill";
@@ -1587,6 +1588,7 @@ export function BrowserSettingsPanel() {
         </SettingsUnavailableGroup>
         {/* Not desktop-only: web clients search from server-run browser tabs too. */}
         <BrowserSearchEngineSetting />
+        <PreviewBrowserModeSetting />
         <AdvancedSettings
           targetIds={[
             searchableSetting("browser-default-viewport").id,
