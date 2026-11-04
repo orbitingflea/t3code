@@ -32,7 +32,7 @@ const readyHostSpawner = ChildProcessSpawner.make(() =>
   ),
 );
 
-// Setup runs as root without sudo, as from `incus exec` or a root shell.
+// Setup runs as root without sudo, as in a container or a root shell.
 const rootSetupOutput = (input: { readonly baseDir?: string; readonly baseDirOwner?: number }) =>
   Effect.gen(function* () {
     const { baseDirOwner } = input;

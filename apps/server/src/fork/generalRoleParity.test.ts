@@ -207,7 +207,7 @@ const claude: ProviderFixture = {
         return yield* ClaudeAdapterV2.makeClaudeAdapterV2({
           instanceId: ClaudeAdapterV2.CLAUDE_DEFAULT_INSTANCE_ID,
           settings: claudeSettings,
-          // Fixes the child's TTL, so the person's own Claude settings do not reach the test.
+          // Fixes the child's TTL, so the developer's own Claude settings do not reach the test.
           environment: { CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL: claudeChildPromptCacheTtl },
           attachmentsDir,
           fileSystem,

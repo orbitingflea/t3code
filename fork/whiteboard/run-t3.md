@@ -18,7 +18,7 @@ VITE_T3_WHITEBOARD=1 pnpm --dir apps/web run build
 
 `run-t3.sh` starts the T3 Code of the repository it sits in. Three environment variables override its defaults: `T3_PORT` (default `6070`, must equal `chatPort` in `~/.whiteboard/config.json`), `T3_DATA` (default `~/.whiteboard/t3-userdata`), and `T3_PROJECT` (default the repository root). `T3_PROJECT` is only the server's working directory: with auto-bootstrap off it opens no project, and it does not choose a board.
 
-Save this as `~/.config/systemd/user/wb-t3.service`, with `WorkingDirectory` set to the repository root:
+Save this as `~/.config/systemd/user/whiteboard-chat.service`, with `WorkingDirectory` set to the repository root:
 
 ```ini
 [Unit]
@@ -39,10 +39,10 @@ Then enable it. `enable-linger` keeps user services running after you log out.
 ```bash
 loginctl enable-linger "$USER"
 systemctl --user daemon-reload
-systemctl --user enable --now wb-t3
+systemctl --user enable --now whiteboard-chat
 ```
 
-Restart after a rebuild with `systemctl --user restart wb-t3`; read its log with `journalctl --user -u wb-t3 -f`.
+Restart after a rebuild with `systemctl --user restart whiteboard-chat`; read its log with `journalctl --user -u whiteboard-chat -f`.
 
 ## Embedding changes to T3 Code
 
