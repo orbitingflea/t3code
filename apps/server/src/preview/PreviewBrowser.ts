@@ -19,7 +19,6 @@ import { HttpClient, HttpClientRequest, HttpClientResponse } from "effect/http";
 import * as NodeCrypto from "node:crypto";
 
 import * as ServerConfig from "../config.ts";
-import { fullChromeRelease, removeReplacedShell } from "../fork/previewChrome.ts";
 import { openZipArchive } from "../zipArchive.ts";
 
 // Update the version, sizes and hashes from each chrome-headless-shell zip listed at
@@ -80,19 +79,19 @@ export interface PreviewBrowserRelease {
   readonly executable?: string;
 }
 
-const previewBrowserRelease = (
+export const previewBrowserRelease = (
   platform: NodeJS.Platform,
   arch: NodeJS.Architecture,
 ): PreviewBrowserRelease | null => {
   const chrome = chromePlatform(platform, arch);
   return chrome === null
     ? null
-    : (fullChromeRelease(chrome) ?? {
+    : {
         version: VERSION,
         platform: chrome,
         url: `https://storage.googleapis.com/chrome-for-testing-public/${VERSION}/${chrome}/chrome-headless-shell-${chrome}.zip`,
         ...ARCHIVES[chrome],
-      });
+      };
 };
 
 const megabytes = (bytes: number) => Math.round(bytes / 1_000_000);
@@ -354,7 +353,6 @@ export const makePreviewBrowser = Effect.fn("PreviewBrowser.make")(function* (
           ),
         { discard: true },
       );
-      yield* removeReplacedShell(fs, path, release, installRoot);
       return path.join(installRoot, release.version, executableName);
     },
     Effect.mapError(wrapFailure("Could not save the browser in T3's home directory.")),

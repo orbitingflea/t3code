@@ -931,6 +931,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["address bar duckduckgo google bing brave kagi ecosia custom url"],
   },
   {
+    id: "preview-browser-mode",
+    title: "Preview browser",
+    to: "/settings/browser",
+    searchTerms: ["preview headless chrome xvfb native cloudflare turnstile captcha grok"],
+    scope: "environment-defaults",
+  },
+  {
     id: "pull-request-links-open-in-app",
     title: "Open pull requests in T3 Code",
     to: "/settings/diffs",
