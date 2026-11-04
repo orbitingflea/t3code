@@ -81,6 +81,7 @@ import * as DesktopBrowserChannel from "./DesktopBrowserChannel.ts";
 import * as PreviewAgentActivity from "./PreviewAgentActivity.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
+import * as PreviewBrowserMode from "../fork/previewBrowserMode.ts";
 import * as PreviewDisplay from "../fork/previewDisplay.ts";
 import * as PreviewPageCopy from "../fork/previewPageCopy.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
@@ -487,8 +488,10 @@ const make = Effect.gen(function* () {
   let hostConnectionId: string | null = null;
   let viewerResizeOrder = 0;
 
+  const mode = yield* PreviewBrowserMode.selectedMode;
   const display = yield* PreviewDisplay.make(
     NodePath.join(config.stateDir, "server-browser", "display"),
+    { enabled: Effect.map(mode, (selected) => selected === "xvfb") },
   );
   const contexts = new ServerBrowserContexts({
     profilesDir: NodePath.join(config.stateDir, "server-browser", "profiles"),
@@ -522,6 +525,8 @@ const make = Effect.gen(function* () {
       }
     },
   });
+
+  yield* PreviewBrowserMode.restartOnChange(() => contexts.restart());
 
   const dialogStatus = (tab: ServerTab) =>
     tab.dialog

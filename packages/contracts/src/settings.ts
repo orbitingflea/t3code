@@ -295,6 +295,8 @@ export {
   BrowserRecordingFrameRate,
   DEFAULT_BROWSER_RECORDING_FRAME_RATE,
 } from "./preview.ts";
+export const PreviewBrowserMode = Schema.Literals(["native", "xvfb"]);
+export type PreviewBrowserMode = typeof PreviewBrowserMode.Type;
 export const BrowserLinkTarget = Schema.Literals(["system", "app"]);
 export type BrowserLinkTarget = typeof BrowserLinkTarget.Type;
 export const DEFAULT_BROWSER_LINK_TARGET: BrowserLinkTarget = "system";
@@ -1205,6 +1207,15 @@ export const ServerSettings = Schema.Struct({
   ),
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
+  /**
+   * Fork: on Linux and Windows, "xvfb" runs full Chrome for Testing, which gets past x.ai and other
+   * sites that block chrome-headless-shell. On Linux with Xvfb, Chrome opens a window on a private
+   * Xvfb display. That window gets past grok.com, whose Cloudflare check loops in headless Chrome.
+   * On macOS it runs chrome-headless-shell, the same browser as "native".
+   */
+  previewBrowserMode: PreviewBrowserMode.pipe(
+    Schema.withDecodingDefault(Effect.succeed("native" as const)),
+  ),
   projectAgentBrowserAccessOverrides: Schema.Record(ProjectId, Schema.Boolean).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
@@ -1597,6 +1608,7 @@ export const ServerSettingsPatch = Schema.Struct({
   enableProviderUpdateChecks: Schema.optionalKey(Schema.Boolean),
   continueThreadsAfterServerUpdate: Schema.optionalKey(Schema.Boolean),
   enableAgentBrowserAccess: Schema.optionalKey(Schema.Boolean),
+  previewBrowserMode: Schema.optionalKey(PreviewBrowserMode),
   projectAgentBrowserAccessOverrides: Schema.optionalKey(
     Schema.Record(ProjectId, Schema.NullOr(Schema.Boolean)),
   ),
