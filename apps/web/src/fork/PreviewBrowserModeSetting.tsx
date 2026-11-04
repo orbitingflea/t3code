@@ -16,8 +16,8 @@ import {
 } from "~/components/ui/select";
 
 const LABELS: Record<PreviewBrowserMode, string> = {
-  native: "T3 native",
-  xvfb: "Chrome + Xvfb",
+  native: "T3 native (fast)",
+  xvfb: "Chrome (slow)",
 };
 
 export function PreviewBrowserModeSetting() {
@@ -30,7 +30,7 @@ export function PreviewBrowserModeSetting() {
       serverScoped
       settingKeys={["previewBrowserMode"]}
       {...searchableSetting("preview-browser-mode")}
-      description="T3 native is fast. On Linux and Windows, Chrome + Xvfb is slower but gets past some bot checks that block T3 native; on Linux with Xvfb it gets past more. Switching closes server browser tabs."
+      description="The browser the server runs for preview tabs. Switching closes server browser tabs."
       resetAction={
         mode !== DEFAULT_SERVER_SETTINGS.previewBrowserMode ? (
           <SettingResetButton

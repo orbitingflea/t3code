@@ -934,7 +934,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     id: "preview-browser-mode",
     title: "Preview browser",
     to: "/settings/browser",
-    searchTerms: ["preview headless chrome xvfb native cloudflare turnstile captcha"],
+    searchTerms: ["preview browser chrome native fast slow"],
     scope: "environment-defaults",
   },
   {

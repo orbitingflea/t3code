@@ -11,8 +11,7 @@ import * as ChildProcess from "effect/process/ChildProcess";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 import type { BrowserContext, Page } from "playwright-core";
 
-// On some sites, Cloudflare Turnstile loops in Chrome's new headless mode and passes in headed
-// Chrome, so in the Xvfb mode on Linux the preview browser runs headed on a private Xvfb display.
+// In "xvfb" mode on Linux, the preview browser runs Chrome headed on a private Xvfb display.
 // When Xvfb is not installed, or in native mode, Chrome runs headless.
 const SCREEN = "1920x1080x24";
 
