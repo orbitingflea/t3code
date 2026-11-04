@@ -60,9 +60,9 @@ class PreviewDisplayError extends Error {
 
 /**
  * On Linux, each `env` call reads `enabled`. If true, it starts Xvfb when none is running and gives
- * Chrome's environment on that display. If false, it stops any running Xvfb and gives undefined,
- * so Chrome runs headless, as it also does off Linux or without Xvfb. Xvfb also stops with the
- * scope.
+ * Chrome's environment on that display. If false, it stops any running Xvfb and gives undefined.
+ * Undefined means Chrome runs headless. Chrome also runs headless off Linux or without Xvfb.
+ * Xvfb also stops with the scope.
  */
 export const make = Effect.fn("previewDisplay.make")(function* (
   directory: string,

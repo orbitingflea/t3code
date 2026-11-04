@@ -7,7 +7,7 @@ This is a fork of T3 Code that integrates a few additional features, including:
   - After hitting the usage limit of an account, the thread now retries after 2 minutes and 30 minutes in addition to the default retry behavior of T3 Code. This allows the thread to recover earlier if the user manually switches the account.
   - New Codex/Antigravity logins are picked up mid-session without a full restart.
 - Copy buttons on pages in the preview browser now put the copied text into your own clipboard.
-- **A preview browser that sites like grok.com let through:** Settings → Browser → Preview browser picks how the server runs its browser tabs. **T3 native** (the default) is upstream's fast headless browser. **Chrome + Xvfb** runs full Chrome for Testing on a hidden virtual screen on Linux. It is slower, but passes sites that block headless browsers, such as Cloudflare's check on grok.com and x.ai.
+- **A preview browser that sites like grok.com let through:** Settings → Browser → Preview browser picks how the server runs its browser tabs. **T3 native** (the default) is upstream's fast headless browser. **Chrome + Xvfb** passes sites that block headless browsers, such as Cloudflare's check on grok.com and x.ai, but only on Linux with Xvfb installed. There it runs full Chrome for Testing on a hidden virtual screen, and is slower than native. Linux without Xvfb and Windows run full Chrome headless. macOS runs the same headless shell as T3 native.
 - Enabling math rendering by default.
 - Other small fixes.
 

@@ -23,7 +23,7 @@ export const selectedMode = Effect.gen(function* () {
   );
 });
 
-/** A PreviewBrowser that installs and returns the selected mode's browser at each call. */
+/** Picks the mode's browser at each call. `executable` installs it. `installed` only checks. */
 export const make = Effect.fn("previewBrowserMode.make")(function* (
   baseDir: string,
   mode: Effect.Effect<PreviewBrowserMode>,
