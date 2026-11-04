@@ -287,11 +287,7 @@ export const makeCliproxyApi = Effect.gen(function* () {
     };
     const read = Effect.gen(function* () {
       if (account.provider === "claude") {
-<<<<<<< origin/main
-        const body = yield* apiCall(config, account, ClaudeHub.CLAUDE_USAGE_URL);
-=======
-        const body = yield* apiCall(hub, account, "https://api.anthropic.com/api/oauth/usage");
->>>>>>> upstream/main
+        const body = yield* apiCall(hub, account, ClaudeHub.CLAUDE_USAGE_URL);
         const usage = yield* decodeClaudeUsage(body);
         const model_scoped = (usage.limits ?? []).flatMap((limit) =>
           limit.kind === "weekly_scoped" && limit.scope?.model && typeof limit.percent === "number"
@@ -405,12 +401,8 @@ export const makeCliproxyApi = Effect.gen(function* () {
     creditId: string,
   ): Effect.fn.Return<ProviderConsumeResetCreditResult, UsageLimitSourceError> {
     const operation = Effect.gen(function* () {
-<<<<<<< origin/main
-      const account = (yield* authFiles(config)).find((account) => account.id === accountId);
-      if (account?.provider === "claude") return yield* claude.consume(config, account, creditId);
-=======
       const account = (yield* authFiles(hub)).find((account) => account.id === accountId);
->>>>>>> upstream/main
+      if (account?.provider === "claude") return yield* claude.consume(hub, account, creditId);
       if (!account || account.disabled || account.provider !== "codex") {
         return yield* new UsageLimitSourceError({
           detail: "The hub account is missing or disabled.",

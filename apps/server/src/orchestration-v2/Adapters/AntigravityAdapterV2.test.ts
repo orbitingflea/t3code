@@ -14,6 +14,7 @@ import {
 } from "@t3tools/contracts";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
 import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
+import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -46,12 +47,9 @@ const unusedProfileDirectory = "antigravity-profile-unused";
 
 const flavorOptions = {
   instanceId: ProviderInstanceId.make("antigravity-test"),
-<<<<<<< origin/main
   profileDirectory: unusedProfileDirectory,
-  crypto: undefined as never,
-=======
+  digest: undefined as never,
   random: undefined as never,
->>>>>>> upstream/main
   fileSystem: undefined as never,
   path: undefined as never,
   host: undefined as never,
@@ -154,7 +152,7 @@ describe("AntigravityAdapterV2 flavor", () => {
       const { readAccount } = makeAntigravityAcpAdapterFlavor({
         ...flavorOptions,
         profileDirectory,
-        crypto: yield* Crypto.Crypto,
+        digest: yield* Digest.Digest,
         fileSystem,
         path,
       });
@@ -178,7 +176,7 @@ describe("AntigravityAdapterV2 flavor", () => {
       assert.notDeepEqual(second, first, "another login");
       yield* fileSystem.writeFileString(tokenPath, "{");
       assert.isTrue(Option.isNone(yield* readAccount!), "malformed");
-    }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
+    }).pipe(Effect.scoped, Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
 });
 
@@ -1193,6 +1191,7 @@ describe("AntigravityAdapterV2 session system prompt", () => {
         const instanceId = ProviderInstanceId.make("antigravity-system-prompt-test");
         const adapter = yield* makeAntigravityAdapterV2({
           instanceId,
+          profileDirectory: unusedProfileDirectory,
           selfInvocation: yield* resolveSelfInvocation(),
           makeRuntime: (input) =>
             makeAntigravityAcpRuntime({

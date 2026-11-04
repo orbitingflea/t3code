@@ -2,7 +2,9 @@ import {
   UsageLimitSourceError,
   type ClaudeSettings,
   type ServerProviderResetCredits,
+  type UsageLimitSourceConfig,
 } from "@t3tools/contracts";
+import * as SecretResolver from "@t3tools/secret-provider-core/server/SecretResolver";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
@@ -11,6 +13,7 @@ import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 
+import { requireSettingsSecret } from "../../secrets/settingsSecretValue.ts";
 import * as Settings from "../../serverSettings.ts";
 import { makeCliproxyApi } from "../../usage/cliproxyApi.ts";
 import { probeClaudeCapabilities } from "../../provider/ClaudeProvider.ts";
@@ -35,6 +38,7 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
 ) {
   const { claude } = yield* makeCliproxyApi;
   const serverSettings = yield* Effect.serviceOption(Settings.ServerSettingsService);
+  const secrets = yield* Effect.serviceOption(SecretResolver.SecretResolver);
   const fileSystem = yield* FileSystem.FileSystem;
   const sourceOnly = processEnv.T3CODE_CLAUDE_USAGE_SOURCE_ONLY === "1";
   const sourceCredits = yield* Ref.make(Option.none<ServerProviderResetCredits | undefined>());
@@ -48,6 +52,24 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
     Effect.orElseSucceed(() => ({ email: undefined, organizationId: undefined })),
   );
 
+  /** A source whose key its secret provider cannot give fails, so it never counts as no match. */
+  const readHub = Effect.fn("ClaudeLoginSource.readHub")(function* (
+    config: UsageLimitSourceConfig,
+  ) {
+    if (typeof config.managementKey === "string") {
+      return { url: config.url, managementKey: config.managementKey };
+    }
+    const managementKey = Option.isSome(secrets)
+      ? yield* requireSettingsSecret(secrets.value, config.managementKey).pipe(Effect.option)
+      : Option.none<string>();
+    if (Option.isNone(managementKey)) {
+      return yield* new UsageLimitSourceError({
+        detail: "Could not read the management key from its secret provider.",
+      });
+    }
+    return { url: config.url, managementKey: managementKey.value };
+  });
+
   const findSource = Effect.fn("ClaudeLoginSource.findSource")(function* () {
     const login = yield* readLogin;
     const source = Option.isNone(serverSettings)
@@ -57,7 +79,16 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
             () => new UsageLimitSourceError({ detail: "The usage sources could not be read." }),
           ),
           Effect.flatMap((settings) =>
-            claude.findLogin(Object.values(settings.usageLimitSources), login),
+            Effect.forEach(
+              Object.values(settings.usageLimitSources).filter((config) => config.enabled),
+              readHub,
+            ),
+          ),
+          Effect.flatMap((hubs) =>
+            claude.findLogin(
+              hubs.filter((hub) => hub.managementKey.length > 0),
+              login,
+            ),
           ),
         );
     if (!source && sourceOnly) {
@@ -77,9 +108,7 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
     const usageCheckedAt = DateTime.formatIso(yield* DateTime.now);
     const viaSource = yield* findSource().pipe(
       Effect.flatMap((source) =>
-        source
-          ? claude.usage(source.config, source.account).pipe(Effect.asSome)
-          : Effect.succeedNone,
+        source ? claude.usage(source.hub, source.account).pipe(Effect.asSome) : Effect.succeedNone,
       ),
       Effect.result,
     );
@@ -112,7 +141,7 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
     const source = yield* findSource();
     return (requestId: string) =>
       <A, E, R>(direct: Effect.Effect<A, E, R>) =>
-        source ? claude.claimLogin(source.config, source.account, grantId, requestId) : direct;
+        source ? claude.claimLogin(source.hub, source.account, grantId, requestId) : direct;
   });
 
   return { probe, resetCredits, claimRoute };

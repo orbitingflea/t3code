@@ -1,8 +1,4 @@
-import {
-  type ServerProviderUsageLimits,
-  UsageLimitSourceError,
-  type UsageLimitSourceConfig,
-} from "@t3tools/contracts";
+import { type ServerProviderUsageLimits, UsageLimitSourceError } from "@t3tools/contracts";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -17,6 +13,7 @@ import {
   REQUEST_ID,
   claudeResetCreditsToContract,
 } from "../../provider/claudeResetCredits.ts";
+import type { CliproxyHub } from "../../usage/cliproxyApi.ts";
 import { usageReadAt, withAccountReadAt } from "../usageReadAt/usageReadAt.ts";
 
 type HubAccount = {
@@ -86,23 +83,23 @@ export const managementTimeout = (body: unknown) =>
 /** Claude reads and reset claims through a CLIProxyAPI hub's management API. */
 export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends HubAccount>(
   management: (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     path: string,
     body?: unknown,
   ) => Effect.Effect<unknown, UsageLimitSourceError>,
   authFiles: (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
   ) => Effect.Effect<ReadonlyArray<A>, UsageLimitSourceError | Schema.SchemaError>,
 ) {
   const crypto = yield* Crypto.Crypto;
 
   const apiCall = Effect.fn("ClaudeHub.apiCall")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: HubAccount,
     url: string,
     data?: unknown,
   ) {
-    const raw = yield* management(config, "api-call", {
+    const raw = yield* management(hub, "api-call", {
       auth_index: account.auth_index,
       method: data === undefined ? "GET" : "POST",
       url,
@@ -140,8 +137,8 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
 
   /** Usage in the Claude SDK's get_usage shape, plus reset credits. */
   const usage = Effect.fn("ClaudeHub.usage")(
-    function* (config: UsageLimitSourceConfig, account: HubAccount) {
-      const response = yield* apiCall(config, account, CLAUDE_USAGE_URL);
+    function* (hub: CliproxyHub, account: HubAccount) {
+      const response = yield* apiCall(hub, account, CLAUDE_USAGE_URL);
       if (response.status_code < 200 || response.status_code >= 300) {
         return yield* new UsageLimitSourceError({
           detail: `The provider refused the hub request (HTTP ${response.status_code}).`,
@@ -182,7 +179,7 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
   );
 
   const claim = Effect.fn("ClaudeHub.claim")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: HubAccount,
     grantId: string,
     requestId: string,
@@ -197,7 +194,7 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
       });
     }
     const response = yield* apiCall(
-      config,
+      hub,
       account,
       `${CLAUDE_API}/organizations/${encodeURIComponent(organization)}/reset_rate_limits`,
       { program: PROGRAM, grant_id: grantId, request_id: requestId },
@@ -224,22 +221,21 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     return CLAIM_OUTCOMES[body.result];
   });
 
-  const clearCooldown = (config: UsageLimitSourceConfig, account: HubAccount) =>
-    management(config, "reset-quota", { auth_index: account.auth_index });
+  const clearCooldown = (hub: CliproxyHub, account: HubAccount) =>
+    management(hub, "reset-quota", { auth_index: account.auth_index });
 
   /**
    * The source account holding a directly signed-in Claude login, if exactly one source has it.
    * A source that cannot list its accounts fails the lookup; it never counts as no match.
    */
   const findLogin = Effect.fn("ClaudeHub.findLogin")(function* (
-    sources: ReadonlyArray<UsageLimitSourceConfig>,
+    hubs: ReadonlyArray<CliproxyHub>,
     login: ClaudeLogin,
   ) {
     const { email, organizationId } = login;
     if (!email || !organizationId) return undefined;
-    for (const config of sources) {
-      if (!config.enabled || !config.managementKey) continue;
-      const accounts = yield* authFiles(config).pipe(
+    for (const hub of hubs) {
+      const accounts = yield* authFiles(hub).pipe(
         Effect.mapError((error) =>
           isUsageLimitSourceError(error)
             ? error
@@ -253,28 +249,28 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
           account.email?.toLowerCase() === email.toLowerCase() &&
           account.organization_uuid === organizationId,
       );
-      if (matches.length === 1) return { config, account: matches[0]! };
+      if (matches.length === 1) return { hub, account: matches[0]! };
     }
     return undefined;
   });
 
   // Claim errors stay typed so the caller's coordinator keeps the request id for retries.
   const claimLogin = Effect.fn("ClaudeHub.claimLogin")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: HubAccount,
     grantId: string,
     requestId: string,
   ) {
-    const outcome = yield* claim(config, account, grantId, requestId);
+    const outcome = yield* claim(hub, account, grantId, requestId);
     if (outcome === "reset" || outcome === "alreadyRedeemed") {
-      yield* clearCooldown(config, account).pipe(Effect.ignore);
+      yield* clearCooldown(hub, account).pipe(Effect.ignore);
     }
     return outcome;
   });
 
   /** Redeems a reset on a Claude account the hub lists. */
   const consume = Effect.fn("ClaudeHub.consume")(function* (
-    config: UsageLimitSourceConfig,
+    hub: CliproxyHub,
     account: HubAccount,
     grantId: string,
   ) {
@@ -284,14 +280,14 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
       });
     }
     // A Claude grant can hold several resets, so each claim needs its own request id.
-    const outcome = yield* claim(config, account, grantId, yield* crypto.randomUUIDv4()).pipe(
+    const outcome = yield* claim(hub, account, grantId, yield* crypto.randomUUIDv4()).pipe(
       Effect.catchTags({
         ClaudeResetCreditError: (error) =>
           Effect.fail(new UsageLimitSourceError({ detail: error.message })),
       }),
     );
     if (outcome !== "reset" && outcome !== "alreadyRedeemed") return { outcome };
-    const cleared = yield* clearCooldown(config, account).pipe(Effect.result);
+    const cleared = yield* clearCooldown(hub, account).pipe(Effect.result);
     return {
       outcome,
       ...(cleared._tag === "Failure"

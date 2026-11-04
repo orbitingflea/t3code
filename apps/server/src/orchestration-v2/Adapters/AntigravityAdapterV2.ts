@@ -6,8 +6,10 @@ import {
   type ProviderSetupError,
 } from "@t3tools/contracts";
 import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
+import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
+import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -74,7 +76,6 @@ const AntigravityProviderCapabilitiesV2 = {
 
 export interface AntigravityAdapterV2Options {
   readonly instanceId: ProviderInstanceId;
-  readonly profileDirectory: string;
   readonly selfInvocation: SelfInvocation;
   readonly makeRuntime: (
     input: Omit<AntigravityAcpRuntimeInput, "spawn" | "childProcessSpawner">,
@@ -93,7 +94,7 @@ export interface AntigravityAdapterV2Options {
   readonly nativeLogging?: Parameters<typeof makeAcpAdapterV2>[0]["nativeLogging"];
   readonly continuationRequests?: Parameters<typeof makeAcpAdapterV2>[0]["continuationRequests"];
   /** The agent's GEMINI_HOME. Its session logs show turns that ended on an upstream error. */
-  readonly profileDirectory?: string;
+  readonly profileDirectory: string;
 }
 
 /**
@@ -131,6 +132,7 @@ const decodeRefreshToken = Schema.decodeUnknownOption(
 );
 
 interface AntigravityFlavorServices {
+  readonly digest: Digest.Digest["Service"];
   readonly random: SecureRandom.SecureRandom["Service"];
   readonly fileSystem: FileSystem.FileSystem;
   readonly path: Path.Path;
@@ -223,12 +225,10 @@ export function makeAntigravityAcpAdapterFlavor(
       decodeRefreshToken,
     );
     if (Option.isNone(token)) return Option.none<string>();
-    const digest = yield* options.crypto
-      .digest("SHA-256", new TextEncoder().encode(token.value.refresh_token))
+    const digest = yield* options.digest
+      .digest(Digest.sha256, new TextEncoder().encode(token.value.refresh_token))
       .pipe(Effect.option);
-    return Option.map(digest, (bytes) =>
-      Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join(""),
-    );
+    return Option.map(digest, Hex.encode);
   });
 
   return {
@@ -239,10 +239,7 @@ export function makeAntigravityAcpAdapterFlavor(
     mcpOverHttp: true,
     sessionCarriesPullRequestLinking: antigravityAppendsSystemPrompt,
     makeRuntime,
-<<<<<<< origin/main
     readAccount: readAccount(),
-    buildPrompt: ({ text, attachments, promptCapabilities }) =>
-=======
     buildPrompt: ({
       text,
       attachments,
@@ -251,7 +248,6 @@ export function makeAntigravityAcpAdapterFlavor(
       agentVersion,
       currentModel,
     }) =>
->>>>>>> upstream/main
       buildAntigravityPrompt({
         input: text,
         attachments,
@@ -321,6 +317,7 @@ export const makeAntigravityAdapterV2 = Effect.fn("makeAntigravityAdapterV2")(fu
   options: AntigravityAdapterV2Options,
 ) {
   const services: AntigravityFlavorServices = {
+    digest: yield* Digest.Digest,
     random: yield* SecureRandom.SecureRandom,
     fileSystem: yield* FileSystem.FileSystem,
     path: yield* Path.Path,

@@ -307,15 +307,12 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
     const displayName = previous.displayName ?? next.displayName;
     accounts.set(key, {
       ...previous,
-<<<<<<< origin/main
-      displayName: labeled ? next.displayName : (previous.displayName ?? next.displayName),
-=======
-      displayName:
-        hubEmail &&
-        displayName?.toLowerCase() === PROVIDER_DISPLAY_NAMES[previous.driver]?.toLowerCase()
+      displayName: labeled
+        ? next.displayName
+        : hubEmail &&
+            displayName?.toLowerCase() === PROVIDER_DISPLAY_NAMES[previous.driver]?.toLowerCase()
           ? null
           : displayName,
->>>>>>> upstream/main
       plan: planSources.get(key)?.plan ?? previous.plan ?? next.plan,
       accentColor: previous.accentColor ?? next.accentColor,
       environments,
@@ -366,14 +363,12 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
       for (const account of source.accounts) {
         if (limitsNotice(account.usageLimits) !== null) continue;
         const key = `${source.id}:${account.id}${account.workspaceId ? `:${account.workspaceId}` : ""}`;
-<<<<<<< origin/main
         merge(
           resolveKey(account) ?? key,
           {
             key,
             driver: account.driver,
-            displayName:
-              account.label ?? (account.email ? null : account.id.replace(/\.json$/i, "")),
+            displayName: account.label ?? (account.email ? null : hubAccountName(account)),
             email: account.email,
             plan: account.plan,
             accentColor: undefined,
@@ -393,29 +388,6 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
           },
           account.label !== undefined,
         );
-=======
-        merge(resolveKey(account) ?? key, {
-          key,
-          driver: account.driver,
-          displayName: account.email ? null : hubAccountName(account),
-          email: account.email,
-          plan: account.plan,
-          accentColor: undefined,
-          environments: [],
-          sourceLabel,
-          redeem: account.usageLimits.resetCredits?.nextCreditId
-            ? {
-                environmentId,
-                input: {
-                  sourceId: source.id,
-                  accountId: account.id,
-                  creditId: account.usageLimits.resetCredits.nextCreditId,
-                },
-              }
-            : null,
-          limits: account.usageLimits,
-        });
->>>>>>> upstream/main
       }
     }
   }

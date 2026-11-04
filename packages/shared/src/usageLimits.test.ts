@@ -672,7 +672,6 @@ describe("pools", () => {
     expect(accounts[0]?.displayName).toBe("claude-team-seat");
   });
 
-<<<<<<< origin/main
   it("names hub accounts by their label over the native instance name, else as upstream", () => {
     const codex = ProviderDriverKind.make("codex");
     const hubAccount = (id: string, driver: typeof claude, email: string, label?: string) => ({
@@ -681,7 +680,55 @@ describe("pools", () => {
       email,
       ...(label ? { label } : {}),
       ...(driver === codex ? { workspaceId: "ws" } : {}),
-=======
+      usageLimits: { checkedAt, windows: [window] },
+    });
+    const input = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          ...laptop,
+          serverConfig: {
+            providers: [
+              provider({
+                driver: claude,
+                instanceId: ProviderInstanceId.make("claudeAgent"),
+                displayName: "Claude",
+                auth: { status: "authenticated", email: "a@example.com" },
+                usageLimits: { checkedAt, windows: [window] },
+              }),
+              provider({
+                displayName: "Codex",
+                auth: { status: "authenticated", email: "a@example.com", workspaceId: "ws" },
+                usageLimits: { checkedAt, windows: [window] },
+              }),
+            ],
+            usageLimitSources: [
+              {
+                ...source,
+                accounts: [
+                  hubAccount("work", claude, "a@example.com", "Work"),
+                  hubAccount("team", claude, "b@example.com", "Team"),
+                  hubAccount("work", codex, "a@example.com"),
+                  hubAccount("claude-c@example.com.json", claude, "c@example.com"),
+                  hubAccount("personal", claude, "d@example.com"),
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    expect(
+      collectLimitAccounts(input).map((account) => [account.driver, account.displayName]),
+    ).toEqual([
+      ["claudeAgent", "Work"],
+      ["codex", null],
+      ["claudeAgent", "Team"],
+      ["claudeAgent", null],
+      ["claudeAgent", null],
+    ]);
+  });
+
   it("labels a default-named instance merged with a hub account by e-mail, keeping a chosen name", () => {
     const native = provider({
       driver: claude,
@@ -701,7 +748,6 @@ describe("pools", () => {
       id: `claude-${email}.json`,
       driver: claude,
       email,
->>>>>>> upstream/main
       usageLimits: { checkedAt, windows: [window] },
     });
     const input = new Map([
@@ -710,39 +756,14 @@ describe("pools", () => {
         {
           ...laptop,
           serverConfig: {
-<<<<<<< origin/main
-            providers: [
-              provider({
-                driver: claude,
-                instanceId: ProviderInstanceId.make("claudeAgent"),
-                displayName: "Claude",
-                auth: { status: "authenticated", email: "a@example.com" },
-                usageLimits: { checkedAt, windows: [window] },
-              }),
-              provider({
-                displayName: "Codex",
-                auth: { status: "authenticated", email: "a@example.com", workspaceId: "ws" },
-                usageLimits: { checkedAt, windows: [window] },
-              }),
-            ],
-=======
             providers: [native, named],
->>>>>>> upstream/main
             usageLimitSources: [
               {
                 ...source,
                 accounts: [
-<<<<<<< origin/main
-                  hubAccount("work", claude, "a@example.com", "Work"),
-                  hubAccount("team", claude, "b@example.com", "Team"),
-                  hubAccount("work", codex, "a@example.com"),
-                  hubAccount("claude-c@example.com.json", claude, "c@example.com"),
-                  hubAccount("personal", claude, "d@example.com"),
-=======
                   hubAccount("a@example.com"),
                   hubAccount("b@example.com"),
                   hubAccount("c@example.com"),
->>>>>>> upstream/main
                 ],
               },
             ],
@@ -751,21 +772,11 @@ describe("pools", () => {
       ],
     ]);
     expect(
-<<<<<<< origin/main
-      collectLimitAccounts(input).map((account) => [account.driver, account.displayName]),
-    ).toEqual([
-      ["claudeAgent", "Work"],
-      ["codex", "Codex"],
-      ["claudeAgent", "Team"],
-      ["claudeAgent", null],
-      ["claudeAgent", null],
-=======
       collectLimitAccounts(input).map(({ displayName, email }) => ({ displayName, email })),
     ).toEqual([
       { displayName: null, email: "a@example.com" },
       { displayName: "Work", email: "b@example.com" },
       { displayName: null, email: "c@example.com" },
->>>>>>> upstream/main
     ]);
   });
 
