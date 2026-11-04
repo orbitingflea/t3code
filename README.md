@@ -6,6 +6,7 @@ This is a fork of T3 Code that integrates a few additional features, including:
 - **Better support for manually switching accounts mid-session:**
   - After hitting the usage limit of an account, the thread now retries after 2 minutes and 30 minutes in addition to the default retry behavior of T3 Code. This allows the thread to recover earlier if the user manually switches the account.
   - New Codex/Antigravity logins are picked up mid-session without a full restart.
+- **Display mode per thread:** Right-click a thread and set Display mode to "Messages only" to hide the agent's work and see just your messages and the replies the agent sends to you with its `send_to_user` tool.
 - Copy buttons on pages in the preview browser now put the copied text into your own clipboard.
 - **Two preview browser modes:** Settings → Browser → Preview browser picks the browser the server runs for preview tabs. **T3 native** (fast) is the default. It runs chrome-headless-shell, Chrome's small build that runs without a window. **Chrome** (slow) runs full Chrome, for pages that don't work in T3 native. On platforms where T3 has no Chrome for Testing build (Google's Chrome build for test automation), both choices run T3 native. Switching closes the open preview tabs.
 - Enabling math rendering by default.

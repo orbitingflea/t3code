@@ -10,6 +10,7 @@ import {
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
 import { MessagesTimeline } from "./MessagesTimeline";
+import { useDisplayModeEntries } from "../../fork/displayMode/useThreadDisplayMode";
 
 /**
  * The timeline with the streamed text. ChatView reads the thread through its quiet
@@ -40,7 +41,10 @@ export function ThreadTimeline({
     ...entriesInput,
     visibleTurnItems,
   });
-  const entries = draftEntries ?? serverEntries;
+  const entries = useDisplayModeEntries(
+    draftEntries === null ? threadDetailRef : null,
+    draftEntries ?? serverEntries,
+  );
   const displayedEntries = resolveThreadSwitchTimeline({
     loading: entries.length === 0 && syncing,
     activeThreadKey,
