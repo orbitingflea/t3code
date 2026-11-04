@@ -9,10 +9,10 @@ import * as PreviewBrowser from "../preview/PreviewBrowser.ts";
 import { ServerSettingsService } from "../serverSettings.ts";
 import { fullChromeRelease } from "./previewChrome.ts";
 
-// Preview browser modes. "native" is upstream's chrome-headless-shell. "xvfb" runs full Chrome for
-// Testing on Linux and Windows, for sites that block headless browsers. On Linux it runs headed on
-// a private Xvfb display (previewDisplay.ts), or headless when Xvfb is missing. On Windows it stays
-// headless. macOS has only the shell, which both modes run. Both installs stay on disk.
+// "native" runs upstream's chrome-headless-shell. On Linux and Windows, "xvfb" runs full Chrome for
+// Testing, which gets past sites that block the shell, such as x.ai. On Linux with Xvfb, its window
+// on a private display (previewDisplay.ts) also gets past sites that block every headless browser,
+// such as grok.com. If not, it runs headless. macOS has only the shell. Both installs stay on disk.
 
 /** The selected mode; reads that fail count as native. */
 export const selectedMode = Effect.gen(function* () {
@@ -23,7 +23,10 @@ export const selectedMode = Effect.gen(function* () {
   );
 });
 
-/** Picks the mode's browser at each call. `executable` installs it. `installed` only checks. */
+/**
+ * The returned `executable` and `installed` read the mode at each call and use its browser.
+ * `executable` installs it when missing. `installed` only checks.
+ */
 export const make = Effect.fn("previewBrowserMode.make")(function* (
   baseDir: string,
   mode: Effect.Effect<PreviewBrowserMode>,
