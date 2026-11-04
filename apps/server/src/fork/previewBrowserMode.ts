@@ -10,8 +10,9 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { fullChromeRelease } from "./previewChrome.ts";
 
 // "native" runs upstream's chrome-headless-shell. On Linux and Windows, "xvfb" runs full Chrome for
-// Testing, which gets past sites that block the shell. On Linux with Xvfb, its window on a
-// private display also gets past sites whose Cloudflare check loops in headless Chrome. On Windows, and on Linux without Xvfb, it runs headless. Both installs stay on disk.
+// Testing, which gets past checks that block only the shell. On Linux with Xvfb, its window on a
+// private display also gets past some Cloudflare checks that loop in headless Chrome. On Windows,
+// and on Linux without Xvfb, it runs headless. Both installs stay on disk.
 
 /** The selected mode; reads that fail count as native. */
 export const selectedMode = Effect.gen(function* () {
