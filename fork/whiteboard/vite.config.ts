@@ -1,5 +1,5 @@
 // Exposes the Vite development and build configuration for the web client.
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, type Plugin, type ProxyOptions } from "vite";
 import react from "@vitejs/plugin-react";
 import { config } from "./server/config.mjs";
 
@@ -21,6 +21,28 @@ const disableHmrTransport = {
     );
   },
 } satisfies Plugin;
+
+// Before the upgrade, Vite's proxy does not read the client socket and does not cancel its request
+// to the chat server when the client leaves. The chat server then keeps a preview viewer that is
+// gone, and that viewer may still hold control. This reads until the upgrade, keeps the bytes for
+// the upgraded pipe, and cancels the request when the client leaves.
+const endUpgradeWithClient: ProxyOptions["configure"] = (proxy) => {
+  proxy.on("proxyReqWs", (proxyReq, _req, socket) => {
+    const early: Buffer[] = [];
+    const keep = (chunk: Buffer) => early.push(chunk);
+    const cancel = () => proxyReq.destroy();
+    socket.on("data", keep);
+    socket.once("end", cancel);
+    socket.once("close", cancel);
+    proxyReq.once("upgrade", () => {
+      socket.off("data", keep);
+      socket.off("end", cancel);
+      socket.off("close", cancel);
+      socket.pause();
+      for (const chunk of early.reverse()) socket.unshift(chunk);
+    });
+  });
+};
 
 export default defineConfig({
   plugins: [react(), disableHmrTransport],
@@ -44,7 +66,11 @@ export default defineConfig({
         rewrite: (path) => path.replace(/^\/chat/, ""),
       },
       // The chat's browser code builds these from the page origin, so they reach it unprefixed.
-      "/api": { target: `http://127.0.0.1:${config.chatPort}`, ws: true },
+      "/api": {
+        target: `http://127.0.0.1:${config.chatPort}`,
+        ws: true,
+        configure: endUpgradeWithClient,
+      },
       "/ws": { target: `http://127.0.0.1:${config.chatPort}`, ws: true },
       "/.well-known": { target: `http://127.0.0.1:${config.chatPort}`, ws: true },
     },

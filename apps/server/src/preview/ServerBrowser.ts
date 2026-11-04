@@ -50,6 +50,7 @@ import { resolvePreviewViewport } from "@t3tools/shared/previewViewport";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import { constVoid } from "effect/Function";
@@ -81,11 +82,12 @@ import * as DesktopBrowserChannel from "./DesktopBrowserChannel.ts";
 import * as PreviewAgentActivity from "./PreviewAgentActivity.ts";
 import * as PreviewManager from "./Manager.ts";
 import * as ServerBrowserPage from "./ServerBrowserPage.ts";
+import * as PreviewControlTrail from "../fork/previewControlTrail.ts";
 import * as PreviewDisplay from "../fork/previewDisplay.ts";
 import * as PreviewBrowser from "./PreviewBrowser.ts";
 import * as PreviewBrowserHost from "./PreviewBrowserHost.ts";
 import { presentAsChrome, ServerBrowserContexts } from "./ServerBrowserContexts.ts";
-import { BrowserControlInterrupted, SessionControl } from "./SessionControl.ts";
+import { BrowserControlInterrupted } from "./SessionControl.ts";
 import { installPdfDocumentNavigation, isPdfAssetUrl } from "./PdfDocumentNavigation.ts";
 
 const SERVER_HOST_CLIENT_ID = SERVER_BROWSER_AUTOMATION_CLIENT_ID;
@@ -174,6 +176,8 @@ export type ServerBrowserViewerOutput =
         readonly message: string;
         readonly defaultValue: string;
       } | null;
+      readonly viewer: string;
+      readonly holder: PreviewControlTrail.ControlHolder | null;
     }
   | {
       readonly _tag: "probe";
@@ -292,7 +296,7 @@ interface ServerTab {
   readonly consoleEntries: Array<PreviewAutomationConsoleEntry>;
   readonly networkEntries: Array<PreviewAutomationNetworkEntry>;
   readonly actionTimeline: Array<PreviewAutomationActionEvent>;
-  readonly control: SessionControl;
+  readonly control: PreviewControlTrail.TracedSessionControl;
   agentOperating: boolean;
   fileChooserIntercepted: boolean;
   readonly onFileChooser: (chooser: FileChooser) => void;
@@ -556,6 +560,7 @@ const make = Effect.gen(function* () {
                 : "unclaimed",
         generation: tab.control.generation,
         dialog: dialogStatus(tab),
+        ...PreviewControlTrail.controlFields(viewer.id, tab.control.controller),
       });
   };
 
@@ -822,7 +827,7 @@ const make = Effect.gen(function* () {
     if (!desktop) await recordCopies(cdp);
     page.setDefaultTimeout(NAVIGATION_TIMEOUT_MS);
     page.setDefaultNavigationTimeout(NAVIGATION_TIMEOUT_MS);
-    const control = new SessionControl(snapshot.automationOwner ?? null, () =>
+    const control = new PreviewControlTrail.TracedSessionControl(snapshot, runFork, () =>
       ServerBrowserPage.invalidateRefs(page),
     );
     let pendingFileChooserOffer = Promise.resolve();
@@ -2533,24 +2538,22 @@ const make = Effect.gen(function* () {
       scrolledAt: 0,
       requestedSize: null,
     };
+    const attachedAt = yield* Clock.currentTimeMillis;
     yield* Effect.acquireRelease(
       Effect.sync(() => {
         tab.viewers.add(viewer);
+        PreviewControlTrail.viewerAttaching(viewer.id, attachedAt);
         reportLiveTabs();
       }),
       () =>
         Effect.promise(async () => {
           await tab.control.disconnect(viewer.id, () => releaseViewerInput(viewer, session));
           tab.viewers.delete(viewer);
+          PreviewControlTrail.viewerGone(viewer.id);
           broadcastControl(tab);
           reportLiveTabs();
         }),
     );
-    if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
-      yield* Effect.promise(() => tab.control.take(viewer.id));
-    }
-    broadcastControl(tab);
-    pushFileChooser(tab);
     const pushStill = async () => {
       const data = await withCaptureLock(tab, () =>
         ServerBrowserPage.captureViewport(session, { format: "jpeg", quality }),
@@ -2613,6 +2616,14 @@ const make = Effect.gen(function* () {
     // An idle page does not repaint for a new screencast, so the viewer
     // starts from a still unless a live frame beat it.
     if (!screencastStarted) yield* Effect.promise(pushStill);
+    // Runs after the connect's last await, so a connect that never finishes never takes control.
+    // Not awaited, so a free tab passes to this viewer at once even while an action is stuck.
+    // This viewer's input then waits behind that action.
+    if (input.canOperate && tab.control.agentId === null && tab.control.controller === null) {
+      tab.control.attach(viewer.id).catch(constVoid);
+    }
+    broadcastControl(tab);
+    pushFileChooser(tab);
     return {
       output,
       input: (raw: unknown) =>

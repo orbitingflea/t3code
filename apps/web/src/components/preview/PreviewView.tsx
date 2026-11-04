@@ -870,6 +870,18 @@ export function PreviewView({
     };
   }, [visible]);
 
+  const serverSurfaceShown = Boolean(runtimeTabId && snapshot && isServerTab);
+  const emptyState = (
+    <PreviewEmptyState
+      threadRef={threadRef}
+      environmentId={threadRef.environmentId}
+      configuredUrls={configuredUrls}
+      recentEntries={recentHistoryEntries}
+      onRemoveRecent={(url) => removeUrlForThread(threadRef, url)}
+      onOpenUrl={(next) => void handleOpenServerUrl(next)}
+    />
+  );
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col bg-background"
@@ -982,6 +994,7 @@ export function PreviewView({
                   setServerControlledTabId(control?.controller === "you" ? runtimeTabId : null)
                 }
                 onPopup={(popupTabId) => showPreviewPopup(threadRef, popupTabId, "panel")}
+                overlay={showEmptyState ? emptyState : null}
                 // Stays connected under the empty state so a URL picked there reaches the page.
                 className={cn(
                   "absolute inset-0 h-full w-full",
@@ -1006,16 +1019,7 @@ export function PreviewView({
             </div>
           )
         ) : null}
-        {showEmptyState ? (
-          <PreviewEmptyState
-            threadRef={threadRef}
-            environmentId={threadRef.environmentId}
-            configuredUrls={configuredUrls}
-            recentEntries={recentHistoryEntries}
-            onRemoveRecent={(url) => removeUrlForThread(threadRef, url)}
-            onOpenUrl={(next) => void handleOpenServerUrl(next)}
-          />
-        ) : null}
+        {showEmptyState && !serverSurfaceShown ? emptyState : null}
         {snapshot && desktopOverlay ? (
           <ZoomIndicator zoomFactor={desktopOverlay.zoomFactor} />
         ) : null}

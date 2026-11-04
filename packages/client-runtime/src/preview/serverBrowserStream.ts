@@ -1,6 +1,10 @@
 // @effect-diagnostics globalTimers:off globalFetch:off - This browser and WebView transport runs without an Effect runtime.
 import { type DeviceHubAccess, withDeviceHubQuery } from "../device/hubAccess.ts";
 import {
+  decodeControlHolder,
+  type PreviewStreamControlHolder,
+} from "../fork/previewControlHolder.ts";
+import {
   PREVIEW_STREAM_HOST_SETUP_CLOSE_CODE,
   type PreviewStreamHostSetup,
   type PreviewViewportSetting,
@@ -24,6 +28,9 @@ export interface PreviewStreamControl {
     readonly message: string;
     readonly defaultValue: string;
   };
+  /** This viewer's short id. */
+  readonly viewer?: string;
+  readonly holder?: PreviewStreamControlHolder;
 }
 
 export const previewStreamControlLabel = (control: PreviewStreamControl | null): string =>
@@ -337,6 +344,7 @@ export function createPreviewStreamClient(
           controller,
           generation,
           dialog,
+          ...decodeControlHolder(message as Record<string, unknown>),
         };
         control = nextControl;
         events.onControl?.(nextControl);
