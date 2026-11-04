@@ -1,5 +1,5 @@
 import { type ServerProviderUsageLimits, UsageLimitSourceError } from "@t3tools/contracts";
-import * as Crypto from "effect/Crypto";
+import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -91,7 +91,7 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     hub: CliproxyHub,
   ) => Effect.Effect<ReadonlyArray<A>, UsageLimitSourceError | Schema.SchemaError>,
 ) {
-  const crypto = yield* Crypto.Crypto;
+  const random = yield* SecureRandom.SecureRandom;
 
   const apiCall = Effect.fn("ClaudeHub.apiCall")(function* (
     hub: CliproxyHub,
@@ -280,7 +280,7 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
       });
     }
     // A Claude grant can hold several resets, so each claim needs its own request id.
-    const outcome = yield* claim(hub, account, grantId, yield* crypto.randomUUIDv4()).pipe(
+    const outcome = yield* claim(hub, account, grantId, yield* random.uuidV4()).pipe(
       Effect.catchTags({
         ClaudeResetCreditError: (error) =>
           Effect.fail(new UsageLimitSourceError({ detail: error.message })),

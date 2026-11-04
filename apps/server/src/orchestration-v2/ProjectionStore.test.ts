@@ -5982,13 +5982,14 @@ it.layer(layerTest)("ProjectionStoreV2", (it) => {
         snooze: false,
       })).find((row) => row.id === settledParentChild);
       assert.isDefined(resumed);
+      // The first early retry, due 2 minutes after the failure, still goes first.
       assert.isTrue(
         limitRecoveryCommand(
           resumed,
           true,
           DateTime.toEpochMillis(afterReset),
           false,
-        )?.commandId.startsWith("limit-resume:"),
+        )?.commandId.startsWith("limit-retry:0:"),
       );
     }),
   );

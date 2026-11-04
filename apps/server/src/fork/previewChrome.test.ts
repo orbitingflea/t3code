@@ -1,10 +1,12 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { expect, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
-import * as Crypto from "effect/Crypto";
+import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/http";
@@ -75,12 +77,12 @@ it("builds the brand list real Chrome sends", () => {
   });
 });
 
-it.layer(NodeServices.layer)("full Chrome install", (it) => {
+it.layer(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))("full Chrome install", (it) => {
   it.effect("installs the chrome executable under tools/chrome and drops the shell", () =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
       const path = yield* Path.Path;
-      const crypto = yield* Crypto.Crypto;
+      const digest = yield* Digest.Digest;
       const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "t3-full-chrome-test-" });
       const shell = path.join(baseDir, "tools", "chrome-headless-shell", "fixture");
       yield* fs.makeDirectory(path.join(shell, "1.0.0"), { recursive: true });
@@ -97,7 +99,7 @@ it.layer(NodeServices.layer)("full Chrome install", (it) => {
           executable: "chrome",
           url: "https://storage.googleapis.com/chrome-fixture.zip",
           bytes: archive.byteLength,
-          sha256: Hex.encode(yield* crypto.digest("SHA-256", archive).pipe(Effect.orDie)),
+          sha256: Hex.encode(yield* digest.digest(Digest.sha256, archive).pipe(Effect.orDie)),
         },
       }).pipe(
         Effect.provideService(HostProcess.Platform, "linux"),

@@ -172,15 +172,6 @@ describe("Claude through a CLIProxyAPI hub", () => {
       const test = fixture({ accounts: [claude] });
       const api = yield* test.api;
       expect(
-        yield* api.claude.findLogin(
-          [
-            { ...config, enabled: false },
-            { ...config, managementKey: "" },
-          ],
-          login,
-        ),
-      ).toBeUndefined();
-      expect(
         yield* api.claude.findLogin([config], { ...login, organizationId: undefined }),
       ).toBeUndefined();
       expect(test.requests).toEqual([]);

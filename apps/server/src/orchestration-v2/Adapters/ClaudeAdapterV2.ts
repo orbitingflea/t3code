@@ -11197,9 +11197,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               persistAttachmentBudget(existing.nativeThreadId),
             );
-            const steerUuid = yield* crypto
-              .randomUUIDv4()
-              .pipe(Effect.filterOrFail(isClaudePromptUuid));
+            const steerUuid = yield* random.uuidV4().pipe(Effect.filterOrFail(isClaudePromptUuid));
             const userMessage = yield* makeClaudeUserMessageWithAttachments({
               text: applyClaudePromptEffortPrefix(
                 turnInput.message.text,

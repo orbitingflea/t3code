@@ -1,3 +1,4 @@
+import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import {
@@ -5,6 +6,8 @@ import {
   EnvironmentId,
   ProviderDriverKind,
   ProviderInstanceId,
+  SecretProviderId,
+  type UsageLimitSourceConfig,
   UsageLimitSourceId,
 } from "@t3tools/contracts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
@@ -44,10 +47,14 @@ const layerTest = ProviderOrchestrationAdapterInfrastructure.layer.pipe(
   Layer.provideMerge(ProviderHostLive.layer),
   Layer.provideMerge(
     ServerConfig.layerTest(process.cwd(), { prefix: "claude-login-source-test" }).pipe(
-      Layer.provideMerge(NodeServices.layer),
+      Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
       Layer.provideMerge(ServerSettings.layerTest()),
       Layer.provideMerge(Layer.mock(ServerSecretStore.ServerSecretStore)({})),
-      Layer.provideMerge(Layer.mock(SecretResolver.SecretResolver)({})),
+      Layer.provideMerge(
+        Layer.mock(SecretResolver.SecretResolver)({
+          read: (references) => Effect.succeed(references.map(() => undefined)),
+        }),
+      ),
       Layer.provideMerge(
         Layer.succeed(ServerEnvironment.ServerEnvironmentIdentity, {
           getEnvironmentId: Effect.succeed(
@@ -77,6 +84,7 @@ const layerTest = ProviderOrchestrationAdapterInfrastructure.layer.pipe(
 
 const redeemClaudeReset = (claim: {
   usageSourceOnly?: boolean;
+  source?: Partial<Pick<UsageLimitSourceConfig, "enabled" | "managementKey">>;
   hub?: {
     accounts: ReadonlyArray<{ email: string; organization_uuid?: string }>;
     listStatus?: number;
@@ -204,6 +212,7 @@ const redeemClaudeReset = (claim: {
                     url: "http://hub.test",
                     managementKey: "hub-key",
                     enabled: true,
+                    ...claim.source,
                   },
                 },
               }
@@ -239,6 +248,14 @@ describe("Claude logins held by a usage source", () => {
       expect(after.usageLimits?.windows[0]?.usedPercent).toBe(0);
       expect(direct).toContain("/api/organizations/fake-org/reset_rate_limits");
       expect(viaHub.every((call) => call === "auth-files")).toBe(true);
+      for (const source of [{ enabled: false }, { managementKey: "" }]) {
+        const skipped = yield* redeemClaudeReset({
+          source,
+          hub: { accounts: [{ email: "test@example.com", organization_uuid: "fake-org" }] },
+        });
+        expect(skipped.outcome).toMatchObject({ _tag: "Success", success: "reset" });
+        expect(skipped.viaHub).toEqual([]);
+      }
     }),
   );
 
@@ -281,8 +298,16 @@ describe("Claude logins held by a usage source", () => {
 
   it.live.skipIf(windowsHost)("shows a usage source failure instead of reading Claude", () =>
     Effect.gen(function* () {
-      for (const failure of [{ usageStatus: 503 }, { listStatus: 500 }]) {
+      const unreadableKey = {
+        managementKey: { provider: SecretProviderId.make("vault"), reference: "hub-key" },
+      };
+      for (const { source, ...failure } of [
+        { usageStatus: 503 },
+        { listStatus: 500 },
+        { source: unreadableKey },
+      ]) {
         const { before, outcome, direct } = yield* redeemClaudeReset({
+          ...(source ? { source } : {}),
           hub: {
             accounts: [{ email: "test@example.com", organization_uuid: "fake-org" }],
             ...failure,
