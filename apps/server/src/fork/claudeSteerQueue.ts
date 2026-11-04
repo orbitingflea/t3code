@@ -1,9 +1,9 @@
 import type { SDKResultMessage } from "@anthropic-ai/claude-agent-sdk";
 
 // A steer goes to Claude Code with no priority, so it waits in Claude's queue like text typed
-// into Claude's own terminal. Claude reads it at the next tool result, or runs it as its own
-// turn once the current one ends. A result with a non-empty uuid list keeps the T3 turn open
-// if some steer sent during the turn is in no result's list yet. Any other result settles it.
+// into Claude's own terminal. Claude reads it at the next tool result, or runs it as its own turn
+// once the current one ends. A result keeps the T3 turn open only if the turn is not interrupted,
+// the result has a non-empty uuid list, and a steer sent this turn is in no result's list yet.
 const pendingSteerUuids = new WeakMap<object, Set<string>>();
 
 /** Records a steer sent to `turn`; the returned function forgets it, for a send that failed. */
