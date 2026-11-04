@@ -36,7 +36,7 @@ export const make = Effect.fn("previewBrowserMode.make")(function* (
   );
   const native = yield* PreviewBrowser.makePreviewBrowser({ baseDir, release: shell });
   const full = shell && fullChromeRelease(shell.platform);
-  // macOS has no full Chrome build T3 can unpack, so both modes use the shell there.
+  // macOS has no Chrome for Testing build T3 can unpack, so both modes use the shell there.
   const xvfb = full ? yield* PreviewBrowser.makePreviewBrowser({ baseDir, release: full }) : native;
   const browser = mode.pipe(Effect.map((selected) => (selected === "xvfb" ? xvfb : native)));
   return PreviewBrowser.PreviewBrowser.of({
