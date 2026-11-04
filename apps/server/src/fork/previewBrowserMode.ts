@@ -10,9 +10,8 @@ import { ServerSettingsService } from "../serverSettings.ts";
 import { fullChromeRelease } from "./previewChrome.ts";
 
 // "native" runs upstream's chrome-headless-shell. On Linux and Windows, "xvfb" runs full Chrome for
-// Testing, which gets past x.ai and other sites that block the shell. On Linux with Xvfb, its
-// window on a private display also gets past grok.com, whose Cloudflare check loops in headless
-// Chrome. On Windows, and on Linux without Xvfb, it runs headless. Both installs stay on disk.
+// Testing. On Linux with Xvfb, Chrome opens its window on a private Xvfb display. On Windows, and on
+// Linux without Xvfb, it runs headless. Both installs stay on disk.
 
 /** The selected mode; reads that fail count as native. */
 export const selectedMode = Effect.gen(function* () {
@@ -37,7 +36,7 @@ export const make = Effect.fn("previewBrowserMode.make")(function* (
   );
   const native = yield* PreviewBrowser.makePreviewBrowser({ baseDir, release: shell });
   const full = shell && fullChromeRelease(shell.platform);
-  // macOS has no full Chrome build T3 can unpack, so both modes use the shell there.
+  // macOS has no Chrome for Testing build T3 can unpack, so both modes use the shell there.
   const xvfb = full ? yield* PreviewBrowser.makePreviewBrowser({ baseDir, release: full }) : native;
   const browser = mode.pipe(Effect.map((selected) => (selected === "xvfb" ? xvfb : native)));
   return PreviewBrowser.PreviewBrowser.of({
