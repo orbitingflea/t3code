@@ -1208,9 +1208,10 @@ export const ServerSettings = Schema.Struct({
 
   enableAgentBrowserAccess: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(true))),
   /**
-   * Fork: "xvfb" runs full Chrome for sites that block headless browsers. On Linux it runs headed
-   * on a private Xvfb display, or headless when Xvfb is missing. On Windows it runs headless. On
-   * macOS it runs chrome-headless-shell, the same browser as "native".
+   * Fork: on Linux and Windows, "xvfb" runs full Chrome for Testing, for sites that block headless
+   * browsers. On Linux it runs headed on a private Xvfb display, or headless when Xvfb is missing.
+   * On Windows it runs headless. On macOS it runs chrome-headless-shell, the same browser as
+   * "native".
    */
   previewBrowserMode: PreviewBrowserMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("native" as const)),
