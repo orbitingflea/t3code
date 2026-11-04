@@ -284,7 +284,7 @@ export function applyPreferredCodexDefaultModel(
   });
 }
 
-function applyConfiguredCodexServiceTier(
+export function applyConfiguredCodexServiceTier(
   models: ReadonlyArray<ServerProviderModel>,
   serviceTier: string | undefined,
 ): ReadonlyArray<ServerProviderModel> {
