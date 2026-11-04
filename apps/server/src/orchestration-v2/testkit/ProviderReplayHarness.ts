@@ -281,6 +281,7 @@ export function layerWithRegistry<Error>(
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
     readonly managedPolicy?: ManagedPolicyDocument;
+    readonly configureMcp?: boolean;
   } = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
@@ -381,7 +382,7 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerEventSinkProvided, layerStores)),
   );
   const layerProviderSessionManagerProvided = ProviderSessionManager.layerWithOptions({
-    configureMcp: false,
+    configureMcp: options.configureMcp ?? false,
   }).pipe(
     Layer.provide(
       Layer.mergeAll(

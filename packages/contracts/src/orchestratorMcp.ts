@@ -169,7 +169,11 @@ export const OrchestratorMcpDelegateTaskInput = Schema.Struct({
   task: OrchestratorMcpPrompt,
   target: Schema.optional(OrchestratorMcpTarget),
   title: Schema.optional(OrchestratorMcpTitle),
-  role: Schema.optional(OrchestratorMcpTaskRole),
+  role: Schema.optional(
+    OrchestratorMcpTaskRole.annotate({
+      description: "`general`: Use for multi-step tasks, such as making a PR.",
+    }),
+  ),
   isolation: Schema.optional(
     Schema.Literals(["shared", "worktree"]).annotate({
       description:
