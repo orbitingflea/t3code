@@ -54,7 +54,10 @@ export const makeClaudeLoginSource = Effect.fn("makeClaudeLoginSource")(function
     Effect.orElseSucceed(() => ({ email: undefined, organizationId: undefined })),
   );
 
-  /** A source whose key its secret provider cannot give fails, so it never counts as no match. */
+  /**
+   * Reads the source's key. If the secret provider cannot give it, the read fails
+   * instead of counting as no match.
+   */
   const readHub = Effect.fn("ClaudeLoginSource.readHub")(function* (
     secrets: SecretResolver.SecretResolver["Service"],
     config: UsageLimitSourceConfig,

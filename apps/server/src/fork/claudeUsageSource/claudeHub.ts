@@ -225,7 +225,8 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     management(hub, "reset-quota", { auth_index: account.auth_index });
 
   /**
-   * The source account holding a directly signed-in Claude login, if exactly one source has it.
+   * The account for a directly signed-in Claude login, taken from the first source that
+   * lists exactly one match.
    * A source that cannot list its accounts fails the lookup; it never counts as no match.
    * Each hub is read only when its turn comes, so a later hub cannot fail an earlier match.
    */
