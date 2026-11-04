@@ -212,7 +212,7 @@ export function Board({ exportMode = false }: { exportMode?: boolean }) {
   const [shown, setShown] = useState<string | null>(null);
   useEffect(() => onBoardView(setView), []);
   useEffect(() => {
-    document.title = label ? `Board (${label})` : "Board";
+    document.title = label ? `T3 (${label})` : "T3";
   }, [label]);
   if (!fontsReady) return null;
   const rooms = shown && shown !== room ? [shown, room] : [room];
