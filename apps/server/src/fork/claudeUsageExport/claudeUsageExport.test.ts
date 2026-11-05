@@ -1,9 +1,12 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
 import { FetchHttpClient } from "effect/http";
+import * as ChildProcess from "effect/process/ChildProcess";
+import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { makeClaudeUsageExport } from "./claudeUsageExport.ts";
 
@@ -104,6 +107,36 @@ describe("claude usage event export", () => {
       expect(raw).not.toContain(realEvent.session_id);
       expect(raw).not.toContain(KEY);
     }),
+  );
+
+  it.live("keeps the URL and key for the export and out of processes the server starts", () =>
+    Effect.gen(function* () {
+      const environment: NodeJS.ProcessEnv = {
+        PATH: process.env.PATH,
+        T3CODE_CLAUDE_USAGE_EXPORT_URL: URL_,
+        T3CODE_CLAUDE_USAGE_EXPORT_KEY: KEY,
+      };
+      const exportEvent = makeClaudeUsageExport(environment);
+      const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+      const inherited = (yield* spawner.string(
+        ChildProcess.make(
+          process.execPath,
+          ["-e", "process.stdout.write(Object.keys(process.env).join('\\n'))"],
+          { env: environment },
+        ),
+      )).split("\n");
+      expect(inherited).toContain("PATH");
+      expect(inherited).not.toContain("T3CODE_CLAUDE_USAGE_EXPORT_URL");
+      expect(inherited).not.toContain("T3CODE_CLAUDE_USAGE_EXPORT_KEY");
+
+      const http = yield* fakeFetch();
+      yield* exportEvent(HOME, realEvent.rate_limit_info).pipe(
+        Effect.provideService(FetchHttpClient.Fetch, http.fetch),
+      );
+      const call = yield* http.nextCall;
+      expect(call.url).toBe(URL_);
+      expect(new Headers(call.init.headers).get("authorization")).toBe(`Bearer ${KEY}`);
+    }).pipe(Effect.provide(NodeServices.layer)),
   );
 
   it.effect("sends nothing without unifiedWindows or for an unknown shape", () =>
