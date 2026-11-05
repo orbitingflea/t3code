@@ -5,9 +5,10 @@ import { CheckIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { useRef, useState } from "react";
 import {
+  COMPACT_IDLE_CHOICES,
+  compactIdleChoice,
+  compactIdleChoicePatch,
   type DesktopUpdateChannel,
-  IDLE_COMPACTION_MODES,
-  globalIdleCompaction,
   managedUpdatesDenial,
   managedUpdatesMessage,
   ProviderDriverKind,
@@ -58,6 +59,7 @@ import {
 import { useScopedModelDisabledReason } from "./useScopedModelAvailability";
 import { useOptionalSettingsScope, useSettingsScope } from "./SettingsScopeContext";
 import { scopedIdleCompaction } from "./scopedSettings";
+import { CompactIdleValueRows } from "~/fork/CompactIdleValueRows";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
@@ -1431,7 +1433,12 @@ export function DiffsSettingsPanel() {
 
 /** The Providers panel can render without a settings scope, as its tests do; this row needs one. */
 export function CompactIdleThreadsRow() {
-  return useOptionalSettingsScope() === null ? null : <ScopedCompactIdleThreadsRow />;
+  return useOptionalSettingsScope() === null ? null : (
+    <>
+      <ScopedCompactIdleThreadsRow />
+      <CompactIdleValueRows />
+    </>
+  );
 }
 
 function ScopedCompactIdleThreadsRow() {
@@ -1443,26 +1450,26 @@ function ScopedCompactIdleThreadsRow() {
   return (
     <SettingsRow
       serverScoped
-      settingKeys={["idleCompaction", "compactIdleThreads"]}
+      settingKeys={["idleCompaction", "compactIdleThreads", "compactWhenIdle"]}
       mixed={idleCompaction.mixed}
       {...searchableSetting("compact-idle-threads")}
-      description="When to compact an idle Claude thread over 200,000 tokens: after you return, just before its prompt cache expires, or never. Each Claude provider can override this."
+      description="When to compact a large idle Claude thread: after you return, just before its prompt cache expires, when idle, or never. Each Claude provider can override this."
       resetAction={
-        globalIdleCompaction(settings) !== globalIdleCompaction(DEFAULT_UNIFIED_SETTINGS) ? (
+        compactIdleChoice(settings) !== compactIdleChoice(DEFAULT_UNIFIED_SETTINGS) ? (
           <SettingResetButton
             label="compact idle threads"
             onClick={() =>
-              updateSettings({ idleCompaction: globalIdleCompaction(DEFAULT_UNIFIED_SETTINGS) })
+              updateSettings(compactIdleChoicePatch(compactIdleChoice(DEFAULT_UNIFIED_SETTINGS)))
             }
           />
         ) : null
       }
       control={
         <Select
-          value={idleCompaction.mixed ? null : globalIdleCompaction(settings)}
+          value={idleCompaction.mixed ? null : compactIdleChoice(settings)}
           onValueChange={(value) => {
-            const mode = IDLE_COMPACTION_MODES.find((candidate) => candidate.value === value);
-            if (mode) updateSettings({ idleCompaction: mode.value });
+            const mode = COMPACT_IDLE_CHOICES.find((candidate) => candidate.value === value);
+            if (mode) updateSettings(compactIdleChoicePatch(mode.value));
           }}
         >
           <SelectTrigger size="sm" className="w-full sm:w-56" aria-label="Compact idle threads">
@@ -1470,12 +1477,12 @@ function ScopedCompactIdleThreadsRow() {
               {(value: string | null) =>
                 value === null
                   ? "Mixed"
-                  : IDLE_COMPACTION_MODES.find((mode) => mode.value === value)?.label
+                  : COMPACT_IDLE_CHOICES.find((mode) => mode.value === value)?.label
               }
             </SelectValue>
           </SelectTrigger>
           <SelectPopup align="end" alignItemWithTrigger={false}>
-            {IDLE_COMPACTION_MODES.map((mode) => (
+            {COMPACT_IDLE_CHOICES.map((mode) => (
               <SelectItem
                 hideIndicator
                 key={mode.value}

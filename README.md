@@ -8,6 +8,7 @@ This is a fork of T3 Code that integrates a few additional features, including:
   - New Codex/Antigravity logins are picked up mid-session without a full restart.
 - Copy buttons on pages in the preview browser now put the copied text into your own clipboard.
 - **Two preview browser modes:** Settings → Browser → Preview browser picks the browser the server runs for preview tabs. **T3 native** (fast) is the default. It runs chrome-headless-shell, Chrome's small build that runs without a window. **Chrome** (slow) runs full Chrome, for pages that don't work in T3 native. On platforms where T3 has no Chrome for Testing build (Google's Chrome build for test automation), both choices run T3 native. Switching closes the open preview tabs.
+- **Compact when idle for Claude threads:** a choice in Settings → Providers → Advanced → Compact idle threads. Besides compacting before the prompt cache expires, it compacts a large idle Claude thread (default 400K tokens or more) a set time (default 15 minutes) after the last message or answer from a user or a bot, so the compaction runs while no one waits for a reply. The token counts and the wait are set right under the choice.
 - Enabling math rendering by default.
 - Other small fixes.
 

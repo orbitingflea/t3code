@@ -1,8 +1,8 @@
 import {
   ClientSettingsSchema,
   type ClientSettingsPatch,
+  compactIdleChoice,
   type EnvironmentId,
-  globalIdleCompaction,
   idleCompactionPatch,
   isNullableProjectSettingsOverride,
   readsIdleCompactionModes,
@@ -144,7 +144,7 @@ export function scopedSettingsAreMixed(
  * only when every one of them can store it.
  */
 export function scopedIdleCompaction(targets: readonly Pick<ScopedSettingsTarget, "settings">[]) {
-  const modes = targets.map((candidate) => globalIdleCompaction(candidate.settings));
+  const modes = targets.map((candidate) => compactIdleChoice(candidate.settings));
   return {
     mixed: modes.some((mode) => mode !== modes[0]),
     neverAvailable: targets.every((candidate) => readsIdleCompactionModes(candidate.settings)),

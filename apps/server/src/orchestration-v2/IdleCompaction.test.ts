@@ -21,6 +21,7 @@ import * as Stream from "effect/Stream";
 import * as Tracer from "effect/Tracer";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as LastUserInput from "../fork/idleCompaction/lastUserInput.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as IdleCompactionService from "./IdleCompactionService.ts";
 import * as Orchestrator from "./Orchestrator.ts";
@@ -289,6 +290,7 @@ describe("IdleCompactionService", () => {
                   return data;
                 }),
             }),
+            Layer.mock(LastUserInput.LastUserInput)({ atMs: () => Effect.succeed(null) }),
             Layer.mock(ServerSettings.ServerSettingsService)({
               getSettings: Effect.succeed({
                 ...DEFAULT_SERVER_SETTINGS,
@@ -400,6 +402,7 @@ describe("IdleCompactionService", () => {
                 ),
               }),
           }),
+          Layer.mock(LastUserInput.LastUserInput)({ atMs: () => Effect.succeed(null) }),
           Layer.mock(ServerSettings.ServerSettingsService)({
             getSettings: Effect.succeed({
               ...DEFAULT_SERVER_SETTINGS,

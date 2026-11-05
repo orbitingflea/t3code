@@ -43,6 +43,10 @@ import {
 } from "./baseSchemas.ts";
 import { AuthMcpClientAccess } from "./auth.ts";
 import { ChatAttachment } from "./chatAttachment.ts";
+import {
+  type IdleCompactionLevel,
+  WHILE_IDLE_COMPACTION_ID_PREFIX,
+} from "./fork/idleCompactionLevels.ts";
 import { ThreadGuestShare } from "./guestShare.ts";
 import { StoredThreadTags, ThreadTag } from "./threadTags.ts";
 import {
@@ -577,9 +581,10 @@ export function parseGoalCommand(message: {
 
 /** Why T3 Code sent this `/compact` on its own, or undefined for one someone asked for. */
 export function idleCompactionOf(
-  message: CompactionMessageFields,
-): OrchestrationV2IdleCompaction | undefined {
+  message: CompactionMessageFields & { readonly id: string },
+): IdleCompactionLevel | undefined {
   if (!isCompactionCommandMessage(message)) return undefined;
+  if (message.id.startsWith(WHILE_IDLE_COMPACTION_ID_PREFIX)) return "whileIdle";
   if (message.idleCompaction !== undefined) return message.idleCompaction;
   // Servers before `idleCompaction` marked their own as agent-created.
   return message.createdBy === "agent" && message.creationSource === "server"
