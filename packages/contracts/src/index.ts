@@ -28,6 +28,14 @@ export * from "./model.ts";
 export * from "./keybindings.ts";
 export * from "./server.ts";
 export * from "./settings.ts";
+export {
+  COMPACT_WHEN_IDLE_DEFAULTS,
+  COMPACT_WHEN_IDLE_MAX,
+  type IdleCompactionLevel,
+  parseCompactWhenIdleCount,
+  WHILE_IDLE_COMPACTION_ID_PREFIX,
+} from "./fork/idleCompactionLevels.ts";
+export * from "./fork/compactIdleChoice.ts";
 export * from "./managedPolicy.ts";
 export * from "./git.ts";
 export * from "./vcs.ts";

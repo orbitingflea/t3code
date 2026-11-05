@@ -1,12 +1,13 @@
 import { isListedThreadLineage, type OrchestrationV2ThreadProjection } from "@t3tools/contracts";
-import { COMPACTION_SUGGESTION_MIN_TOKENS } from "@t3tools/shared/claudeCompaction";
 import { derivePendingBackgroundWork } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import * as DateTime from "effect/DateTime";
 
-// Claude Code's idleCompaction defaults to 200K and won't go below 100K. Below
-// that a cold re-read is cheap, so compacting mostly loses context for little
-// saving.
-const MIN_CONTEXT_TOKENS = COMPACTION_SUGGESTION_MIN_TOKENS;
+import {
+  DEFAULT_IDLE_COMPACTION_LEVELS,
+  idleCompactionStart,
+  type IdleCompactionLevels,
+} from "../fork/idleCompaction/idleCompactionLevels.ts";
+
 // Start this long before the cache expires: enough for the session to resume
 // and send the compaction while the cache is still warm.
 const LEAD_MS = 2 * 60_000;
@@ -24,10 +25,10 @@ export type IdleCompactionRecords = Pick<
 >;
 
 /**
- * When an idle Claude thread should compact, or null when it should not. The
- * window ends when the prompt cache of Claude's last request expires (1h on
- * subscriptions, 5m on API keys); compacting after that pays a full uncached
- * read.
+ * When an idle Claude thread should compact, or null when it should not. `endMs` is when the
+ * prompt cache of Claude's last request expires (1h on subscriptions, 5m on API keys), NaN when
+ * unknown; compacting after that pays a full uncached read. `level` names the level that starts
+ * first. The idle level runs alone, even past `endMs`, when the cache level does not apply.
  */
 export function idleCompactionWindow(
   {
@@ -41,10 +42,13 @@ export function idleCompactionWindow(
     contextTransfers,
   }: IdleCompactionRecords,
   nowMs: number,
+  levels: IdleCompactionLevels = DEFAULT_IDLE_COMPACTION_LEVELS,
+  lastUserInputMs: number | null = null,
 ): {
   readonly runId: (typeof runs)[number]["id"];
   readonly startMs: number;
   readonly endMs: number;
+  readonly level: NonNullable<ReturnType<typeof idleCompactionStart>>["level"];
 } | null {
   if (thread.deletedAt !== null || thread.archivedAt !== null) return null;
   if (thread.settledAt !== null || thread.settledOverride === "settled") return null;
@@ -96,11 +100,15 @@ export function idleCompactionWindow(
     .filter((turn) => turn.providerThreadId === providerThread.id && turn.tokenUsage !== undefined)
     .map((turn) => turn.tokenUsage!)
     .toSorted((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt));
-  if ((usages[0]?.usedTokens ?? 0) < MIN_CONTEXT_TOKENS) return null;
   // A request served fully from cache creates no cache entry and reports no
   // TTL, but it still refreshes the cache. Treat it as unknown and skip.
+  // Only the cache level is skipped. The idle level can still run.
   const expiresAt = usages[0]?.promptCacheExpiresAt;
   const endMs = expiresAt === undefined ? Number.NaN : Date.parse(expiresAt);
-  if (!Number.isFinite(endMs) || nowMs >= endMs) return null;
-  return { runId: latestRun.id, startMs: endMs - LEAD_MS, endMs };
+  const start = idleCompactionStart(levels, {
+    usedTokens: usages[0]?.usedTokens ?? 0,
+    lastUserInputMs,
+    beforeCacheExpiresMs: !Number.isFinite(endMs) || nowMs >= endMs ? null : endMs - LEAD_MS,
+  });
+  return start === null ? null : { runId: latestRun.id, ...start, endMs };
 }

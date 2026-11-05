@@ -61,8 +61,8 @@ history for that message. The cache lasts about an hour on a Claude
 subscription and 5 minutes with an API key, Bedrock, or Vertex. See [commands and skills](./composer.md#commands-and-skills) for using
 composer commands.
 
-**Compact idle threads** in **Settings > Providers > Advanced** controls this for threads
-over 200,000 tokens. Each Claude provider's settings can override it:
+**Compact idle threads** in **Settings > Providers > Advanced** controls this for large
+threads. Each Claude provider's settings can override it:
 
 - **When you return** shows the **Compact** chip described above. This is the default.
 - **Before the cache expires (beta)** tries to compact an idle thread shortly before its
@@ -71,6 +71,14 @@ over 200,000 tokens. Each Claude provider's settings can override it:
   If the window is missed, such as when you enable this mode after the cache has
   expired or the server restarts before compaction runs, it falls back to
   **When you return**. Switch the chip to **Keep** to keep the full history for that message.
+  **Cache expiry tokens** under the choice sets how large a thread must be (200,000 by default).
+- **Compact when idle** does the same, and also compacts a thread at 400,000 tokens or more
+  15 minutes after the last message from you or a bot, or the last answer to a question or
+  approval. Whichever compaction is due first runs. The idle one can still run after the cache
+  window is missed. A server restart drops a pending wait. If the idle wait ends while the
+  thread is working, it compacts when that turn completes, but only if it still has enough
+  tokens and no background work pending. **Idle tokens** and **Idle minutes** under the choice
+  change these values. A Claude provider set to its own mode does not compact when idle.
 - **Never** skips idle compaction and Claude's resume prompt. **Auto-compact after**
   still applies, and you can still compact by hand.
 

@@ -5,7 +5,7 @@ import {
   type OrchestrationMessageContext,
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
-  type OrchestrationV2IdleCompaction,
+  type IdleCompactionLevel,
   type OrchestrationV2UserMessageInputIntent,
   ScheduledTaskId,
 } from "@t3tools/contracts";
@@ -20,14 +20,16 @@ import { videoMimeType } from "@t3tools/shared/video";
 /** The working row while T3 Code's own compaction runs. */
 export const IDLE_COMPACTING_LABELS = {
   beforeCacheExpires: "Compacting before the cache expires…",
+  whileIdle: "Compacting while idle…",
   onReturn: "Compacting…",
-} satisfies Record<OrchestrationV2IdleCompaction, string>;
+} satisfies Record<IdleCompactionLevel, string>;
 
 /** Leads the finished compaction's token counts, in place of "Context compacted". */
 export const IDLE_COMPACTION_TITLES = {
   beforeCacheExpires: "Context automatically compacted before cache expiry",
+  whileIdle: "Context automatically compacted while idle",
   onReturn: "Context compacted before sending",
-} satisfies Record<OrchestrationV2IdleCompaction, string>;
+} satisfies Record<IdleCompactionLevel, string>;
 
 const LEGACY_AUTOMATION_PREFIX = /^\[Triggered by schedule task: [^\r\n]+\]\r?\n\r?\n/;
 const LEGACY_AUTOMATION_MESSAGE_ID = /^scheduled-task-message:(.+):\d+:(?:scheduled|manual)$/;

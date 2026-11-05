@@ -1,10 +1,9 @@
 import {
   CommandId,
   IDLE_COMPACTION_TEXT,
-  MessageId,
+  type OrchestrationV2Run,
   resolveIdleCompaction,
   resolveProjectProviderInstanceEnabled,
-  type RunId,
   type ThreadId,
 } from "@t3tools/contracts";
 import * as DateTime from "effect/DateTime";
@@ -13,6 +12,12 @@ import * as Effect from "effect/Effect";
 import * as FiberMap from "effect/FiberMap";
 import * as Stream from "effect/Stream";
 
+import {
+  idleCompactionHeld,
+  idleCompactionMessageId,
+  resolveIdleCompactionLevels,
+} from "../fork/idleCompaction/idleCompactionLevels.ts";
+import * as LastUserInput from "../fork/idleCompaction/lastUserInput.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import { idleCompactionWindow } from "./IdleCompaction.ts";
@@ -20,19 +25,21 @@ import * as Orchestrator from "./Orchestrator.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 
 /**
- * Beta: when a run completes on a Claude instance set to compact before the
- * cache expires, waits until shortly before its prompt cache expires and sends
- * `/compact` as a visible T3 Code turn. Timers live in
- * memory, so a server restart skips compactions that were still waiting.
+ * Beta: when a run completes on a Claude instance set to compact before the cache expires, waits
+ * until shortly before its prompt cache expires and sends `/compact` as a visible T3 Code turn.
+ * Timers live in memory, so a server restart skips compactions that were still waiting. With
+ * "Compact when idle" it also compacts at the idle level, whichever is due first.
  */
 export const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const projections = yield* ProjectionStore.ProjectionStoreV2;
   const settings = yield* ServerSettings.ServerSettingsService;
+  const lastUserInput = yield* LastUserInput.LastUserInput;
 
   const compactWhenDue = Effect.fn("IdleCompactionService.compactWhenDue")(
-    function* (threadId: ThreadId, completedRunId: RunId) {
-      let runId = completedRunId;
+    function* (threadId: ThreadId, completedRun: OrchestrationV2Run) {
+      if (idleCompactionHeld(completedRun)) return;
+      let runId = completedRun.id;
       // Loops after the wait or a retarget: the thread may have moved on.
       while (true) {
         const current = yield* settings.getSettings;
@@ -99,8 +106,14 @@ export const make = Effect.gen(function* () {
           runId = latestRun.id;
           continue;
         }
+        const lastUserInputMs = yield* lastUserInput.atMs(threadId);
         const nowMs = DateTime.toEpochMillis(yield* DateTime.now);
-        const window = idleCompactionWindow(records, nowMs);
+        const window = idleCompactionWindow(
+          records,
+          nowMs,
+          resolveIdleCompactionLevels(current, records.thread.providerInstanceId),
+          lastUserInputMs,
+        );
         if (window?.runId !== runId) return;
         if (nowMs < window.startMs) {
           yield* Effect.sleep(Duration.millis(window.startMs - nowMs));
@@ -110,7 +123,7 @@ export const make = Effect.gen(function* () {
           type: "message.dispatch",
           // One compaction per completed run, even across duplicate events.
           commandId: CommandId.make(`server:idle-compact:${threadId}:${runId}`),
-          messageId: MessageId.make(`idle-compact:${threadId}:${runId}`),
+          messageId: idleCompactionMessageId(window.level, threadId, runId),
           threadId,
           text: IDLE_COMPACTION_TEXT,
           attachments: [],
@@ -134,7 +147,7 @@ export const make = Effect.gen(function* () {
     yield* forkParked(
       Stream.runForEach(orchestrator.streamDomainEvents, (event) =>
         event.type === "run.updated" && event.payload.status === "completed"
-          ? FiberMap.run(timers, event.threadId, compactWhenDue(event.threadId, event.payload.id))
+          ? FiberMap.run(timers, event.threadId, compactWhenDue(event.threadId, event.payload))
           : Effect.void,
       ),
     );
