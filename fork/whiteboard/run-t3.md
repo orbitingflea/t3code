@@ -34,7 +34,9 @@ RestartSec=5
 WantedBy=default.target
 ```
 
-Then enable it. `enable-linger` keeps user services running after you log out.
+A usage source is a CLIProxyAPI hub added in settings. The hub is a separate program that holds Claude logins and answers usage and reset-credit requests. To use only a usage source for Claude usage reads, reset-credit reads and reset redemptions, add `Environment=T3CODE_CLAUDE_USAGE_SOURCE_ONLY=1` under `[Service]`. For a login that no source holds, the server then reports "No usage source holds this Claude login." instead of reading the login's usage and reset credits from Claude. `apps/server/src/fork/claudeUsageSource/claudeLoginSource.ts` decides when a request goes through a source.
+
+Then enable the service. `enable-linger` keeps user services running after you log out.
 
 ```bash
 loginctl enable-linger "$USER"
