@@ -23,6 +23,7 @@ import * as ServerSettings from "../../serverSettings.ts";
 import * as ManagedPolicy from "../../policy/ManagedPolicy.ts";
 import * as ThreadManagementService from "../ThreadManagementService.ts";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import * as McpSessionRegistry from "../../mcp/McpSessionRegistry.ts";
 import * as McpSessionRegistryTestkit from "../../mcp/McpSessionRegistry.testkit.ts";
 import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as GitVcsDriver from "../../vcs/GitVcsDriver.ts";
@@ -281,6 +282,8 @@ export function layerWithRegistry<Error>(
     readonly recoverOnStartup?: boolean;
     readonly continueThreadsAfterServerUpdate?: boolean;
     readonly managedPolicy?: ManagedPolicyDocument;
+    /** Turns on MCP setup for each thread, with credentials from this registry. */
+    readonly mcpSessionRegistry?: McpSessionRegistry.McpSessionRegistryShape;
   } = {},
 ): Layer.Layer<
   | Orchestrator.OrchestratorV2
@@ -381,7 +384,7 @@ export function layerWithRegistry<Error>(
     Layer.provide(Layer.merge(layerEventSinkProvided, layerStores)),
   );
   const layerProviderSessionManagerProvided = ProviderSessionManager.layerWithOptions({
-    configureMcp: false,
+    configureMcp: options.mcpSessionRegistry !== undefined,
   }).pipe(
     Layer.provide(
       Layer.mergeAll(
@@ -390,7 +393,9 @@ export function layerWithRegistry<Error>(
         layerEventSinkProvided,
         IdAllocator.layer,
         McpProviderSessions.layer,
-        McpSessionRegistryTestkit.layer,
+        options.mcpSessionRegistry === undefined
+          ? McpSessionRegistryTestkit.layer
+          : Layer.succeed(McpSessionRegistry.McpSessionRegistry, options.mcpSessionRegistry),
         layerProviderEventIngestorProvided,
         layerStores,
       ),
