@@ -1,4 +1,3 @@
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
@@ -34,17 +33,19 @@ const describeFailure = (error: unknown) => {
 };
 
 /**
- * Posts Claude rate_limit_info to T3CODE_CLAUDE_USAGE_EXPORT_URL without waiting and logs failures
- * at debug level; adds T3CODE_CLAUDE_USAGE_EXPORT_KEY as a Bearer token only if set and not blank.
- * Skips when the URL is unset or blank, the info fails the usage-window schema or has no windows,
- * the same home and info went out in the last 60 s, or the body is over 4096 bytes.
+ * Moves T3CODE_CLAUDE_USAGE_EXPORT_URL and _KEY out of `environment`, so no process started from it
+ * sees them. Posts rate_limit_info to the URL without waiting, with the key as Bearer if not blank,
+ * logging failures at debug. Skips a blank URL, info that fails the usage-window schema or has no
+ * windows, the same home and info within 60 s, and a body over 4096 bytes.
  */
-export const makeClaudeUsageExport = () => {
+export const makeClaudeUsageExport = (environment: NodeJS.ProcessEnv) => {
+  const url = environment.T3CODE_CLAUDE_USAGE_EXPORT_URL?.trim();
+  const key = environment.T3CODE_CLAUDE_USAGE_EXPORT_KEY?.trim();
+  delete environment.T3CODE_CLAUDE_USAGE_EXPORT_URL;
+  delete environment.T3CODE_CLAUDE_USAGE_EXPORT_KEY;
   const lastSentAt = new Map<string, number>();
 
   return Effect.fn("ClaudeUsageExport.export")(function* (home: string, rateLimitInfo: unknown) {
-    const environment = yield* HostProcess.Environment;
-    const url = environment.T3CODE_CLAUDE_USAGE_EXPORT_URL?.trim();
     if (
       !url ||
       !isExportable(rateLimitInfo) ||
@@ -71,7 +72,6 @@ export const makeClaudeUsageExport = () => {
     if (new TextEncoder().encode(body).length > MAX_BODY_BYTES) return;
     lastSentAt.set(dedupeKey, now);
 
-    const key = environment.T3CODE_CLAUDE_USAGE_EXPORT_KEY?.trim();
     const request = HttpClientRequest.post(url).pipe(
       HttpClientRequest.bodyText(body, "application/json"),
       key ? HttpClientRequest.bearerToken(key) : (request) => request,
@@ -90,4 +90,5 @@ export const makeClaudeUsageExport = () => {
   });
 };
 
-export const exportClaudeUsageEvent = makeClaudeUsageExport();
+// Built when the server's code loads, before it starts any process.
+export const exportClaudeUsageEvent = makeClaudeUsageExport(process.env);

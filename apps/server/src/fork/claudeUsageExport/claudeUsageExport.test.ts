@@ -1,6 +1,5 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
-import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
@@ -72,12 +71,9 @@ const run = (
     T3CODE_CLAUDE_USAGE_EXPORT_KEY: KEY,
   },
 ) => {
-  const exportEvent = makeClaudeUsageExport();
+  const exportEvent = makeClaudeUsageExport({ ...environment });
   return (home: string, rateLimitInfo: unknown) =>
-    exportEvent(home, rateLimitInfo).pipe(
-      Effect.provideService(FetchHttpClient.Fetch, fetch),
-      Effect.provideService(HostProcess.Environment, environment),
-    );
+    exportEvent(home, rateLimitInfo).pipe(Effect.provideService(FetchHttpClient.Fetch, fetch));
 };
 
 const bodyOf = (call: Call): unknown => JSON.parse(String(call.init.body));
