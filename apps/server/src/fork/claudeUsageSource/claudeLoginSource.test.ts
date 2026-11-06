@@ -53,6 +53,7 @@ const layerTest = ProviderOrchestrationAdapterInfrastructure.layer.pipe(
       Layer.provideMerge(
         Layer.mock(SecretResolver.SecretResolver)({
           read: (references) => Effect.succeed(references.map(() => undefined)),
+          label: (provider) => Effect.succeed(provider),
         }),
       ),
       Layer.provideMerge(

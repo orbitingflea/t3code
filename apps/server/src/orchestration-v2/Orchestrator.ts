@@ -716,16 +716,12 @@ function mayStartSubagentFollowup(
   if (command.scheduledTaskId !== undefined || command.restartContinuationOfRunId !== undefined)
     return false;
   if (command.notification !== undefined) return command.notification.source.kind !== "monitor";
-<<<<<<< origin/main
   if (command.delegatedCompletion !== undefined) return true;
-  return command.createdBy === "user" || command.creationSource === "mcp";
-=======
   return (
     command.createdBy === "user" ||
     command.creationSource === "mcp" ||
     command.usageLimitContinuationOfRunId !== undefined
   );
->>>>>>> upstream/main
 }
 
 /** Waiting runs only drain post-terminal output; their agent turn is over and still needs a wake. */

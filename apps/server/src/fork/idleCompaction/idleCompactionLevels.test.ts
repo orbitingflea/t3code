@@ -290,7 +290,7 @@ const idleCompactions = (options: {
         }),
         Layer.mock(ProjectionStore.ProjectionStoreV2)({
           getThread: () => Effect.succeed(data.thread),
-          getThreadRecords: () => Effect.sync(() => data),
+          getThreadRecords: () => Effect.succeed(data),
         }),
         Layer.mock(LastUserInput.LastUserInput)({
           atMs: () =>

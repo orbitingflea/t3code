@@ -37,6 +37,7 @@ import { HttpBody, HttpClient, HttpRouter, HttpServer } from "effect/http";
 import * as NetAddress from "effect/net/NetAddress";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 
+import { AssetSigner } from "../assets/AssetSigner.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { DeviceService } from "../device/DeviceService.ts";
@@ -118,7 +119,7 @@ interface ProviderFixture {
       readonly adapter: Effect.Effect<
         ProviderAdapter.ProviderAdapterV2["Service"],
         never,
-        McpProviderSessions.McpProviderSessions
+        McpProviderSessions.McpProviderSessions | Scope.Scope
       >;
       readonly firstRequest: (threadId: ThreadId) => Effect.Effect<ObservedRequest>;
     },
@@ -225,6 +226,10 @@ const claude: ProviderFixture = {
                   applyFlagSettings: () => Effect.void,
                   setPermissionMode: () => Effect.void,
                   backgroundTasks: () => Effect.succeed(false),
+                  mcpServerStatus: Effect.succeed([]),
+                  readMcpResource: () => Effect.die("unexpected MCP resource read"),
+                  callMcpTool: () => Effect.die("unexpected MCP tool call"),
+                  listPermissionRules: Effect.die("unexpected permission rules read"),
                   stopTask: () => Effect.void,
                   interrupt: Effect.void,
                   close: Effect.void,
@@ -633,6 +638,7 @@ it.effect.each(
 
 // Serving tools/list only reads registrations, so the handlers' services are never called.
 const toolHandlerServices = Layer.mergeAll(
+  Layer.mock(AssetSigner)({}),
   Layer.mock(DeviceService)({}),
   Layer.mock(DocumentText)({}),
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),

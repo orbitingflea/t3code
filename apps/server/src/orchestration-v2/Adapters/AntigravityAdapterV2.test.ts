@@ -56,15 +56,9 @@ const flavorOptions = {
   selfInvocation: undefined as never,
   makeRuntime: () => Effect.die("not spawned in this test"),
   withProcess: (_stop, task) => task,
-<<<<<<< origin/main
-  // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
-  defaultModel: Effect.succeed(undefined),
+  defaultModel: Effect.undefined,
 } satisfies Parameters<typeof makeAntigravityAcpAdapterFlavor>[0];
 const flavor = makeAntigravityAcpAdapterFlavor(flavorOptions);
-=======
-  defaultModel: Effect.undefined,
-});
->>>>>>> upstream/main
 
 function permissionRequest(
   toolCallId: string,

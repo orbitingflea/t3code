@@ -4,6 +4,7 @@ import * as Exit from "effect/Exit";
 import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
 import * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
@@ -53,9 +54,9 @@ export const keepStartPage = (context: BrowserContext) => {
 };
 export const isStartPage = (page: Page) => startPages.has(page);
 
-class PreviewDisplayError extends Error {
-  override readonly name = "PreviewDisplayError";
-}
+class PreviewDisplayError extends Schema.TaggedError<PreviewDisplayError>()("PreviewDisplayError", {
+  message: Schema.String,
+}) {}
 
 /**
  * On Linux, each `env` call reads `enabled`. If true, it starts Xvfb when none is running and gives
@@ -127,9 +128,9 @@ export const make = Effect.fn("previewDisplay.make")(function* (
     );
     if (!/^\d+$/.test(display.trim())) {
       yield* Scope.close(child, Exit.void);
-      return yield* Effect.fail(
-        new PreviewDisplayError(`T3's browser display did not start.\n${output}`.trim()),
-      );
+      return yield* new PreviewDisplayError({
+        message: `T3's browser display did not start.\n${output}`.trim(),
+      });
     }
     return {
       env: { DISPLAY: `:${display.trim()}`, XAUTHORITY: authority },

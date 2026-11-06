@@ -23,6 +23,7 @@ import {
   type DpopFailureReason as DpopFailureReasonType,
   mcpClientScopes,
 } from "@t3tools/contracts";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import { isLocalLoopbackHost } from "@t3tools/shared/hostClassification";
 import { encodeOAuthScope } from "@t3tools/shared/oauthScope";
 import * as Context from "effect/Context";
@@ -730,7 +731,7 @@ export const make = Effect.gen(function* () {
   const config = yield* ServerConfig.ServerConfig;
   const managedPolicy = yield* ManagedPolicy.ManagedPolicy;
   const devAuth = resolveReusableDevAuth(config);
-  const unsafeNoAuth = process.env.T3CODE_UNSAFE_NO_AUTH === "1";
+  const unsafeNoAuth = (yield* HostProcess.Environment).T3CODE_UNSAFE_NO_AUTH === "1";
 
   const authenticateToken = (
     token: string,

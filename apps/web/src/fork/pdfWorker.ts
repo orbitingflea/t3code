@@ -13,17 +13,16 @@ export function getDocumentOnSharedWorker(params: Parameters<typeof getDocument>
   worker ??= new PDFWorker();
   open++;
   const task = getDocument({ ...params, worker });
+  const destroy = task.destroy.bind(task);
   let closed = false;
-  return {
-    promise: task.promise,
-    destroy() {
-      if (!closed && --open === 0)
-        idle = setTimeout(() => {
-          worker?.destroy();
-          worker = null;
-        }, IDLE_MS);
-      closed = true;
-      return task.destroy();
-    },
+  task.destroy = () => {
+    if (!closed && --open === 0)
+      idle = setTimeout(() => {
+        worker?.destroy();
+        worker = null;
+      }, IDLE_MS);
+    closed = true;
+    return destroy();
   };
+  return task;
 }

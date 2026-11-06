@@ -1,5 +1,6 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
+import * as HostProcess from "@t3tools/shared/HostProcess";
 import * as Effect from "effect/Effect";
 import * as Queue from "effect/Queue";
 import * as TestClock from "effect/testing/TestClock";
@@ -108,7 +109,7 @@ describe("claude usage event export", () => {
   it.live("keeps the URL and key for the export and out of processes the server starts", () =>
     Effect.gen(function* () {
       const environment: NodeJS.ProcessEnv = {
-        PATH: process.env.PATH,
+        PATH: (yield* HostProcess.Environment).PATH,
         T3CODE_CLAUDE_USAGE_EXPORT_URL: URL_,
         T3CODE_CLAUDE_USAGE_EXPORT_KEY: KEY,
       };
