@@ -4,14 +4,14 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeCrypto from "node:crypto";
 import * as NodeStreamConsumers from "node:stream/consumers";
 import { InMemorySyncStorage, TLSocketRoom, type RoomSnapshot } from "@tldraw/sync-core";
-import { createTLSchema, type TLRecord } from "@tldraw/tlschema";
+import type { TLRecord } from "@tldraw/tlschema";
 import { WebSocketServer } from "ws";
 import { config } from "./config.mjs";
 import { normalizeMath } from "../web/mathsplit";
 import { boardRoom } from "../web/room.mjs";
+import { boardSchema as schema } from "./schema";
 
 const PERSIST_INTERVAL_MS = 30_000;
-const schema = createTLSchema();
 type ActiveRoom = {
   room: TLSocketRoom<TLRecord, undefined>;
   storage: InMemorySyncStorage<TLRecord>;

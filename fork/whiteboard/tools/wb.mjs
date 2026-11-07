@@ -25,6 +25,7 @@ const usage = `usage:
            [--text "..."] [--size w,h | w] [--color C] [--fill F] [--dash D]
            [--weight s|m|l|xl] [--font draw|sans|serif|mono] [--rotate degrees]
            [--opacity 0..1] [--order front|back]
+  wb write [--room R] [--page P] [--id ID] --type mermaid --at x,y --text=SOURCE [--size w]
   wb delete [--room R] <id...>
   wb shot [x,y,w,h | board://r/x,y,w,h] [--page P] [--room R] [--out file] [--theme light|dark]
   wb read-raw [--room R]
@@ -262,6 +263,7 @@ function summarize(shape) {
   if (props.w !== undefined) item.w = props.w;
   if (props.h !== undefined) item.h = props.h;
   if (props.richText) item.text = plainText(props.richText);
+  if (shape.type === "mermaid") item.text = props.source;
   for (const key of ["color", "fill", "dash", "font"])
     if (props[key] !== undefined) item[key] = props[key];
   if (shape.type === "line" || shape.type === "arrow") {
@@ -382,6 +384,7 @@ function newShape(type, x, y) {
         elbowMidPoint: 0.5,
       },
     };
+  if (type === "mermaid") return { ...base, type: "mermaid", props: { source: "", w: 1, h: 1 } };
   return fail(`unknown --type ${type}`);
 }
 
@@ -404,6 +407,36 @@ function setEndpoints(shape, start, end) {
   points[0].y = 0;
   points.at(-1).x = relative.x;
   points.at(-1).y = relative.y;
+}
+
+// A mermaid shape takes its source from --text and its width from --size w; the height always
+// follows the diagram's aspect ratio, which only rendering the source in a browser reveals.
+async function editMermaid(shape, isNew) {
+  for (const flag of ["color", "fill", "dash", "weight", "font"])
+    if (flags[flag] !== undefined) fail(`--${flag} does not apply to a mermaid shape`);
+  if (isNew && flags.text === undefined)
+    fail('a mermaid shape needs its source: --text="$(cat chart.mmd)"');
+  let w = shape.props.w;
+  let aspect = { w: shape.props.w, h: shape.props.h };
+  if (flags.size !== undefined) {
+    w = Number(flags.size);
+    if (!Number.isFinite(w) || w <= 0)
+      fail(
+        "--size expects one width for a mermaid shape, for example --size 480; the height follows the diagram",
+      );
+  }
+  if (flags.text !== undefined) {
+    const drawn = await withPage(`${web}/mermaid.html`, async (page) => {
+      await page.waitForFunction(() => window.wbMermaid);
+      return page.evaluate((source) => window.wbMermaid(source), flags.text);
+    });
+    if (!drawn.ok) fail(`mermaid: ${drawn.error}`);
+    shape.props.source = flags.text;
+    aspect = drawn;
+    if (isNew && flags.size === undefined) w = drawn.w;
+  }
+  shape.props.w = w;
+  shape.props.h = (w * aspect.h) / aspect.w;
 }
 
 async function write() {
@@ -440,31 +473,34 @@ async function write() {
     shape.x = x;
     shape.y = y;
   }
-  if (flags.text !== undefined) shape.props.richText = richText(flags.text);
-  if (flags.size && shape.type === "text") {
-    // A fixed width makes the text wrap; tldraw otherwise sizes the box to its content.
-    const w = Number(flags.size);
-    if (!Number.isFinite(w) || w <= 0)
-      fail("--size expects one width for a text shape, for example --size 240");
-    shape.props.w = w;
-    shape.props.autoSize = false;
-  } else if (flags.size) {
-    if (!("w" in shape.props) || !("h" in shape.props))
-      fail(`--size does not apply to a ${shape.type} shape`);
-    const [w, h] = point(flags.size, "size");
-    shape.props.w = w;
-    shape.props.h = h;
-  }
-  for (const [flag, key] of [
-    ["color", "color"],
-    ["fill", "fill"],
-    ["dash", "dash"],
-    ["weight", "size"],
-    ["font", "font"],
-  ]) {
-    if (flags[flag] === undefined) continue;
-    if (!(key in shape.props)) fail(`--${flag} does not apply to a ${shape.type} shape`);
-    shape.props[key] = flags[flag];
+  if (shape.type === "mermaid") await editMermaid(shape, !flags.id);
+  else {
+    if (flags.text !== undefined) shape.props.richText = richText(flags.text);
+    if (flags.size && shape.type === "text") {
+      // A fixed width makes the text wrap; tldraw otherwise sizes the box to its content.
+      const w = Number(flags.size);
+      if (!Number.isFinite(w) || w <= 0)
+        fail("--size expects one width for a text shape, for example --size 240");
+      shape.props.w = w;
+      shape.props.autoSize = false;
+    } else if (flags.size) {
+      if (!("w" in shape.props) || !("h" in shape.props))
+        fail(`--size does not apply to a ${shape.type} shape`);
+      const [w, h] = point(flags.size, "size");
+      shape.props.w = w;
+      shape.props.h = h;
+    }
+    for (const [flag, key] of [
+      ["color", "color"],
+      ["fill", "fill"],
+      ["dash", "dash"],
+      ["weight", "size"],
+      ["font", "font"],
+    ]) {
+      if (flags[flag] === undefined) continue;
+      if (!(key in shape.props)) fail(`--${flag} does not apply to a ${shape.type} shape`);
+      shape.props[key] = flags[flag];
+    }
   }
   if (flags.opacity !== undefined) shape.opacity = Number(flags.opacity);
   // Fractional indices order shapes on the page; step past the current extreme to restack.
@@ -510,15 +546,9 @@ async function pages() {
   }));
 }
 
-async function shot() {
-  const theme = flags.theme ?? "dark";
-  if (theme !== "light" && theme !== "dark") fail("--theme expects light or dark");
+// Opens url in headless Chrome, runs fn on the page, and closes the browser.
+async function withPage(url, fn) {
   const { chromium } = await import("playwright-core");
-  const out = flags.out ?? `${NodeOS.tmpdir()}/wb-shot-${Date.now()}.png`;
-  const arg = positionals[1];
-  const box = arg && region(arg);
-  const pageId = pageOf(await loadBoard(), box?.page ?? flags.page).id;
-  const request = box ? `${box.x},${box.y},${box.w},${box.h}` : "fit";
   const browser = await chromium.launch({
     executablePath: "/opt/google/chrome/chrome",
     headless: true,
@@ -526,15 +556,29 @@ async function shot() {
   });
   try {
     const page = await browser.newPage();
-    await page.goto(
-      `${web}/?room=${room}&export=${request}&page=${encodeURIComponent(pageId)}&theme=${theme}`,
-    );
-    await page.waitForFunction(() => window.wbExport);
-    const dataUrl = await page.evaluate(() => window.wbExport);
-    NodeFS.writeFileSync(out, Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
+    await page.goto(url);
+    return await fn(page);
   } finally {
     await browser.close();
   }
+}
+
+async function shot() {
+  const theme = flags.theme ?? "dark";
+  if (theme !== "light" && theme !== "dark") fail("--theme expects light or dark");
+  const out = flags.out ?? `${NodeOS.tmpdir()}/wb-shot-${Date.now()}.png`;
+  const arg = positionals[1];
+  const box = arg && region(arg);
+  const pageId = pageOf(await loadBoard(), box?.page ?? flags.page).id;
+  const request = box ? `${box.x},${box.y},${box.w},${box.h}` : "fit";
+  const dataUrl = await withPage(
+    `${web}/?room=${room}&export=${request}&page=${encodeURIComponent(pageId)}&theme=${theme}`,
+    async (page) => {
+      await page.waitForFunction(() => window.wbExport);
+      return page.evaluate(() => window.wbExport);
+    },
+  );
+  NodeFS.writeFileSync(out, Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
   return { file: out };
 }
 

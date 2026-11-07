@@ -16,7 +16,7 @@ Prints one entry per page in page-menu order: `{page, id, name, shapes}`. `page`
 wb read [x,y,w,h | board://r/x,y,w,h] [--page P]
 ```
 
-Prints one entry per shape: `{id, type, x, y, w, h, text, rotation, opacity, weight, color, fill, dash, font, page}`. `page` is the name of the page the shape is on. Lines and arrows also carry `start` and `end` points in the same coordinates as `x` and `y`. `rotation` is in degrees. Fields that do not apply to a shape are omitted.
+Prints one entry per shape: `{id, type, x, y, w, h, text, rotation, opacity, weight, color, fill, dash, font, page}`. `page` is the name of the page the shape is on. The `text` of a `mermaid` shape is its Mermaid source. Lines and arrows also carry `start` and `end` points in the same coordinates as `x` and `y`. `rotation` is in degrees. Fields that do not apply to a shape are omitted.
 
 Without a region or `--page`, the command prints the shapes of every page. With a region, it prints every shape on the region's page whose bounding box overlaps the region. A region's page is the one its board link names, else `--page`, else the first page. The box of a text shape is an estimate, because its height is not stored.
 
@@ -31,10 +31,11 @@ wb write [--page P] [--id ID] [--type text|rect|ellipse|line|arrow|note] --at x,
          [--text "..."] [--size w,h] [--color C] [--fill F] [--dash D]
          [--weight s|m|l|xl] [--font draw|sans|serif|mono] [--rotate degrees]
          [--opacity 0..1] [--order front|back]
+wb write [--page P] [--id ID] --type mermaid --at x,y --text=SOURCE [--size w]
 ```
 
 - `--at` is the top-left corner, or the start point of a line or arrow. A new shape requires it.
-- `--type` defaults to `text`.
+- `--type` defaults to `text`. `mermaid` draws a Mermaid diagram; see [Mermaid diagrams](#mermaid-diagrams) below.
 - `--page` puts a new shape on that page; the default is the first page. With `--id`, it moves the shape to that page.
 - `--size w,h` sets the width and height of a `rect` or `ellipse`. `--size w` sets the width of a `text` shape, and the text wraps at that width. `--to` sets the end point of a `line` or `arrow`.
 - `--text` is the body of a `text` or `note` shape, or the label of a `rect`, `ellipse`, or `arrow`. `$...$` spans render as mathematics. Each newline starts a new line. A run of lines that begin with `- ` becomes one bulleted list.
@@ -58,6 +59,24 @@ With `--id`, the command edits that shape. It changes only the options named on 
 
 ```bash
 wb write --id shape:wb-abc123 --color orange
+```
+
+### Mermaid diagrams
+
+A `mermaid` shape stores Mermaid source and shows the diagram as one picture, in the board's light or dark theme. Any diagram type Mermaid supports works: flowchart, sequence, state, class, and more.
+
+- `--text` is the Mermaid source. A new `mermaid` shape requires it. Write it as `--text="$(cat chart.mmd)"`, with `=`, because a source can start with `---`, which `wb` would otherwise read as an option.
+- Before it writes, `wb` draws the source. When Mermaid rejects the source, the command exits 1 with Mermaid's message and writes nothing.
+- The diagram's own size sets the box. `--size w` sets the width instead; the height always follows the diagram's aspect ratio, so `--size` takes one number.
+- With `--id`, `--text` replaces the diagram and keeps the width, and `--size w` rescales it.
+- The board picks the diagram's colors and fonts. A theme, font, or label setting in the source, such as an `%%{init}%%` line, has no effect.
+- `--color`, `--fill`, `--dash`, `--weight`, and `--font` do not apply.
+
+```bash
+wb write --type mermaid --at 120,600 --text="$(cat states.mmd)"
+wb write --type mermaid --at 120,1200 --size 480 --text="$(cat flow.mmd)"
+wb write --id shape:wb-abc123 --text="$(cat states.mmd)"
+wb write --id shape:wb-abc123 --size 600
 ```
 
 ## `wb delete`

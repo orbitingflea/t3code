@@ -2,7 +2,7 @@
 
 This is a fork of T3 Code that integrates a few additional features, including:
 
-- **Whiteboard:** A tldraw whiteboard that sits side-by-side with T3 Code, allowing users to interact with agents (or other users) by editing and pointing to the whiteboard. Both the user and the agents can conveniently write links that point to a rectangular region on the whiteboard.
+- **Whiteboard:** A tldraw whiteboard that sits side-by-side with T3 Code, allowing users to interact with agents (or other users) by editing and pointing to the whiteboard. Both the user and the agents can conveniently write links that point to a rectangular region on the whiteboard. Agents can also draw Mermaid diagrams on it, such as flowcharts and statecharts.
 - **Better support for manually switching accounts mid-session:**
   - After hitting the usage limit of an account, the thread now retries after 2 minutes and 30 minutes in addition to the default retry behavior of T3 Code. This allows the thread to recover earlier if the user manually switches the account.
   - New Codex/Antigravity logins are picked up mid-session without a full restart.

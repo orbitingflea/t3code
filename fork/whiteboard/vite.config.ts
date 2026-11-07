@@ -1,4 +1,5 @@
 // Exposes the Vite development and build configuration for the web client.
+import * as NodeURL from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { config } from "./server/config.mjs";
@@ -26,6 +27,14 @@ export default defineConfig({
   plugins: [react(), disableHmrTransport],
   resolve: { dedupe: ["prosemirror-state"] },
   define: { __OPEN_VIEWS__: JSON.stringify(config.openViews) },
+  build: {
+    rollupOptions: {
+      input: {
+        main: NodeURL.fileURLToPath(new URL("index.html", import.meta.url)),
+        mermaid: NodeURL.fileURLToPath(new URL("mermaid.html", import.meta.url)),
+      },
+    },
+  },
   server: {
     hmr: false,
     port: config.webPort,
