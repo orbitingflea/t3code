@@ -1,3 +1,4 @@
+import { blankCjkPunctuation } from "./fork/cjkLinkEnd";
 import { isMacPlatform } from "./lib/utils";
 
 export type TerminalLinkKind = "url" | "path";
@@ -115,16 +116,17 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
   const promptMatches: TerminalLinkMatch[] = promptPath
     ? [{ kind: "path", text: promptPath, start: 3, end: 3 + promptPath.length }]
     : [];
+  const prose = blankCjkPunctuation(line);
   const nonPathRanges = Array.from(
-    [...line.matchAll(REQUEST_ROUTE_PATTERN), ...line.matchAll(SCHEME_URL_PATTERN)],
+    [...prose.matchAll(REQUEST_ROUTE_PATTERN), ...prose.matchAll(SCHEME_URL_PATTERN)],
     (match) => ({ start: match.index, end: match.index + match[0].length }),
   );
-  const urlMatches = collectMatches(line, "url", URL_PATTERN, promptMatches);
+  const urlMatches = collectMatches(prose, "url", URL_PATTERN, promptMatches);
   const quotedMatches = collectMatches(line, "path", QUOTED_FILE_PATH_PATTERN, [
     ...promptMatches,
     ...urlMatches,
   ]);
-  const pathMatches = collectMatches(line, "path", FILE_PATH_PATTERN, [
+  const pathMatches = collectMatches(prose, "path", FILE_PATH_PATTERN, [
     ...promptMatches,
     ...urlMatches,
     ...quotedMatches,
