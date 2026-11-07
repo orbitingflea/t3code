@@ -32,7 +32,7 @@ const wrap = (events: ReadonlyArray<DisplayEvent>, text: string) =>
 const wrapped = (lines: ReadonlyArray<string>, text: string) =>
   [
     "<t3-messages-mode>",
-    "This message is from the user. Other things happened in this thread since your last message to them, or since the thread began if you sent none. The user's screen showed:",
+    "This message is from the user. Before it, their screen showed:",
     ...lines,
     "</t3-messages-mode>",
     text,
@@ -215,13 +215,16 @@ describe("visibleCores", () => {
 });
 
 describe("Messages only wrap", () => {
-  it("sends a direct reply unchanged", () => {
-    expect(wrap([user("A"), other, sent("B")], "C")).toBe("C");
-    expect(wrap([], "First")).toBe("First");
+  it("recaps the screen before a direct reply too", () => {
+    expect(wrap([user("A"), other, sent("B")], "C")).toBe(wrapped(["[user] A", "[you] B"], "C"));
+    expect(wrap([user("A"), other, sent("B"), user("C")], "D")).toBe(
+      wrapped(["[user] A", "[you] B", "[user] C"], "D"),
+    );
   });
 
-  it("treats the user's own messages after the last sent message as a direct reply", () => {
-    expect(wrap([user("A"), other, sent("B"), user("C")], "D")).toBe("D");
+  it("sends the text unchanged when the screen showed nothing before it", () => {
+    expect(wrap([], "First")).toBe("First");
+    expect(wrap([other, other], "First")).toBe("First");
   });
 
   const fromItem = (fields: Record<string, unknown>) => displayEventFromTurnItem(item(fields))!;
@@ -304,7 +307,7 @@ describe("Messages only wrap", () => {
     expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!(events, "C")).toBe(
       wrapped(["[user] A", "[you] B"], "C"),
     );
-    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!([user("A"), sent("B")], "C")).toBe("C");
+    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!([], "C")).toBe("C");
   });
 
   it("uses a tag that user-view's <x-mode> pattern strips", () => {

@@ -54,8 +54,8 @@ export interface DisplayMode {
   readonly visibleCores: ((events: ReadonlyArray<DisplayEvent>) => VisibleCore[]) | null;
   /**
    * Returns the text that the agent gets for a user's message after `events`. Null sends it unchanged.
-   * `events` may leave out events, as long as it keeps their order, the latest WRAPPED_CORE_COUNT
-   * `user` and `sent` events, and the latest event that is not `user`.
+   * `events` may leave out events, as long as it keeps their order and the latest
+   * WRAPPED_CORE_COUNT `user` and `sent` events.
    */
   readonly wrap: ((events: ReadonlyArray<DisplayEvent>, text: string) => string) | null;
   /** Whether the thread has a Dashboard that the user sees and the agent writes. */
@@ -100,15 +100,13 @@ export const NORMAL_DISPLAY_MODE: DisplayMode = {
 };
 
 function messagesOnlyWrap(events: ReadonlyArray<DisplayEvent>, text: string): string {
-  // The block marks a message when the agent's transcript holds something the user did not see:
-  // anything but the user's own messages since the agent's last sent message, or since the thread
-  // began if it sent none.
-  const last = events.findLast((event) => event.type !== "user");
-  if (last === undefined || last.type === "sent") return text;
+  // Every message recaps the latest shown messages, so the agent always knows what the user saw,
+  // whatever else entered its transcript. A message with nothing shown before it has no recap.
   const shown = messagesOnlyCores(events).slice(-WRAPPED_CORE_COUNT);
+  if (shown.length === 0) return text;
   return [
     "<t3-messages-mode>",
-    "This message is from the user. Other things happened in this thread since your last message to them, or since the thread began if you sent none. The user's screen showed:",
+    "This message is from the user. Before it, their screen showed:",
     ...shown.map(
       (core) =>
         `[${core.from === "user" ? "user" : "you"}] ${truncateUtf8(core.text, WRAPPED_CORE_MAX_BYTES)}`,

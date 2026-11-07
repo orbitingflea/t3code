@@ -33,7 +33,7 @@ import { layerNoProviders } from "./DisplayModeWrap.testkit.ts";
 const wrappedPrompt = (earlier: string, text: string) =>
   [
     "<t3-messages-mode>",
-    "This message is from the user. Other things happened in this thread since your last message to them, or since the thread began if you sent none. The user's screen showed:",
+    "This message is from the user. Before it, their screen showed:",
     `[user] ${earlier}`,
     "</t3-messages-mode>",
     text,

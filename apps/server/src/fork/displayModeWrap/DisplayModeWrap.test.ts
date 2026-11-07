@@ -257,7 +257,7 @@ const sessions = Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
 const recap = (lines: ReadonlyArray<string>, text: string) =>
   [
     "<t3-messages-mode>",
-    "This message is from the user. Other things happened in this thread since your last message to them, or since the thread began if you sent none. The user's screen showed:",
+    "This message is from the user. Before it, their screen showed:",
     ...lines,
     "</t3-messages-mode>",
     text,
@@ -570,7 +570,10 @@ it.effect("reads past thousands of tool calls for the decision and the listed me
       yield* busy.wrapAt(commandCount + 5, "Any news?"),
       told(recap(["[you] On it.", "[user] Keep going.", "[you] Halfway there."], "Any news?")),
     );
-    assert.strictEqual(yield* done.wrapAt(commandCount + 3, "Thanks"), told("Thanks"));
+    assert.strictEqual(
+      yield* done.wrapAt(commandCount + 3, "Thanks"),
+      told(recap(["[user] Fix the build.", "[you] All done."], "Thanks")),
+    );
   }).pipe(Effect.provide(Layer.merge(store, wrapper))),
 );
 

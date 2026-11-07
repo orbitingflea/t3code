@@ -221,13 +221,10 @@ export const layer: Layer.Layer<
         records = source;
       }
 
-      // Until the latest event that is not the user's, every row counts. After it, only user
-      // messages and send_to_user calls can still be listed, so the query steps over other rows.
+      // The recap lists only user messages and send_to_user calls, so the query steps over other rows.
       const shownOnly = sql`(item.type = 'user_message' OR (item.type = 'dynamic_tool'
         AND item.payload_json LIKE ${SEND_TO_USER_PAYLOAD_LIKE}))`;
       const found: DisplayEvent[] = [];
-      let decided = false;
-      let shown = 0;
       for (const segment of segments) {
         let { ordinal, itemId } = segment.before;
         while (true) {
@@ -240,7 +237,7 @@ export const layer: Layer.Layer<
             FROM orchestration_v2_projection_turn_items AS item
             WHERE item.thread_id = ${segment.threadId}
               AND item.ordinal <= ${ordinal} AND (item.ordinal < ${ordinal} OR item.turn_item_id < ${itemId})
-              AND ${decided ? shownOnly : sql`1 = 1`}
+              AND ${shownOnly}
             ORDER BY item.ordinal DESC, item.turn_item_id DESC
             LIMIT ${PAGE_ROWS}
           `;
@@ -248,11 +245,9 @@ export const layer: Layer.Layer<
             const item = yield* decodeTurnItem(row.payload_json);
             if (!segment.shows(item)) continue;
             const event = displayEventFromTurnItem(item);
-            if (event === null || (decided && event.type === "other")) continue;
+            if (event === null || event.type === "other") continue;
             found.push(event);
-            if (event.type !== "other") shown += 1;
-            if (event.type !== "user") decided = true;
-            if (decided && shown >= WRAPPED_CORE_COUNT) return found.reverse();
+            if (found.length >= WRAPPED_CORE_COUNT) return found.reverse();
           }
           const last = rows.at(-1);
           if (last === undefined || rows.length < PAGE_ROWS) break;
