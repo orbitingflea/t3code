@@ -199,11 +199,30 @@ const endpoints = (shape) =>
     ? [shape.props.start, shape.props.end]
     : [linePoints(shape)[0], linePoints(shape).at(-1)];
 
-// Endpoints are stored in the shape's own frame, which its rotation turns about the shape origin.
-const toPage = (shape, point) => ({
-  x: shape.x + point.x * Math.cos(shape.rotation) - point.y * Math.sin(shape.rotation),
-  y: shape.y + point.x * Math.sin(shape.rotation) + point.y * Math.cos(shape.rotation),
+// Maps a point in a shape's own frame to the page, given the shape's page transform; the rotation
+// turns about the shape origin.
+const toPage = (transform, point) => ({
+  x: transform.x + point.x * Math.cos(transform.rotation) - point.y * Math.sin(transform.rotation),
+  y: transform.y + point.x * Math.sin(transform.rotation) + point.y * Math.cos(transform.rotation),
 });
+
+// A shape's x, y and rotation are relative to its parent, a page or a group or frame shape.
+// wb reads and writes page coordinates, so it composes the parent chain up to the page.
+function parentTransform(byId, shape) {
+  const parent = byId.get(shape.parentId);
+  return parent?.typeName === "shape" ? pageTransform(byId, parent) : { x: 0, y: 0, rotation: 0 };
+}
+function pageTransform(byId, shape) {
+  const outer = parentTransform(byId, shape);
+  return { ...toPage(outer, shape), rotation: outer.rotation + shape.rotation };
+}
+// Stores a page transform in the shape's own x, y and rotation, relative to its parent.
+function place(byId, shape, transform) {
+  const outer = parentTransform(byId, shape);
+  const offset = { x: transform.x - outer.x, y: transform.y - outer.y };
+  Object.assign(shape, toPage({ x: 0, y: 0, rotation: -outer.rotation }, offset));
+  shape.rotation = transform.rotation - outer.rotation;
+}
 
 const FONT_PX = { s: 18, m: 24, l: 36, xl: 44 }; // tldraw's FONT_SIZES (em) x 16
 
@@ -238,27 +257,37 @@ function localBounds(shape) {
   return { x: 0, y: 0, w: 0, h: 0 };
 }
 
-// Axis-aligned page-space box: rotate the local box's corners about the shape origin, then re-bound.
-function pageBounds(shape) {
+// Axis-aligned page-space box: map the local box's corners to the page, then re-bound. A group has
+// no size of its own; its box is the union of its children's boxes.
+function pageBounds(byId, shape) {
+  if (shape.type === "group")
+    return boxOf(
+      [...byId.values()]
+        .filter((record) => record.parentId === shape.id)
+        .map((child) => pageBounds(byId, child))
+        .flatMap((b) => [b, { x: b.x + b.w, y: b.y + b.h }]),
+    );
   const b = localBounds(shape);
+  const transform = pageTransform(byId, shape);
   const corners = [
     [b.x, b.y],
     [b.x + b.w, b.y],
     [b.x, b.y + b.h],
     [b.x + b.w, b.y + b.h],
-  ].map(([x, y]) => toPage(shape, { x, y }));
+  ].map(([x, y]) => toPage(transform, { x, y }));
   return boxOf(corners);
 }
 
-function summarize(shape) {
+function summarize(byId, shape) {
   const props = shape.props;
+  const transform = pageTransform(byId, shape);
   const item = {
     id: shape.id,
     type: shape.type === "geo" ? (props.geo === "rectangle" ? "rect" : props.geo) : shape.type,
-    x: shape.x,
-    y: shape.y,
+    x: transform.x,
+    y: transform.y,
   };
-  item.rotation = +((shape.rotation * 180) / Math.PI).toFixed(3);
+  item.rotation = +((transform.rotation * 180) / Math.PI).toFixed(3);
   item.opacity = shape.opacity;
   if (props.size !== undefined) item.weight = props.size;
   if (props.w !== undefined) item.w = props.w;
@@ -268,7 +297,7 @@ function summarize(shape) {
   for (const key of ["color", "fill", "dash", "font"])
     if (props[key] !== undefined) item[key] = props[key];
   if (shape.type === "line" || shape.type === "arrow") {
-    const [start, end] = endpoints(shape).map((p) => toPage(shape, p));
+    const [start, end] = endpoints(shape).map((p) => toPage(transform, p));
     item.start = start;
     item.end = end;
   }
@@ -389,13 +418,13 @@ function newShape(type, x, y) {
   return fail(`unknown --type ${type}`);
 }
 
-// Rewrites a line or arrow so its endpoints sit at the given absolute page points.
-function setEndpoints(shape, start, end) {
-  shape.x = start.x;
-  shape.y = start.y;
+// Rewrites a line or arrow and its page transform so its endpoints sit at the given page points.
+function setEndpoints(shape, transform, start, end) {
+  transform.x = start.x;
+  transform.y = start.y;
   // Turning the page-space end vector by the negated rotation puts it back into the shape's frame.
   const relative = toPage(
-    { x: 0, y: 0, rotation: -shape.rotation },
+    { x: 0, y: 0, rotation: -transform.rotation },
     { x: end.x - start.x, y: end.y - start.y },
   );
   if (shape.type === "arrow") {
@@ -442,6 +471,7 @@ async function editMermaid(shape, isNew) {
 
 async function write() {
   const board = await loadBoard();
+  const byId = new Map(board.map((record) => [record.id, record]));
   let shape;
   if (flags.id) {
     if (flags.type) fail("--type cannot be changed on an existing shape");
@@ -453,11 +483,12 @@ async function write() {
     const [x, y] = point(flags.at, "at");
     shape = newShape(flags.type ?? "text", x, y);
   }
+  const transform = pageTransform(byId, shape);
   if (!flags.id || flags.page !== undefined) shape.parentId = pageOf(board, flags.page).id;
-  if (flags.rotate !== undefined) shape.rotation = (Number(flags.rotate) * Math.PI) / 180;
+  if (flags.rotate !== undefined) transform.rotation = (Number(flags.rotate) * Math.PI) / 180;
   const isSegment = shape.type === "line" || shape.type === "arrow";
   if (isSegment && (flags.at || flags.to)) {
-    const [start, end] = endpoints(shape).map((p) => toPage(shape, p));
+    const [start, end] = endpoints(shape).map((p) => toPage(transform, p));
     if (flags.at) {
       const [x, y] = point(flags.at, "at");
       start.x = x;
@@ -468,12 +499,13 @@ async function write() {
       end.x = x;
       end.y = y;
     }
-    setEndpoints(shape, start, end);
+    setEndpoints(shape, transform, start, end);
   } else if (flags.id && flags.at) {
     const [x, y] = point(flags.at, "at");
-    shape.x = x;
-    shape.y = y;
+    transform.x = x;
+    transform.y = y;
   }
+  place(byId, shape, transform);
   if (shape.type === "mermaid") await editMermaid(shape, !flags.id);
   else {
     if (flags.text !== undefined) shape.props.richText = richText(flags.text);
@@ -514,8 +546,10 @@ async function write() {
   else if (flags.order === "back") shape.index = getIndexBelow(indexes[0]);
   else if (flags.order) fail("--order expects front or back");
   await editBoard([shape], []);
-  const stored = (await loadBoard()).find((record) => record.id === shape.id);
-  return { id: stored.id, x: stored.x, y: stored.y, w: stored.props.w, h: stored.props.h };
+  const after = new Map((await loadBoard()).map((record) => [record.id, record]));
+  const stored = after.get(shape.id);
+  const at = pageTransform(after, stored);
+  return { id: stored.id, x: at.x, y: at.y, w: stored.props.w, h: stored.props.h };
 }
 
 async function read() {
@@ -530,10 +564,10 @@ async function read() {
       const on = pageIdOf(byId, shape);
       if (!on || (page && on !== page)) return false;
       if (!r) return true;
-      const a = pageBounds(shape);
+      const a = pageBounds(byId, shape);
       return a.x <= r.x + r.w && a.x + a.w >= r.x && a.y <= r.y + r.h && a.y + a.h >= r.y;
     })
-    .map((shape) => ({ ...summarize(shape), page: byId.get(pageIdOf(byId, shape)).name }));
+    .map((shape) => ({ ...summarize(byId, shape), page: byId.get(pageIdOf(byId, shape)).name }));
 }
 
 async function pages() {
