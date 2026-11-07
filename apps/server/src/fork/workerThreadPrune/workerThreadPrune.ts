@@ -31,6 +31,7 @@ export type WorkerContentRows = Readonly<Record<WorkerContentTable, number>>;
 const RECOVERY_KINDS = Object.keys({
   "queued-runs": true,
   runtime: true,
+  "restart-continuations": true,
   "subagent-results": true,
   "delegated-completions": true,
 } satisfies Record<
