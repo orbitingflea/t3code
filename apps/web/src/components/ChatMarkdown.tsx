@@ -90,6 +90,7 @@ import type {
 } from "react-markdown";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { postWhiteboardHover, remarkWhiteboardLinks } from "../fork/whiteboard/markdown-whiteboard";
+import { remarkEndLinksAtCjkPunctuation } from "../fork/cjkLinkEnd";
 import type { Pluggable, PluggableList } from "unified";
 import { defaultUrlTransform } from "react-markdown";
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
@@ -1663,12 +1664,13 @@ const CHAT_MARKDOWN_COMPONENTS = {
 } satisfies Components;
 
 const REMARK_MATH: Pluggable = [remarkMath, { singleDollarTextMath: true }];
+const FORK_REMARK_PLUGINS = [remarkWhiteboardLinks, remarkEndLinksAtCjkPunctuation];
 // Shared lists, so every message with the same options shares a processor and its cache.
 const CHAT_MARKDOWN_REMARK_PLUGIN_SETS = {
-  plain: [...CHAT_MARKDOWN_REMARK_PLUGINS, remarkWhiteboardLinks],
-  breaks: [...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, remarkWhiteboardLinks],
-  math: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS, remarkWhiteboardLinks],
-  mathBreaks: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, remarkWhiteboardLinks],
+  plain: [...CHAT_MARKDOWN_REMARK_PLUGINS, ...FORK_REMARK_PLUGINS],
+  breaks: [...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, ...FORK_REMARK_PLUGINS],
+  math: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS, ...FORK_REMARK_PLUGINS],
+  mathBreaks: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, ...FORK_REMARK_PLUGINS],
 } satisfies Record<string, PluggableList>;
 
 const combinedPlugins = new WeakMap<PluggableList, WeakMap<PluggableList, PluggableList>>();
