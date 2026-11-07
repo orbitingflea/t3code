@@ -2,12 +2,12 @@
 
 The raw commands read and write tldraw records directly.
 
-```
+```text
 wb read-raw
 wb write-raw   # reads {"puts": [...], "deletes": [...]} from stdin
 ```
 
-`read-raw` prints every stored record in the room, including the document and page records. Shapes are the records whose `typeName` is `"shape"`.
+`read-raw` prints every stored record in the room, including the document and page records. Shapes are the records whose `typeName` is `"shape"`. A shape inside a group or frame stores `x`, `y`, and `rotation` relative to that container, while `wb read` prints them on the page.
 
 `write-raw` reads `puts` and `deletes` from stdin. Each entry of `puts` is a complete tldraw record. Each entry of `deletes` is a record id. The server validates every put, then applies the batch atomically. If any put fails validation, `wb` prints tldraw's error on stderr and exits 1, and the room is unchanged.
 

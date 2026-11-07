@@ -16,9 +16,9 @@ Prints one entry per page in page-menu order: `{page, id, name, shapes}`. `page`
 wb read [x,y,w,h | board://r/x,y,w,h] [--page P]
 ```
 
-Prints one entry per shape: `{id, type, x, y, w, h, text, rotation, opacity, weight, color, fill, dash, font, page}`. `page` is the name of the page the shape is on. The `text` of a `mermaid` shape is its Mermaid source. Lines and arrows also carry `start` and `end` points in the same coordinates as `x` and `y`. `rotation` is in degrees. Fields that do not apply to a shape are omitted.
+Prints one entry per shape: `{id, type, x, y, w, h, text, rotation, opacity, weight, color, fill, dash, font, page}`. `page` is the name of the page the shape is on. The `text` of a `mermaid` shape is its Mermaid source. Lines and arrows also carry `start` and `end` points in the same coordinates as `x` and `y`. `rotation` is in degrees. For a shape inside a group or frame, `x`, `y`, `rotation`, `start`, and `end` are page values, not relative to the container, and `wb write` takes them the same way. Fields that do not apply to a shape are omitted.
 
-Without a region or `--page`, the command prints the shapes of every page. With a region, it prints every shape on the region's page whose bounding box overlaps the region. A region's page is the one its board link names, else `--page`, else the first page. The box of a text shape is an estimate, because its height is not stored.
+Without a region or `--page`, the command prints the shapes of every page. With a region, it prints every shape on the region's page whose bounding box overlaps the region. A region's page is the one its board link names, else `--page`, else the first page. The box of a text shape is an estimate, because its height is not stored. The box of a group covers the shapes inside it.
 
 ```bash
 wb read 'board://r/120,80,300,180'
