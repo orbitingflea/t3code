@@ -31,6 +31,7 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
@@ -161,6 +162,7 @@ export const layer: Layer.Layer<
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
+    const displayModeWrap = yield* DisplayModeWrap.orUnchanged;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
 
     const resolveRecreateBase = Effect.fn("ProviderTurnStartService.resolveRecreateBase")(
@@ -837,10 +839,16 @@ export const layer: Layer.Layer<
       });
       let effectiveHandoffs = handoffs;
       let resumeFellBack = false;
-      const userText = projectComposerContextForProvider({
-        text: message.text,
-        records: message.context?.records ?? [],
-      });
+      const wrapInput = {
+        threadId: run.threadId,
+        message,
+        text: projectComposerContextForProvider({
+          text: message.text,
+          records: message.context?.records ?? [],
+        }),
+      };
+      let wrapped = yield* displayModeWrap.wrapUserText(wrapInput);
+      let userText = wrapped.text;
       // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
       const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
       const goalCommand = goalDriver && parseGoalCommand(message) !== null;
@@ -1421,6 +1429,16 @@ export const layer: Layer.Layer<
         legacyInputRunIds,
         budget,
       } = handoffContext;
+      const noteContext = DisplayModeWrap.noteContextAtTurnStart({
+        sameNativeThread,
+        handoffCount: effectiveHandoffs.length,
+        nativeFork: nativeForkTransfer,
+        portableForkFallback,
+      });
+      if (noteContext !== undefined) {
+        wrapped = yield* displayModeWrap.wrapUserText({ ...wrapInput, context: noteContext });
+        userText = wrapped.text;
+      }
       const retryHandoff = resumedRetryHandoff ?? (yield* prepareRetryHandoff(handoffContext));
       const runningProviderThread: OrchestrationV2ProviderThread = {
         ...loadedProviderThread,
@@ -1574,6 +1592,7 @@ export const layer: Layer.Layer<
           ],
         });
       });
+      const acceptingSession = DisplayModeWrap.deliveringNote(session, wrapped);
       const startWithHandoffs = Effect.fn("ProviderTurnStartService.startWithHandoffs")(
         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
           const delivery = yield* deliverContextHandoffs({
@@ -1594,7 +1613,7 @@ export const layer: Layer.Layer<
             persist: persistHandoff,
           });
           if (!(yield* isCurrentAttemptInStatus("running"))) return;
-          const start = compact ? session.compactThread! : session.startTurn;
+          const start = compact ? session.compactThread! : acceptingSession.startTurn;
           // Like history, the side chat context waits for a turn that sends a prompt.
           const sideChatContext =
             sideChatHandoff === undefined || compact || goalCommand
@@ -1669,8 +1688,8 @@ export const layer: Layer.Layer<
         sideChatHandoff === undefined &&
         restartNote === "" &&
         !noteContinuation
-          ? session
-          : makeDeliverySession(session, startWithHandoffs);
+          ? acceptingSession
+          : makeDeliverySession(acceptingSession, startWithHandoffs);
       return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,

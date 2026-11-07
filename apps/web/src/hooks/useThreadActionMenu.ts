@@ -46,6 +46,10 @@ import { threadRuntimeCanArchive } from "@t3tools/client-runtime/state/models";
 import { useCopyToClipboard } from "./useCopyToClipboard";
 import { useNewThreadHandler } from "./useHandleNewThread";
 import { useClientSettings } from "./useSettings";
+import {
+  displayModeMenuItems,
+  useDisplayModeMenuAction,
+} from "../fork/displayMode/useThreadDisplayMode";
 import { canTurnThreadIntoProject, useThreadActions } from "./useThreadActions";
 
 function failureToast(title: string, error: unknown) {
@@ -91,6 +95,7 @@ export function useThreadActionMenu(input: {
   const updateThreadMetadata = useOrchestrationCommand(threadEnvironment.updateMetadata, {
     reportFailure: false,
   });
+  const handleDisplayModeAction = useDisplayModeMenuAction();
   const handleNewThread = useNewThreadHandler();
   const confirmThreadDelete = useClientSettings((s) => s.confirmThreadDelete);
   const confirmThreadArchive = useClientSettings((s) => s.confirmThreadArchive);
@@ -149,6 +154,7 @@ export function useThreadActionMenu(input: {
         snoozePresets,
         canShareWithGuest,
         canTurnIntoProject: canTurnThreadIntoProject(threadRef),
+        displayModeItems: displayModeMenuItems(threadRef),
       });
       const clicked = await settlePromise(() => api.contextMenu.show(items, position));
       if (clicked._tag === "Failure" || clicked.value === null) return;
@@ -189,6 +195,7 @@ export function useThreadActionMenu(input: {
           failureToast(title, squashAtomCommandFailure(result));
         }
       };
+      if (await handleDisplayModeAction(threadRef, action)) return;
       switch (action) {
         case "find":
           onFind?.(threadRef);

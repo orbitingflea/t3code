@@ -94,6 +94,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
+import { SEND_TO_USER_PAYLOAD_LIKE } from "@t3tools/shared/displayModes";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import {
   isThreadHistoryUserTurn,
@@ -1378,7 +1379,7 @@ function makeForkMarkerTurnItem(input: {
   };
 }
 
-function isTurnItemAtOrBeforeRun(input: {
+export function isTurnItemAtOrBeforeRun(input: {
   readonly historyOrigin: OrchestrationV2ThreadProjection["thread"]["historyOrigin"];
   readonly itemRunId: OrchestrationV2TurnItem["runId"];
   readonly runOrdinalById: ReadonlyMap<NonNullable<OrchestrationV2TurnItem["runId"]>, number>;
@@ -1435,7 +1436,7 @@ function visibleTurnItemsThroughRun(input: {
 }
 
 // Side chats show only their own rows; the fork transfer carries the parent's context to the model.
-function inheritedRunFork(thread: Pick<OrchestrationV2AppThread, "forkedFrom" | "lineage">) {
+export function inheritedRunFork(thread: Pick<OrchestrationV2AppThread, "forkedFrom" | "lineage">) {
   return thread.forkedFrom?.type === "run" && thread.lineage.sideChat !== true
     ? thread.forkedFrom
     : null;
@@ -1977,7 +1978,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
     const inlineWorkOutput = sql`item.type = 'dynamic_tool' AND (
       item.payload_json LIKE '%htmlRender%' OR item.payload_json LIKE ${`%${MCP_APP_OUTPUT_KEY}%`}
       OR item.payload_json LIKE '%"viewedImagePath"%'
-      OR item.payload_json LIKE '%"toolName":"%delegate_task"%')`;
+      OR item.payload_json LIKE '%"toolName":"%delegate_task"%'
+      OR item.payload_json LIKE ${SEND_TO_USER_PAYLOAD_LIKE})`;
 
     // Start from the few owned provider threads; a thread can have a large settled node history.
     const nodesOwningProviderThreads = (threadId: ThreadId) => sql`
@@ -4588,8 +4590,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
         const rows = yield* sql<PayloadRow>`
           SELECT payload_json FROM orchestration_v2_projection_turn_items
           WHERE thread_id = ${threadId}
-            AND type IN ('user_message','assistant_message','command_execution','error',
+            AND (type IN ('user_message','assistant_message','command_execution','error',
               'run_interrupt_result','file_change','proposed_plan')
+              OR (type = 'dynamic_tool' AND payload_json LIKE ${SEND_TO_USER_PAYLOAD_LIKE}))
             AND ${runIds === undefined ? sql`1` : sql`run_id IN ${sql.in(runIds)}`}
           ORDER BY ordinal ASC, turn_item_id ASC
         `;

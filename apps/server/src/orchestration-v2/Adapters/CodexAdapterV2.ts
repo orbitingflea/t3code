@@ -106,6 +106,12 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import { resolveCodexTurnServiceTier } from "../../fork/codexServiceTier.ts";
+import {
+  codexCompactionNoteItems,
+  type DisplayModeCompactionNoteShape,
+  providedCompactionNote,
+  withCodexCommandNote,
+} from "../../fork/displayModeWrap/DisplayModeCompactionNote.ts";
 import { ServerConfig } from "../../config.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import { buildCodexAdditionalContext } from "../../provider/CodexDeveloperInstructions.ts";
@@ -1680,6 +1686,7 @@ export const createCodexAdapterV2 = Effect.fn("CodexAdapterV2.createCodexAdapter
   const clientFactory = yield* CodexAppServerClientFactory;
   const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
   const digest = yield* Digest.Digest;
+  const displayModeCompactionNote = yield* providedCompactionNote;
   const fileSystem = yield* FileSystem.FileSystem;
   const hostEnvironment = yield* HostProcess.Environment;
   const idAllocator = yield* IdAllocator.IdAllocatorV2;
@@ -1715,6 +1722,7 @@ export const createCodexAdapterV2 = Effect.fn("CodexAdapterV2.createCodexAdapter
     idAllocator,
     serverConfig,
     continuationRequests,
+    displayModeCompactionNote,
     ...hooks,
   });
 });
@@ -1740,6 +1748,8 @@ export interface CodexAdapterV2Options {
       request: ProviderContinuationRequests.ProviderContinuationRequest,
     ) => Effect.Effect<void>;
   };
+  /** Omitting this sends no display mode note after a compaction. */
+  readonly displayModeCompactionNote?: DisplayModeCompactionNoteShape | undefined;
 }
 
 export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
@@ -1807,27 +1817,34 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
         const restoreAdditionalContext = Effect.fn("CodexAdapterV2.restoreAdditionalContext")(
           function* (threadId: string) {
             const context = (yield* Ref.get(additionalContextByThread)).get(threadId);
-            if (!context) return;
+            const noteItems = yield* codexCompactionNoteItems(
+              adapterOptions.displayModeCompactionNote,
+              rootProviderThreads.get(threadId)?.appThreadId,
+            );
+            if (!context && noteItems.length === 0) return;
             yield* client.request("thread/inject_items", {
               threadId,
-              items: Object.entries(context).map(([key, entry]) =>
-                entry.kind === "untrusted"
-                  ? {
-                      type: "message",
-                      role: "user",
-                      content: [
-                        {
-                          type: "input_text",
-                          text: `<external_${key}>${entry.value}</external_${key}>`,
-                        },
-                      ],
-                    }
-                  : {
-                      type: "message",
-                      role: "developer",
-                      content: [{ type: "input_text", text: `<${key}>${entry.value}</${key}>` }],
-                    },
-              ),
+              items: [
+                ...Object.entries(context ?? {}).map(([key, entry]) =>
+                  entry.kind === "untrusted"
+                    ? {
+                        type: "message",
+                        role: "user",
+                        content: [
+                          {
+                            type: "input_text",
+                            text: `<external_${key}>${entry.value}</external_${key}>`,
+                          },
+                        ],
+                      }
+                    : {
+                        type: "message",
+                        role: "developer",
+                        content: [{ type: "input_text", text: `<${key}>${entry.value}</${key}>` }],
+                      },
+                ),
+                ...noteItems,
+              ],
             });
           },
           Effect.timeout("10 seconds"),
@@ -6827,6 +6844,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           function* (
             turnInput: ProviderAdapter.ProviderAdapterV2TurnInput,
             codexInput: ReadonlyArray<CodexSchema.V2TurnStartParams__UserInput>,
+            commandNote?: ProviderAdapter.ProviderAdapterV2TurnInput["commandNote"],
           ) {
             const threadId = yield* getNativeThreadId(turnInput.providerThread);
             const mcpSession = yield* mcpSessions.read(turnInput.threadId);
@@ -6859,7 +6877,11 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ...(yield* Ref.get(settledTurns)),
               ...(yield* Ref.get(activeTurns)),
             ]);
-            const started = yield* client.request("turn/start", turnStartParams);
+            const started = yield* client.request(
+              "turn/start",
+              withCodexCommandNote(turnStartParams, turnInput.message.messageId, commandNote),
+            );
+            if (commandNote !== undefined) yield* commandNote.delivered;
             const previousTurn =
               previousTurns.get(started.turn.id) ??
               (yield* Ref.get(activeTurns)).get(started.turn.id);
@@ -6968,6 +6990,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                       },
                     })
                   : [],
+                turnInput.commandNote,
               );
               if (activation.stopped) return;
               const { goal } = yield* client.request("thread/goal/set", {
@@ -7302,6 +7325,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 turnInput.restartContinuationOfRunId === undefined
                   ? yield* toCodexInput(turnInput)
                   : [],
+                turnInput.commandNote,
               );
             }).pipe(
               Effect.mapError(

@@ -7,6 +7,7 @@ import {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import { displayModeShowsText, sentMessageText } from "@t3tools/shared/displayModes";
 import { searchableMessageSegments, searchablePlanSegments } from "@t3tools/shared/threadFindText";
 import { countThreadSearchOccurrences } from "@t3tools/shared/threadSearch";
 import * as Cache from "effect/Cache";
@@ -16,6 +17,7 @@ import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as SqlClient from "effect/sql/SqlClient";
+import { readSentItemIds } from "../fork/displayModeWrap/readSentItemIds.ts";
 import {
   ProjectionStoreReadError,
   ProjectionStoreThreadNotFoundError,
@@ -58,7 +60,7 @@ function textKey(
         ? item.markdown
         : item.type === "user_message" || item.type === "assistant_message"
           ? item.text
-          : "",
+          : (sentMessageText(item) ?? ""),
     role:
       item.type === "proposed_plan" ? "plan" : item.type === "user_message" ? "user" : "assistant",
     streaming: item.type === "assistant_message" && item.streaming,
@@ -179,6 +181,7 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
         threadId: ThreadId,
         cwd: Schema.optional(Schema.String),
         query: Schema.String,
+        displayMode: Schema.optional(Schema.String),
         skills: OrchestrationV2SearchThreadInput.fields.skills,
       }),
     ),
@@ -288,6 +291,7 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
         threadId,
         cwd,
         query: input.query,
+        displayMode: input.displayMode,
         skills: input.skills ?? [],
       });
       const cached = scans.get(cacheKey);
@@ -300,12 +304,15 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
       const index = yield* readIndex(threadId);
       const sourceThreadIds = [...new Set([threadId, ...index.map((row) => row.sourceThreadId)])];
       const sequence = yield* readRevision(sourceThreadIds);
+      const sentIds = yield* readSentItemIds(sql, input.displayMode, sourceThreadIds);
       const candidates = index
         .map((row, position) => ({ ...row, position }))
-        .filter((row) =>
-          ["user_message", "assistant_message", "proposed_plan", "user_input_request"].includes(
-            row.item.type,
-          ),
+        .filter(
+          (row) =>
+            sentIds.has(row.sourceItemId) ||
+            ["user_message", "assistant_message", "proposed_plan", "user_input_request"].includes(
+              row.item.type,
+            ),
         );
       const payloads: FindPayload[] = [];
       for (let start = 0; start < candidates.length; start += 128) {
@@ -360,7 +367,12 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
             key.text.length <= 32_768 ? textCache : largeTextCache,
             key,
           );
-          const document = documentFor(decoded, countSegments(segments, input.query));
+          const document = documentFor(
+            decoded,
+            input.displayMode === undefined || displayModeShowsText(input.displayMode, decoded.item)
+              ? countSegments(segments, input.query)
+              : 0,
+          );
           documents.set(row.position, document);
           yield* Effect.yieldNow;
           return document;

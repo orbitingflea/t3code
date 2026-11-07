@@ -173,6 +173,12 @@ import {
 } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
 import { isClaudeSteerQueuedPastResult, trackClaudeSteer } from "../../fork/claudeSteerQueue.ts";
+import { claudeTerminalToolEnvironment } from "../../fork/userMessageTools/claudeTerminalTool.ts";
+import {
+  claudeDisplayModeHooks,
+  type DisplayModeCompactionNoteShape,
+  providedCompactionNote,
+} from "../../fork/displayModeWrap/DisplayModeCompactionNote.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
@@ -1194,6 +1200,7 @@ export const layerQueryRunner: Layer.Layer<
             ...sdkOptions,
             env: {
               ...(sdkOptions.env ?? hostEnvironment),
+              ...claudeTerminalToolEnvironment,
               [PortScanner.AGENT_THREAD_ENV]: input.threadId,
             },
           };
@@ -1765,6 +1772,7 @@ export function makeClaudeQueryOptions(input: {
   readonly mcpServers?: ClaudeQueryOptions["mcpServers"];
   /** The thread's T3 MCP session holds the `device` capability. */
   readonly deviceToolsAvailable?: boolean;
+  readonly hooks?: ClaudeQueryOptions["hooks"];
   readonly tools?: ClaudeAgentSdkQueryTools;
   readonly allowedTools?: ReadonlyArray<string>;
   readonly disallowedTools?: ReadonlyArray<string>;
@@ -1834,6 +1842,10 @@ export function makeClaudeQueryOptions(input: {
           env: { ...compactQuerySettings?.env, ENABLE_TOOL_SEARCH: input.toolSearchOverride },
         } as ClaudeSdkSettings);
   const deviceInstructions = input.mcpServers !== undefined && input.deviceToolsAvailable === true;
+  const hooks = {
+    ...input.hooks,
+    ...(deviceInstructions ? { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] } : {}),
+  };
   const options: ClaudeAgentSdkQueryOptions = {
     model: compiledSelection.apiModelId,
     // T3 names threads; a supplied title skips Claude's redundant naming request.
@@ -1898,9 +1910,7 @@ export function makeClaudeQueryOptions(input: {
         ...launchAppendSystemPrompt,
       ].join("\n\n"),
     },
-    ...(deviceInstructions
-      ? { hooks: { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] } }
-      : {}),
+    ...(Object.keys(hooks).length === 0 ? {} : { hooks }),
     ...(Object.keys(extraArgs).length === 0 ? {} : { extraArgs }),
   };
   const additionalDirectories = [
@@ -4855,6 +4865,8 @@ export interface ClaudeAdapterV2Options {
       request: ProviderContinuationRequests.ProviderContinuationRequest,
     ) => Effect.Effect<void>;
   };
+  /** Omitting this sends no display mode note after a compaction or beside a slash command. */
+  readonly displayModeCompactionNote?: DisplayModeCompactionNoteShape | undefined;
 }
 
 export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
@@ -10941,6 +10953,12 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               ? {}
               : { mcpServers: mcpOverrides.mcpServers }),
             deviceToolsAvailable: mcpSession?.capabilities?.has("device") === true,
+            hooks: claudeDisplayModeHooks({
+              notes: adapterOptions.displayModeCompactionNote,
+              threadId: turnInput.appThread.id,
+              activeTurn: Ref.get(activeTurn).pipe(Effect.map((turn) => turn?.input)),
+              runPromise,
+            }),
             permissionMode: queryPolicy.permissionMode,
             ...(queryPolicy.allowDangerouslySkipPermissions === undefined
               ? {}
@@ -12364,6 +12382,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     const queryRunner = yield* ClaudeAgentSdkQueryRunner;
     const serverConfig = yield* ServerConfig.ServerConfig;
     const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
+    const displayModeCompactionNote = yield* providedCompactionNote;
     const baseEnvironment = yield* mergeClaudeProcessEnvironment(
       config,
       environment,
@@ -12387,6 +12406,7 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
       idAllocator,
       queryRunner,
       continuationRequests,
+      displayModeCompactionNote,
       ...hooks,
     });
   },

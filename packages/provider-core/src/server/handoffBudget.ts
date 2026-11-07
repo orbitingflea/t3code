@@ -9,6 +9,7 @@ import type {
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 
+import { sentMessageText } from "@t3tools/shared/displayModes";
 import * as Config from "effect/Config";
 
 export const DEFAULT_HANDOFF_TOKEN_CAP = 16_000;
@@ -152,8 +153,11 @@ export function historicalMessage(
     case "proposed_plan":
       text = item.markdown;
       break;
-    default:
-      return null;
+    default: {
+      const sent = sentMessageText(item);
+      if (sent === null) return null;
+      text = sent;
+    }
   }
   return {
     role: item.type === "user_message" ? "user" : "assistant",
@@ -161,7 +165,7 @@ export function historicalMessage(
     threadId: item.threadId,
     runId: item.runId,
     itemId: item.id,
-    providerThreadId: item.providerThreadId,
+    providerThreadId: item.providerThreadId ?? null,
     status: item.status,
     kind: item.type,
   };

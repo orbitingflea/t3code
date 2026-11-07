@@ -1,5 +1,6 @@
 import type { ContextMenuItem } from "@t3tools/contracts";
 import type { SnoozePreset } from "@t3tools/client-runtime/state/thread-settled";
+import type { DisplayModeMenuId } from "../fork/displayMode/useThreadDisplayMode";
 
 export type ThreadActionMenuId =
   | "find"
@@ -14,6 +15,7 @@ export type ThreadActionMenuId =
   | "auto-settle"
   | "auto-settle:enabled"
   | "auto-settle:disabled"
+  | DisplayModeMenuId
   | "snooze"
   | `snooze:${string}`
   | "unsnooze"
@@ -95,6 +97,7 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  readonly displayModeItems?: ReadonlyArray<ContextMenuItem<DisplayModeMenuId>>;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -223,6 +226,7 @@ export function buildThreadActionMenuItems(
           },
         ]
       : []),
+    ...(state.displayModeItems ?? []),
     {
       id: "copy",
       label: "Copy",

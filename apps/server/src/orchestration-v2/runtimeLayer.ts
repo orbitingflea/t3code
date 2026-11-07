@@ -57,6 +57,7 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,
@@ -397,5 +398,6 @@ export const layerProduction = Layer.mergeAll(
 ).pipe(
   Layer.provide(ResourceCleanupService.layer.pipe(Layer.provide(layerScheduledTaskProvided))),
   Layer.provide(Scheduler.layer),
+  Layer.provide(DisplayModeWrap.layer),
   Layer.provideMerge(layerEventInfrastructure),
 );

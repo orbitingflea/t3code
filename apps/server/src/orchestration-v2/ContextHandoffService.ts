@@ -24,6 +24,7 @@ import {
   selectHistory,
 } from "@t3tools/provider-core/server/handoffBudget";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
+import { sentMessageText } from "@t3tools/shared/displayModes";
 import { createOrchestrationV2TurnItemVisibility } from "@t3tools/shared/orchestrationV2Timeline";
 import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
 
@@ -218,8 +219,10 @@ function summarizeDeltaItem(item: OrchestrationV2TurnItem): string | null {
       return `- Checkpoint: ${item.files.length} files`;
     case "handoff":
       return `- Handoff: ${compactText(item.summary ?? item.strategy)}`;
-    default:
-      return null;
+    default: {
+      const sent = sentMessageText(item);
+      return sent === null ? null : `- Assistant: ${compactText(sent)}`;
+    }
   }
 }
 

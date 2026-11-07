@@ -6,6 +6,7 @@ import { environmentThreadDetails, threadEnvironment } from "../../state/threads
 import { toastManager } from "../ui/toast";
 import type { AssistantCitationRequest } from "./AssistantCitationSource";
 import type { MessagesTimelineRow } from "./MessagesTimeline.logic";
+import { isSentReply } from "../../fork/displayMode/citedSentReply";
 
 /** Whether the cited response is in the loaded history, after paging toward it. */
 export type CitedHistory =
@@ -128,11 +129,12 @@ export function citedThreadSnapshot(input: {
   // Older pages merge into the visible turn items, not the message list.
   const item = input.thread.projection.visibleTurnItems.find(
     (row) =>
-      (row.item.type === "assistant_message" || row.item.type === "user_message") &&
-      row.item.messageId === input.messageId,
+      ((row.item.type === "assistant_message" || row.item.type === "user_message") &&
+        row.item.messageId === input.messageId) ||
+      isSentReply(row.item, input.messageId),
   )?.item;
   return {
-    message: item === undefined ? null : item.type === "assistant_message" ? "assistant" : "other",
+    message: item === undefined ? null : item.type === "user_message" ? "other" : "assistant",
     hasMoreHistory: input.history.hasMoreHistory,
   };
 }

@@ -16,6 +16,7 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 
+import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import type * as ServerConfig from "../config.ts";
 import type * as ServerSettings from "../serverSettings.ts";
@@ -135,6 +136,7 @@ export const layer: Layer.Layer<
     const path = yield* Path.Path;
     const threadCommands = yield* ThreadCommandExecutor.ThreadCommandExecutor;
     const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
+    const displayModeWrap = yield* DisplayModeWrap.orUnchanged;
 
     const execute = Effect.fn("orchestrationV2.checkpointRollback.execute")(function* (input: {
       readonly threadId: ThreadId;
@@ -366,6 +368,7 @@ export const layer: Layer.Layer<
           yield* eventSink.write({ events });
         }),
       );
+      if (runsToRollback.length > 0) yield* displayModeWrap.forgetNotes(input.threadId);
     });
 
     return CheckpointRollbackServiceV2.of({

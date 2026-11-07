@@ -490,6 +490,8 @@ export interface ProviderAdapterV2TurnInput {
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
+  /** Context for this turn only, beside a slash command that must reach the provider unchanged. Run `delivered` once the agent gets `text`. */
+  readonly commandNote?: { readonly text: string; readonly delivered: Effect.Effect<void> };
 }
 
 export interface ProviderAdapterV2SteerInput {

@@ -4180,6 +4180,7 @@ export class OrchestrationGetWorkflowScriptError extends Schema.TaggedError<Orch
 
 export const OrchestrationV2SearchThreadInput = Schema.Struct({
   threadId: ThreadId,
+  displayMode: Schema.optionalKey(Schema.String.check(Schema.isMaxLength(200))),
   skills: Schema.optionalKey(
     Schema.Array(
       Schema.Struct({

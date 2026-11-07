@@ -2,6 +2,7 @@ import type { InlineSkill } from "@t3tools/shared/inlineSkills";
 import type { OrchestrationV2SearchThreadResult, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useThreadDisplayMode } from "~/fork/displayMode/useThreadDisplayMode";
 import { orchestrationEnvironment } from "~/state/orchestration";
 import { useThreadProjection } from "~/state/entities";
 import { useEnvironmentQuery } from "~/state/query";
@@ -274,6 +275,7 @@ function useServerResults(
   skills: readonly InlineSkill[],
   progressive: boolean,
 ) {
+  const displayMode = useThreadDisplayMode(thread).id;
   const skillLabels = skills.map(({ name, displayName }) => ({ name, displayName }));
   const normalizedQuery = query.trim();
   const debouncedQuery = useDebouncedValue(normalizedQuery, 100);
@@ -285,6 +287,7 @@ function useServerResults(
           environmentId,
           input: {
             threadId,
+            displayMode,
             query: debouncedQuery,
             ...(start ? { start } : {}),
             ...(offset !== 0 ? { offset } : {}),

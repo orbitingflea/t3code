@@ -315,6 +315,8 @@ interface MessagesTimelineProps {
   findQuery?: string;
   activeFindMatch?: ThreadFindMatch | null;
   findNavigationId?: number;
+  /** The rows already hold only the replies to show, so zen keeps every one of them. */
+  repliesChosen?: boolean;
 }
 
 export function MessagesTimeline(props: MessagesTimelineProps) {
@@ -359,6 +361,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
   findQuery = "",
   activeFindMatch = null,
   findNavigationId = 0,
+  repliesChosen = false,
   latestRun,
   announcedRun = null,
   detailBehindShell = false,
@@ -576,7 +579,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
 
   const preferredToolCallVisibility = useClientSettings((settings) => settings.toolCallVisibility);
   const toolCallVisibility =
-    findActive && preferredToolCallVisibility === "zen" ? "hideAll" : preferredToolCallVisibility;
+    (findActive || repliesChosen) && preferredToolCallVisibility === "zen"
+      ? "hideAll"
+      : preferredToolCallVisibility;
   const revealedMessageId = citationRequest?.citation.messageId ?? null;
   // Imported turns and post-steer work fold under synthetic keys, not the entries' run ids.
   const findFoldRunIds = findActive

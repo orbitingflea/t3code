@@ -26,6 +26,7 @@ import * as ServerSecretStore from "../../auth/ServerSecretStore.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../../config.ts";
 import * as ServerEnvironment from "../../environment/ServerEnvironment.ts";
+import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import { ClaudeDriver } from "../../provider/Drivers/ClaudeDriver.ts";
 import * as ModelManifest from "../../provider/ModelManifest.ts";
@@ -44,6 +45,7 @@ const decodeHubCall = Schema.decodeUnknownSync(
 
 const layerTest = ProviderOrchestrationAdapterInfrastructure.layer.pipe(
   Layer.provide(PortScanner.layerTest),
+  Layer.provide(SqlitePersistence.layerMemory),
   Layer.provideMerge(ProviderHostLive.layer),
   Layer.provideMerge(
     ServerConfig.layerTest(process.cwd(), { prefix: "claude-login-source-test" }).pipe(

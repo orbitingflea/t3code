@@ -17,6 +17,7 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 
@@ -92,6 +93,7 @@ export const layer: Layer.Layer<
   Effect.gen(function* () {
     const projections = yield* ProjectionStore.ProjectionStoreV2;
     const sessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
+    const displayModeWrap = yield* DisplayModeWrap.orUnchanged;
 
     const load = Effect.fn("ProviderTurnControlService.load")(function* (input: {
       readonly threadId: ThreadId;
@@ -366,6 +368,14 @@ export const layer: Layer.Layer<
               cause: "The persisted steering message or target run is missing.",
             });
           }
+          const wrapped = yield* displayModeWrap.wrapUserText({
+            threadId: input.threadId,
+            message,
+            text: projectComposerContextForProvider({
+              text: message.text,
+              records: message.context?.records ?? [],
+            }),
+          });
           yield* loaded.session.value
             .steerTurn({
               threadId: input.threadId,
@@ -374,10 +384,7 @@ export const layer: Layer.Layer<
               providerTurnId: loaded.providerTurn.id,
               message: {
                 messageId: message.id,
-                text: projectComposerContextForProvider({
-                  text: message.text,
-                  records: message.context?.records ?? [],
-                }),
+                text: wrapped.text,
                 attachments: message.attachments,
                 createdBy: message.createdBy,
                 creationSource: message.creationSource,
@@ -390,6 +397,7 @@ export const layer: Layer.Layer<
               },
             })
             .pipe(
+              Effect.tap(() => wrapped.accepted),
               Effect.catch((cause) =>
                 Effect.gen(function* () {
                   const current = yield* projections.getProviderControlContext(

@@ -32,6 +32,7 @@ import {
   type ProviderTurnAnalyticsContext,
 } from "../telemetry/ProviderUsageAnalytics.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as ProviderInstanceRegistry from "../provider/ProviderInstanceRegistry.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProjectionStore from "./ProjectionStore.ts";
@@ -256,6 +257,7 @@ export const layer: Layer.Layer<
     const agentScope = yield* AgentScope;
     const instances = yield* ProviderInstanceRegistry.ProviderInstanceRegistry;
     const scope = yield* Effect.scope;
+    const displayModeWrap = yield* DisplayModeWrap.orUnchanged;
     const completedTurnAnalytics = new Set<string>();
 
     const makeDomainEvent =
@@ -716,6 +718,7 @@ export const layer: Layer.Layer<
           },
           (effect, input) =>
             effect.pipe(
+              displayModeWrap.forgetNotesAfterCompaction(input),
               Effect.tap((storedEvents) =>
                 Effect.gen(function* () {
                   if (

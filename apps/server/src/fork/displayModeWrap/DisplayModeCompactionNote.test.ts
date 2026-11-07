@@ -1,0 +1,103 @@
+import type { HookInput } from "@anthropic-ai/claude-agent-sdk";
+import { assert, it } from "@effect/vitest";
+import { ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { MESSAGES_ONLY_DISPLAY_MODE, NORMAL_DISPLAY_MODE } from "@t3tools/shared/displayModes";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import * as ClaudeAdapterV2 from "../../orchestration-v2/Adapters/ClaudeAdapterV2.ts";
+import * as SqlitePersistence from "../../persistence/Sqlite.ts";
+import * as ServerSettings from "../../serverSettings.ts";
+import * as DisplayModeCompactionNote from "./DisplayModeCompactionNote.ts";
+
+const plainId = ThreadId.make("thread:compaction-note:plain");
+const messagesOnlyId = ThreadId.make("thread:compaction-note:messages-only");
+const toldNormalId = ThreadId.make("thread:compaction-note:told-normal");
+const unknownToldId = ThreadId.make("thread:compaction-note:unknown-told");
+
+const notes = DisplayModeCompactionNote.layer.pipe(
+  Layer.provideMerge(SqlitePersistence.layerMemory),
+  Layer.provideMerge(
+    ServerSettings.layerTest({ threadDisplayModes: { [messagesOnlyId]: "messages-only" } }),
+  ),
+);
+
+const toldRows = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+  return yield* sql<{ readonly thread_id: string; readonly mode_id: string }>`
+    SELECT thread_id, mode_id FROM fork_display_mode_told ORDER BY thread_id
+  `;
+});
+
+it.layer(notes)("DisplayModeCompactionNote", (it) => {
+  it.effect("states the current mode once a thread has a told record or a non-Normal mode", () =>
+    Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      yield* sql`INSERT INTO fork_display_mode_told (thread_id, mode_id)
+        VALUES (${toldNormalId}, 'normal'), (${unknownToldId}, 'unknown')`;
+      const before = yield* toldRows;
+      const { noteAfterCompaction } = yield* DisplayModeCompactionNote.DisplayModeCompactionNote;
+
+      assert.isUndefined(yield* noteAfterCompaction(plainId));
+      assert.equal(
+        yield* noteAfterCompaction(messagesOnlyId),
+        MESSAGES_ONLY_DISPLAY_MODE.stateNotice,
+      );
+      assert.equal(yield* noteAfterCompaction(toldNormalId), NORMAL_DISPLAY_MODE.stateNotice);
+      assert.equal(yield* noteAfterCompaction(unknownToldId), NORMAL_DISPLAY_MODE.stateNotice);
+      assert.deepEqual(yield* toldRows, before);
+    }),
+  );
+});
+
+it("states the mode instead of announcing a switch", () => {
+  for (const mode of [NORMAL_DISPLAY_MODE, MESSAGES_ONLY_DISPLAY_MODE]) {
+    assert.match(mode.stateNotice, /^<t3-display-mode>This thread is in .*<\/t3-display-mode>$/);
+    assert.notInclude(mode.stateNotice, "switched");
+  }
+});
+
+it("adds the compaction note hook to Claude beside the subagent hook", async () => {
+  const threadId = ThreadId.make("thread:compaction-note:claude");
+  const options = ClaudeAdapterV2.makeClaudeQueryOptions({
+    modelSelection: {
+      instanceId: ProviderInstanceId.make(ClaudeAdapterV2.CLAUDE_PROVIDER),
+      model: "claude-sonnet-4-6",
+    },
+    nativeThreadId: "native-thread-compaction-note",
+    resume: false,
+    cwd: "/workspace",
+    mcpServers: {},
+    deviceToolsAvailable: true,
+    hooks: DisplayModeCompactionNote.claudeDisplayModeHooks({
+      notes: {
+        noteAfterCompaction: (id) =>
+          Effect.succeed(id === threadId ? MESSAGES_ONLY_DISPLAY_MODE.stateNotice : undefined),
+      },
+      threadId,
+      activeTurn: Effect.undefined,
+      runPromise: Effect.runPromise,
+    }),
+  });
+  assert.lengthOf(options.hooks?.SubagentStart ?? [], 1);
+  const [compact] = options.hooks?.SessionStart ?? [];
+  assert.equal(compact?.matcher, "compact");
+  const callback = compact!.hooks[0]!;
+  const input = {
+    hook_event_name: "SessionStart",
+    source: "compact",
+    session_id: "native-thread-compaction-note",
+    transcript_path: "/transcripts/native-thread-compaction-note.jsonl",
+    cwd: "/workspace",
+  } satisfies HookInput;
+  const signal = new AbortController().signal;
+
+  assert.deepEqual(await callback(input, undefined, { signal }), {
+    hookSpecificOutput: {
+      hookEventName: "SessionStart",
+      additionalContext: MESSAGES_ONLY_DISPLAY_MODE.stateNotice,
+    },
+  });
+  assert.deepEqual(await callback({ ...input, agent_id: "subagent-1" }, undefined, { signal }), {});
+});

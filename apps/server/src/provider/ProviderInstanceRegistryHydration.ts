@@ -16,6 +16,7 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import type * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
 import * as ManagedProviders from "../policy/managedProviders.ts";
@@ -40,6 +41,8 @@ type ProviderInstanceRegistryHydrationEnv =
       | ProviderHost.ProviderHost
     >
   | Settings.ServerSettingsService
+  // The display mode note after a compaction reads the told record.
+  | SqlClient.SqlClient
   | BackgroundPolicy.BackgroundPolicy
   | ServerConfig.ServerConfig
   | Path.Path

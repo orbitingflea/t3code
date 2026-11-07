@@ -7,6 +7,7 @@ import * as CursorSdk from "@t3tools/provider-cursor/server/CursorSdk";
 import * as CursorKeychain from "@t3tools/provider-cursor/server/CursorKeychain";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
+import * as DisplayModeCompactionNote from "../fork/displayModeWrap/DisplayModeCompactionNote.ts";
 
 export type ProviderOrchestrationAdapterInfrastructure =
   | ClaudeAdapterV2.ClaudeAgentSdkQueryRunner
@@ -14,6 +15,7 @@ export type ProviderOrchestrationAdapterInfrastructure =
   | CursorAgentSdk.CursorAgentSdkRunner
   | CursorSdk.CursorSdk
   | CursorKeychain.CursorKeychain
+  | DisplayModeCompactionNote.DisplayModeCompactionNote
   | IdAllocator.IdAllocatorV2;
 
 /** Reuse the continuation worker's exact layer reference so memoization shares one queue. */
@@ -22,6 +24,7 @@ export const layer = Layer.mergeAll(
   CodexAdapterV2.layerAppServerClientFactory,
   CursorAgentSdk.layer.pipe(Layer.provideMerge(CursorSdk.layer)),
   CursorKeychain.layer,
+  DisplayModeCompactionNote.layer,
   IdAllocator.layer,
   ProviderContinuationRequests.layer,
 );

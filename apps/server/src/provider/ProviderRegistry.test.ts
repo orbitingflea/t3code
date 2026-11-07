@@ -58,6 +58,7 @@ import * as OpenCodeRuntime from "@t3tools/provider-opencode/server/OpenCodeRunt
 import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCodeServerLedger";
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ProviderInstanceRegistryHydration from "./ProviderInstanceRegistryHydration.ts";
+import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettingsModule from "../serverSettings.ts";
@@ -2731,7 +2732,9 @@ it.layer(
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
         const layerProviderRegistry = ProviderRegistry.layer.pipe(
           Layer.provideMerge(
-            ProviderInstanceRegistryHydration.layer.pipe(Layer.provide(PortScanner.layerTest)),
+            ProviderInstanceRegistryHydration.layer.pipe(
+              Layer.provide(Layer.merge(PortScanner.layerTest, SqlitePersistence.layerMemory)),
+            ),
           ),
           Layer.provideMerge(AntigravityInstallation.AntigravityInstallation.layer),
           Layer.provideMerge(
@@ -2849,7 +2852,9 @@ it.layer(
         yield* Effect.addFinalizer(() => Scope.close(scope, Exit.void));
         const layerProviderRegistry = ProviderRegistry.layer.pipe(
           Layer.provideMerge(
-            ProviderInstanceRegistryHydration.layer.pipe(Layer.provide(PortScanner.layerTest)),
+            ProviderInstanceRegistryHydration.layer.pipe(
+              Layer.provide(Layer.merge(PortScanner.layerTest, SqlitePersistence.layerMemory)),
+            ),
           ),
           Layer.provideMerge(AntigravityInstallation.AntigravityInstallation.layer),
           Layer.provideMerge(
@@ -2984,7 +2989,9 @@ it.layer(
       );
       readSeed = false;
       const services = yield* Layer.build(
-        ProviderInstanceRegistryHydration.layer.pipe(Layer.provide(PortScanner.layerTest)),
+        ProviderInstanceRegistryHydration.layer.pipe(
+          Layer.provide(Layer.merge(PortScanner.layerTest, SqlitePersistence.layerMemory)),
+        ),
       ).pipe(Effect.provide(dependencies));
       failCurrentRead = input.failCurrentRead ?? false;
       yield* PubSub.publish(changes, undefined);
