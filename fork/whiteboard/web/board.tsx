@@ -5,6 +5,7 @@ import {
   DefaultToolbar,
   DefaultToolbarContent,
   Box,
+  defaultShapeUtils,
   getUserPreferences,
   inlineBase64AssetStore,
   react,
@@ -16,7 +17,7 @@ import {
   type TLUiOverrides,
   type TldrawOptions,
 } from "tldraw";
-import { useSync } from "@tldraw/sync";
+import { TLRemoteSyncError, TLSyncErrorCloseEventReason, useSync } from "@tldraw/sync";
 import { getDefaultUserPresence } from "@tldraw/tlschema";
 import "tldraw/tldraw.css";
 import "katex/dist/katex.min.css";
@@ -26,6 +27,7 @@ import { onBoardView, type BoardView } from "./bridge";
 import { markPresence, REGION_TOOL, RefsLayer, RegionTool } from "./refs";
 import { CollaboratorCursors, NoCollaboratorHint } from "./cursors";
 import { cameraAt, viewCenter } from "./camera";
+import { MermaidShapeUtil } from "./mermaidshape";
 
 // Holds the action that brings the chat back while the chat panel is collapsed, else null.
 export const ShowChat = createContext<(() => void) | null>(null);
@@ -78,6 +80,8 @@ const overrides = {
   }),
 } satisfies TLUiOverrides;
 const overlayUtils = [NoCollaboratorHint];
+const shapeUtils = [MermaidShapeUtil];
+const syncShapeUtils = [...defaultShapeUtils, ...shapeUtils];
 const options = {
   ...mathTextOptions,
   camera: { wheelBehavior: "zoom" },
@@ -231,6 +235,29 @@ export function Board({ exportMode = false }: { exportMode?: boolean }) {
   );
 }
 
+// A schema mismatch means the board code changed under this open tab; a reload loads the new code.
+const VERSION_MISMATCH: string[] = [
+  TLSyncErrorCloseEventReason.CLIENT_TOO_OLD,
+  TLSyncErrorCloseEventReason.SERVER_TOO_OLD,
+];
+const RELOAD_DELAY_MS = 3000;
+
+function SyncError({ error }: { error: Error }) {
+  const outdated = error instanceof TLRemoteSyncError && VERSION_MISMATCH.includes(error.reason);
+  useEffect(() => {
+    if (!outdated) return;
+    const timer = window.setTimeout(() => location.reload(), RELOAD_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [outdated]);
+  return (
+    <div className="loading">
+      {outdated
+        ? "The board was updated. Reloading…"
+        : `Whiteboard connection failed: ${String(error)}`}
+    </div>
+  );
+}
+
 function RoomBoard({
   room,
   hidden,
@@ -246,6 +273,7 @@ function RoomBoard({
   const store = useSync({
     uri: `${protocol}://${location.host}/sync/connect/${room}`,
     assets: inlineBase64AssetStore,
+    shapeUtils: syncShapeUtils,
     // The export page wb opens for screenshots stays out of the people list; other users see this user's region mark.
     getUserPresence: (store, user) => {
       const presence = exportMode ? null : getDefaultUserPresence(store, user);
@@ -259,11 +287,12 @@ function RoomBoard({
   return (
     <div className="board" style={{ visibility: hidden ? "hidden" : "visible" }}>
       {store.status === "error" ? (
-        <div className="loading">Whiteboard connection failed: {String(store.error)}</div>
+        <SyncError error={store.error} />
       ) : (
         store.status === "synced-remote" && (
           <Tldraw
             store={store.store}
+            shapeUtils={shapeUtils}
             tools={[RegionTool]}
             components={components}
             overlayUtils={overlayUtils}

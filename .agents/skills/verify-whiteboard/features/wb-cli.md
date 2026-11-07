@@ -7,6 +7,7 @@ Agents read and draw on a project's board with `wb`. Each command prints one JSO
 - `cli-pages` lists the room's pages with their shape counts.
 - `cli-read` lists shapes on every page, one page (`--page`), or a region (`x,y,w,h` or a `board://` link).
 - `cli-write` creates a shape (`--type text|rect|ellipse|line|arrow|note`) and prints its new `shape:wb-*` id.
+- `cli-mermaid` creates and changes a Mermaid diagram (`--type mermaid --text=SOURCE`), sized from the diagram's own aspect ratio.
 - `cli-edit` changes an existing shape with `write --id <id>`.
 - `cli-delete` removes shapes by id.
 - `cli-shot` renders a region or a page to PNG through the board page, in the theme `--theme light|dark` names (default `dark`).
@@ -27,8 +28,9 @@ Preconditions: a run from `up --seed <slug>` with a non-empty room; env loaded.
 - **Edit.** `wb write --id <rect id> --text 'verify box edited'`. Same id, same geometry.
 - **Read a region.** `wb read board://r/80,1080,600,200`. Both new shapes, with the edited text. Seeded shapes in that area appear too.
 - **Picture.** `wb shot board://r/80,1080,600,200 --out $WB_VERIFY_RUN/evidence/region.png`. Open it: a yellow note with the formula typeset, and a blue box reading `verify box edited`, on a dark background. Run the same region with `--theme light --out $WB_VERIFY_RUN/evidence/region-light.png`: the same shapes on a light background. `wb shot --theme blue` exits 1 with "--theme expects light or dark".
-- **Stored.** `curl -s "$WHITEBOARD_API_URL/api/board?room=main" | jq '[.[] | select(.id | startswith("shape:wb-"))]'`. Both new ids are in the list.
-- **Delete.** `wb delete <note id> <rect id>`. Prints both under `deleted`; `wb read` is back to the count in `read-before.json`.
+- **Mermaid.** Write a `stateDiagram-v2` with Chinese labels and an `%%{init: {"theme":"forest"}}%%` line to `$WB_VERIFY_RUN/evidence/chart.mmd`, then `wb write --type mermaid --at 100,1400 --text="$(cat $WB_VERIFY_RUN/evidence/chart.mmd)"`. It prints a new id with `w` and `h`. `wb read` lists it with `type: "mermaid"` and the source as `text`. `wb shot` of its region with `--theme light` and with `--theme dark`: the diagram in Mermaid's default (purple) and dark colors, not forest green, each label inside its box. `wb write --id <id> --size 300` keeps the aspect ratio. `wb write --type mermaid --at 0,0 --text=$'stateDiagram-v2\n  [*] --> '` exits 1 with Mermaid's parse error, and `wb read` shows no new shape.
+- **Stored.** `curl -s "$WHITEBOARD_API_URL/api/board?room=main" | jq '[.[] | select(.id | startswith("shape:wb-"))]'`. The three new ids are in the list.
+- **Delete.** `wb delete <note id> <rect id> <mermaid id>`. Prints all three under `deleted`; `wb read` is back to the count in `read-before.json`.
 
 ## Gotchas
 

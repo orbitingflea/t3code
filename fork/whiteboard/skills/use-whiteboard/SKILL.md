@@ -30,6 +30,10 @@ A board link names a rectangle of the board: `board://r/<x>,<y>,<w>,<h>`, four i
 
 A board can have several pages, which the user switches in the page menu at the top left. `wb pages` lists them. Without a region or `--page`, `wb read` lists the shapes of every page, and each entry names its `page`. `--page` picks one page for `read`, `write`, and `shot`, by number from 1, by name, or by id. Without it, `write` and `shot` use the first page. A board link to a region on any page but the first carries the page, as `board://p/<page>/r/<x>,<y>,<w>,<h>`, and `wb read` and `wb shot` follow that page. When the user works on a page other than the first, pass that page to every command.
 
+## Diagrams
+
+Draw a diagram such as a statechart, flowchart, or sequence diagram as Mermaid source with `wb write --type mermaid --at x,y --text="$(cat chart.mmd)"`, instead of embedding a rendered image. The board draws it in its own theme and keeps the source, so `wb read` shows the source and you can change the diagram later with `wb write --id <id> --text="$(cat chart.mmd)"`. The options are in [commands.md](commands.md#mermaid-diagrams).
+
 ## Mathematics
 
 In shape text, write each formula as `$...$` with no line break inside it. The board renders those spans. In chat replies, `$...$` renders inline and `$$...$$` as a block.
