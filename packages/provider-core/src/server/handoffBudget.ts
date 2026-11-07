@@ -125,8 +125,10 @@ export function handoffBudget(input: {
   );
 }
 
+/** `sentTexts` gives each send the text that its latest rewrite gave it (foldSentTexts). */
 export function historicalMessage(
   item: OrchestrationV2TurnItem,
+  sentTexts?: ReadonlyMap<string, string>,
 ): OrchestrationV2HistoricalMessage | null {
   let text: string;
   switch (item.type) {
@@ -154,7 +156,7 @@ export function historicalMessage(
       text = item.markdown;
       break;
     default: {
-      const sent = sentMessageText(item);
+      const sent = sentTexts?.get(item.id) ?? sentMessageText(item);
       if (sent === null) return null;
       text = sent;
     }

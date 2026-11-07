@@ -475,6 +475,9 @@ export function summarizeT3ToolCalls(
     case "send-to-user":
       label = phrase("Sent", "send", `${quantity(selected.length, "message")} to the user`);
       break;
+    case "rewrite-to-user":
+      label = phrase("Rewrote", "rewrite", `${quantity(selected.length, "message")} to the user`);
+      break;
     case "dashboard":
       label = phrase("Used", "use", `the Dashboard ${times}`);
       break;

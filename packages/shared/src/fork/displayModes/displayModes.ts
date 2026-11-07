@@ -4,14 +4,22 @@ import type {
   OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 
+import { assistantCitationsToPlainText } from "../../assistantCitations.ts";
 import { resolveT3McpToolId } from "../../t3McpToolPresentation.ts";
 import { compactDynamicToolOutput } from "../../toolOutput.ts";
 
 export const SEND_TO_USER_TOOL_NAME = "send_to_user";
-/** A SQL LIKE pattern for the stored payload of a `send_to_user` call. */
+export const REPLACE_SEND_TO_USER_TOOL_NAME = "replace_send_to_user";
+/**
+ * A SQL LIKE pattern for the stored payload of a `send_to_user` call. It ends the name with
+ * `send_to_user`, so it also selects `replace_send_to_user` calls, which change a send's text.
+ */
 export const SEND_TO_USER_PAYLOAD_LIKE = `%"toolName":"%${SEND_TO_USER_TOOL_NAME}"%`;
-/** Keeps the call's input under the 16 KiB a tool input may take on the wire. */
-export const SEND_TO_USER_MAX_BYTES = 12_000;
+/**
+ * With replace_send_to_user's two 2500-byte match inputs, keeps the call's input under the 16 KiB a
+ * tool input may take on the wire.
+ */
+export const SEND_TO_USER_MAX_BYTES = 11_000;
 export const DASHBOARD_SET_TOOL_NAME = "dashboard_set";
 export const DASHBOARD_GET_TOOL_NAME = "dashboard_get";
 
@@ -27,6 +35,8 @@ export const WRAPPED_CORE_COUNT = 3;
 export type DisplayEvent =
   | { readonly type: "user"; readonly id: string; readonly text: string }
   | { readonly type: "sent"; readonly id: string; readonly text: string }
+  /** A completed `replace_send_to_user` call. The latest `sent` before it now reads `text`. */
+  | { readonly type: "rewrite"; readonly id: string; readonly text: string }
   /**
    * Anything else that entered the agent's transcript, such as its plain text, reasoning, tool work,
    * and messages the user did not type.
@@ -54,25 +64,45 @@ export interface DisplayMode {
   readonly visibleCores: ((events: ReadonlyArray<DisplayEvent>) => VisibleCore[]) | null;
   /**
    * Returns the text that the agent gets for a user's message after `events`. Null sends it unchanged.
-   * `events` may leave out events, as long as it keeps their order and the latest
-   * WRAPPED_CORE_COUNT `user` and `sent` events.
+   * `events` may leave out events, as long as it keeps their order, the latest
+   * WRAPPED_CORE_COUNT `user` and `sent` events, and every `rewrite` after the first of those.
    */
   readonly wrap: ((events: ReadonlyArray<DisplayEvent>, text: string) => string) | null;
   /** Whether the thread has a Dashboard that the user sees and the agent writes. */
   readonly dashboard: boolean;
+  /**
+   * Whether the agent may send one message after each message that the user types. To say more,
+   * it rewrites that message with `replace_send_to_user`.
+   */
+  readonly oneSendPerMessage: boolean;
 }
 
-const messagesOnlyCores = (events: ReadonlyArray<DisplayEvent>): VisibleCore[] =>
-  events.flatMap((event): VisibleCore[] => {
+/**
+ * The messages that `events` show, in order. Each `user` and `sent` event adds one; a `rewrite`
+ * sets the text of the latest `sent` before it and adds none. A rewrite with no `sent` before it,
+ * such as one whose send is on a history page not loaded yet, shows nothing.
+ */
+export function foldCores(events: Iterable<DisplayEvent>): VisibleCore[] {
+  const cores: VisibleCore[] = [];
+  let latestSent: number | undefined;
+  for (const event of events) {
     switch (event.type) {
       case "user":
-        return [{ id: event.id, from: "user", text: event.text }];
+        cores.push({ id: event.id, from: "user", text: event.text });
+        break;
       case "sent":
-        return [{ id: event.id, from: "agent", text: event.text }];
+        latestSent = cores.push({ id: event.id, from: "agent", text: event.text }) - 1;
+        break;
+      case "rewrite":
+        if (latestSent !== undefined)
+          cores[latestSent] = { ...cores[latestSent]!, text: event.text };
+        break;
       case "other":
-        return [];
+        break;
     }
-  });
+  }
+  return cores;
+}
 
 function truncateUtf8(text: string, maxBytes: number): string {
   const encoder = new TextEncoder();
@@ -87,6 +117,15 @@ function truncateUtf8(text: string, maxBytes: number): string {
   return `${kept}…[truncated]`;
 }
 
+/** A message as a recap shows it: each quote as its quoted text and comment, cut at 2000 bytes. */
+export function recapText(text: string): string {
+  return truncateUtf8(assistantCitationsToPlainText(text), WRAPPED_CORE_MAX_BYTES);
+}
+
+/** One line of a recap, such as `[you] Done.` */
+export const recapLine = (core: VisibleCore): string =>
+  `[${core.from === "user" ? "user" : "you"}] ${recapText(core.text)}`;
+
 export const NORMAL_DISPLAY_MODE: DisplayMode = {
   id: "normal",
   label: "Normal",
@@ -97,20 +136,18 @@ export const NORMAL_DISPLAY_MODE: DisplayMode = {
   visibleCores: null,
   wrap: null,
   dashboard: false,
+  oneSendPerMessage: false,
 };
 
 function messagesOnlyWrap(events: ReadonlyArray<DisplayEvent>, text: string): string {
   // Every message recaps the latest shown messages, so the agent always knows what the user saw,
   // whatever else entered its transcript. A message with nothing shown before it has no recap.
-  const shown = messagesOnlyCores(events).slice(-WRAPPED_CORE_COUNT);
+  const shown = foldCores(events).slice(-WRAPPED_CORE_COUNT);
   if (shown.length === 0) return text;
   return [
     "<t3-messages-mode>",
     "This message is from the user. Before it, their screen showed:",
-    ...shown.map(
-      (core) =>
-        `[${core.from === "user" ? "user" : "you"}] ${truncateUtf8(core.text, WRAPPED_CORE_MAX_BYTES)}`,
-    ),
+    ...shown.map(recapLine),
     "</t3-messages-mode>",
     text,
   ].join("\n");
@@ -123,9 +160,10 @@ export const MESSAGES_ONLY_DISPLAY_MODE: DisplayMode = {
     "<t3-display-mode>The user switched this thread to Messages only. From now on they see only their own messages and your send_to_user messages; reply with send_to_user.</t3-display-mode>",
   stateNotice:
     "<t3-display-mode>This thread is in Messages only. The user sees only their own messages and your send_to_user messages; reply with send_to_user.</t3-display-mode>",
-  visibleCores: messagesOnlyCores,
+  visibleCores: foldCores,
   wrap: messagesOnlyWrap,
   dashboard: false,
+  oneSendPerMessage: true,
 };
 
 export const MESSAGES_DASHBOARD_DISPLAY_MODE: DisplayMode = {
@@ -135,9 +173,10 @@ export const MESSAGES_DASHBOARD_DISPLAY_MODE: DisplayMode = {
     "<t3-display-mode>The user switched this thread to Messages + Dashboard. They see only their own messages and your send_to_user messages; reply with send_to_user. They also see this thread's Dashboard, six slots in this order: decide (needs their decision), waiting, working, autoreview, humanreview, merged. Read it with dashboard_get. To change a slot, call dashboard_set with the slot's current text as old_text and the whole new text as new_text.</t3-display-mode>",
   stateNotice:
     "<t3-display-mode>This thread is in Messages + Dashboard. The user sees only their own messages and your send_to_user messages; reply with send_to_user. They also see this thread's Dashboard, six slots in this order: decide (needs their decision), waiting, working, autoreview, humanreview, merged. Read it with dashboard_get. To change a slot, call dashboard_set with the slot's current text as old_text and the whole new text as new_text.</t3-display-mode>",
-  visibleCores: messagesOnlyCores,
+  visibleCores: foldCores,
   wrap: messagesOnlyWrap,
   dashboard: true,
+  oneSendPerMessage: true,
 };
 
 export const DISPLAY_MODES: ReadonlyArray<DisplayMode> = [
@@ -191,9 +230,18 @@ const ENDED_UNSENT_STATUSES: ReadonlySet<OrchestrationV2TurnItem["status"]> = ne
   "interrupted",
 ]);
 
-/** A send that ended without reaching the user is `other`. A send that still runs shows nothing yet. */
-function sendDisplayEvent(
+/** The tools whose completed calls change what the user reads, and the input field with the text. */
+const MESSAGE_TOOLS: Readonly<
+  Record<string, { readonly type: "sent" | "rewrite"; readonly field: string }>
+> = {
+  [SEND_TO_USER_TOOL_NAME]: { type: "sent", field: "text" },
+  [REPLACE_SEND_TO_USER_TOOL_NAME]: { type: "rewrite", field: "new_text" },
+};
+
+/** A call that ended without reaching the user is `other`. A call that still runs shows nothing yet. */
+function messageToolEvent(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }>,
+  tool: (typeof MESSAGE_TOOLS)[string],
 ): DisplayEvent | null {
   // ACP providers report a refused MCP call as completed with an error result.
   const refused =
@@ -201,12 +249,9 @@ function sendDisplayEvent(
   if (refused || ENDED_UNSENT_STATUSES.has(item.status)) return { type: "other" };
   if (item.status !== "completed") return null;
   const input = item.input;
-  return typeof input === "object" &&
-    input !== null &&
-    "text" in input &&
-    typeof input.text === "string"
-    ? { type: "sent", id: item.id, text: input.text }
-    : null;
+  const text =
+    typeof input === "object" && input !== null ? Reflect.get(input, tool.field) : undefined;
+  return typeof text === "string" ? { type: tool.type, id: item.id, text } : null;
 }
 
 /**
@@ -254,9 +299,8 @@ export function displayEventFromTurnItem(item: OrchestrationV2TurnItem): Display
     case "assistant_message":
       return displayEventFromMessage({ id: item.messageId, role: "assistant", text: item.text });
     case "dynamic_tool": {
-      return resolveT3McpToolId(item.toolName) === SEND_TO_USER_TOOL_NAME
-        ? sendDisplayEvent(item)
-        : { type: "other" };
+      const tool = MESSAGE_TOOLS[resolveT3McpToolId(item.toolName) ?? ""];
+      return tool === undefined ? { type: "other" } : messageToolEvent(item, tool);
     }
     default:
       return OUTSIDE_TRANSCRIPT_TYPES.has(item.type) ? null : { type: "other" };
@@ -267,6 +311,41 @@ export function displayEventFromTurnItem(item: OrchestrationV2TurnItem): Display
 export function sentMessageText(item: OrchestrationV2TurnItem): string | null {
   const event = displayEventFromTurnItem(item);
   return event?.type === "sent" ? event.text : null;
+}
+
+/**
+ * Each completed send in `items`, by item id, with the text that the latest rewrite gave it. Only
+ * tool calls decide that, so it reads no message text. With `unmatchedRewrite`, the latest rewrite
+ * before the first send, whose send lies before `items`, such as a handoff's delta, is kept by its
+ * own id.
+ */
+export function foldSentTexts(
+  items: Iterable<OrchestrationV2TurnItem>,
+  options: { readonly unmatchedRewrite?: boolean } = {},
+): Map<string, string> {
+  const events = Array.from(items)
+    .filter((item) => item.type === "dynamic_tool")
+    .map(displayEventFromTurnItem)
+    .filter((event) => event !== null);
+  const texts = new Map(
+    foldCores(events).flatMap((core): [string, string][] =>
+      core.from === "agent" ? [[core.id, core.text]] : [],
+    ),
+  );
+  const firstSent = events.findIndex((event) => event.type === "sent");
+  const unmatched = (firstSent < 0 ? events : events.slice(0, firstSent)).findLast(
+    (event) => event.type === "rewrite",
+  );
+  if (options.unmatchedRewrite && unmatched !== undefined) texts.set(unmatched.id, unmatched.text);
+  return texts;
+}
+
+/** Returns true for a `replace_send_to_user` call in any state. No screen draws one. */
+export function isReplaceSendCall(item: OrchestrationV2TurnItem): boolean {
+  return (
+    item.type === "dynamic_tool" &&
+    resolveT3McpToolId(item.toolName) === REPLACE_SEND_TO_USER_TOOL_NAME
+  );
 }
 
 /**

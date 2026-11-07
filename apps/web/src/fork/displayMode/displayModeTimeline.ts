@@ -4,6 +4,8 @@ import {
   type DisplayMode,
   displayEventFromMessage,
   displayEventFromTurnItem,
+  foldCores,
+  isReplaceSendCall,
 } from "@t3tools/shared/displayModes";
 
 import type { TimelineEntry } from "../../session-logic";
@@ -26,9 +28,10 @@ function displayEventFromEntry(entry: TimelineEntry): DisplayEvent | null {
   }
 }
 
-// Entries change on every streamed delta. A reply that keeps its object keeps its row from redrawing.
-const repliesInRun = new WeakMap<TimelineEntry, TimelineEntry>();
-const repliesOutsideRun = new WeakMap<TimelineEntry, TimelineEntry>();
+// Entries change on every streamed delta. A reply that keeps its object keeps its row from redrawing,
+// until a rewrite changes its text without changing its entry.
+const repliesInRun = new WeakMap<TimelineEntry, Extract<TimelineEntry, { kind: "message" }>>();
+const repliesOutsideRun = new WeakMap<TimelineEntry, Extract<TimelineEntry, { kind: "message" }>>();
 
 /**
  * A sent message reads as the agent's reply, not as a tool call. The turn fold hides messages of a
@@ -37,8 +40,8 @@ const repliesOutsideRun = new WeakMap<TimelineEntry, TimelineEntry>();
 function replyEntry(entry: TimelineEntry, text: string, inRun: boolean): TimelineEntry {
   const replies = inRun ? repliesInRun : repliesOutsideRun;
   const known = replies.get(entry);
-  if (known !== undefined) return known;
-  const reply: TimelineEntry = {
+  if (known?.message.text === text) return known;
+  const reply: Extract<TimelineEntry, { kind: "message" }> = {
     id: entry.id,
     kind: "message",
     createdAt: entry.createdAt,
@@ -58,22 +61,29 @@ function replyEntry(entry: TimelineEntry, text: string, inRun: boolean): Timelin
 }
 
 /**
- * Returns the rows that a display mode draws. A completed send is a reply in every mode, and a mode
- * without `visibleCores` keeps all rows. The result is `entries` itself when no row changes.
+ * Returns the rows that a display mode draws. A completed send is a reply in every mode, with the
+ * text of its latest rewrite, and a replace call has no row. A mode without `visibleCores` keeps
+ * all other rows. The result is `entries` itself when no row changes.
  */
 export function applyDisplayMode(
   mode: DisplayMode,
   entries: ReadonlyArray<TimelineEntry>,
 ): ReadonlyArray<TimelineEntry> {
   const events = entries.map(displayEventFromEntry);
+  const shown = events.filter((event) => event !== null);
+  const coreTexts = new Map(foldCores(shown).map((core) => [core.id, core.text]));
   const shownIds =
-    mode.visibleCores === null
-      ? null
-      : new Set(mode.visibleCores(events.filter((event) => event !== null)).map((core) => core.id));
+    mode.visibleCores === null ? null : new Set(mode.visibleCores(shown).map((core) => core.id));
   const rows = entries.flatMap((entry, index): TimelineEntry[] => {
     if (shownIds !== null && !shownIds.has(entry.id)) return [];
+    const item = entry.kind === "work" ? entry.entry.structuredPayload : undefined;
+    if (item !== undefined && isReplaceSendCall(item)) return [];
     const event = events[index];
-    return [event?.type === "sent" ? replyEntry(entry, event.text, shownIds === null) : entry];
+    return [
+      event?.type === "sent"
+        ? replyEntry(entry, coreTexts.get(entry.id) ?? event.text, shownIds === null)
+        : entry,
+    ];
   });
   return rows.length === entries.length && rows.every((row, index) => row === entries[index])
     ? entries

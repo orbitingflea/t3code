@@ -13,7 +13,10 @@ import { claudeTerminalToolEnvironment } from "./claudeTerminalTool.ts";
 
 const CLAUDE_BINARY = process.env.T3_CLAUDE_CONTRACT_BINARY ?? "claude";
 const PATH = process.env.PATH;
-const SEND = claudeTerminalToolEnvironment.CLAUDE_CODE_TERMINAL_MCP_TOOLS;
+const SEND = "mcp__t3-code__send_to_user";
+const REPLACE = "mcp__t3-code__replace_send_to_user";
+/** The fake server refuses a call with this text, as the real one refuses a second send. */
+const REFUSED_TEXT = "Refuse this.";
 const INJECTED_TEXT = "Your previous response had no visible output";
 
 // CI has no Claude CLI, so these tests run only where one is installed.
@@ -43,14 +46,20 @@ for await (const line of Readline.createInterface({ input: process.stdin })) {
     message.method === "initialize"
       ? { protocolVersion: message.params.protocolVersion, capabilities: { tools: {} }, serverInfo: { name: "t3-code", version: "1" } }
       : message.method === "tools/list"
-        ? { tools: [{ name: "send_to_user", description: "Show the user a message.", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } }] }
-        : { content: [{ type: "text", text: "Shown to the user." }] };
+        ? { tools: ["send_to_user", "replace_send_to_user"].map((name) => ({ name, description: "Show the user a message.", inputSchema: { type: "object", properties: { text: { type: "string" } }, required: ["text"] } })) }
+        : message.params.arguments.text === ${JSON.stringify(REFUSED_TEXT)}
+          ? { content: [{ type: "text", text: "Refused." }], isError: true }
+          : { content: [{ type: "text", text: "Shown to the user." }] };
   console.log(JSON.stringify({ jsonrpc: "2.0", id: message.id, result }));
 }
 `;
 
-type Reply = { readonly blocks: ReadonlyArray<"send" | "thinking" | "text"> };
+type Reply = {
+  readonly blocks: ReadonlyArray<"send" | "replace" | "refused" | "thinking" | "text">;
+};
 const send: Reply = { blocks: ["send"] };
+const replace: Reply = { blocks: ["replace"] };
+const refused: Reply = { blocks: ["refused"] };
 const silent: Reply = { blocks: ["thinking"] };
 const text: Reply = { blocks: ["text"] };
 
@@ -101,12 +110,20 @@ const replyEvents = (reply: Reply, index: number): ReadonlyArray<object> => [
       {
         ...frame,
         type: "content_block_start",
-        content_block: { type: "tool_use", id: `toolu_${index}`, name: SEND, input: {} },
+        content_block: {
+          type: "tool_use",
+          id: `toolu_${index}`,
+          name: block === "replace" ? REPLACE : SEND,
+          input: {},
+        },
       },
       {
         ...frame,
         type: "content_block_delta",
-        delta: { type: "input_json_delta", partial_json: JSON.stringify({ text: "Hello" }) },
+        delta: {
+          type: "input_json_delta",
+          partial_json: JSON.stringify({ text: block === "refused" ? REFUSED_TEXT : "Hello" }),
+        },
       },
       { ...frame, type: "content_block_stop" },
     ];
@@ -114,7 +131,9 @@ const replyEvents = (reply: Reply, index: number): ReadonlyArray<object> => [
   {
     type: "message_delta",
     delta: {
-      stop_reason: reply.blocks.includes("send") ? "tool_use" : "end_turn",
+      stop_reason: reply.blocks.some((block) => block !== "thinking" && block !== "text")
+        ? "tool_use"
+        : "end_turn",
       stop_sequence: null,
     },
     usage: { output_tokens: 1 },
@@ -164,7 +183,7 @@ const runTurn = (script: ReadonlyArray<Reply>, environment: Readonly<Record<stri
     );
     yield* fs.writeFileString(
       path.join(folder, "settings.json"),
-      JSON.stringify({ permissions: { allow: [SEND] } }),
+      JSON.stringify({ permissions: { allow: [SEND, REPLACE] } }),
     );
     const cli = yield* spawner.spawn(
       ChildProcess.make(
@@ -224,6 +243,24 @@ it.live("the CLI injects its text when the setting is not set", (ctx) =>
   Effect.gen(function* () {
     if (!(yield* cliInstalled)) return ctx.skip(CLI_MISSING);
     const lastMessages = yield* runTurn([send, silent, text], {});
+    expect(injectedCount(lastMessages)).toBe(1);
+    expect(lastMessages).toHaveLength(3);
+  }),
+);
+
+it.live("the CLI ends a turn on a silent stop after a rewrite, as after a send", (ctx) =>
+  Effect.gen(function* () {
+    if (!(yield* cliInstalled)) return ctx.skip(CLI_MISSING);
+    const lastMessages = yield* runTurn([replace, silent], claudeTerminalToolEnvironment);
+    expect(injectedCount(lastMessages)).toBe(0);
+    expect(lastMessages).toHaveLength(2);
+  }),
+);
+
+it.live("the CLI does not take a refused send for the reply", (ctx) =>
+  Effect.gen(function* () {
+    if (!(yield* cliInstalled)) return ctx.skip(CLI_MISSING);
+    const lastMessages = yield* runTurn([refused, silent, text], claudeTerminalToolEnvironment);
     expect(injectedCount(lastMessages)).toBe(1);
     expect(lastMessages).toHaveLength(3);
   }),

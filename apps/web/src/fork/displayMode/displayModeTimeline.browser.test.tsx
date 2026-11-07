@@ -233,6 +233,54 @@ describe("Messages only timeline", () => {
     });
   });
 
+  describe("with a rewritten send", () => {
+    const send: OrchestrationV2TurnItem = {
+      ...base("rewrite-send", 1),
+      type: "dynamic_tool",
+      toolName: "mcp__t3-code__send_to_user",
+      input: { text: "The build is red." },
+      output: { ok: true, message: "Shown to the user." },
+    };
+    const replace = (id: string, status: "completed" | "running"): OrchestrationV2TurnItem => ({
+      ...base(id, 3),
+      status,
+      type: "dynamic_tool",
+      toolName: "mcp__t3-code__replace_send_to_user",
+      input: {
+        user_message: "Is the build green?",
+        old_text: "The build is red.",
+        new_text: "The build is green again.",
+      },
+      output: { ok: true, message: "Shown to the user." },
+    });
+    const sent = entriesOf([userMessage("rewrite-ask", 0, "Is the build green?"), send]);
+
+    it("redraws the send's row with the new text when the rewrite arrives", async () => {
+      await using screen = await renderTimeline([
+        ...applyDisplayMode(MESSAGES_ONLY_DISPLAY_MODE, sent),
+      ]);
+      await expect.element(screen.getByText("The build is red.")).toBeVisible();
+      const rewritten = [...sent, ...entriesOf([replace("rewrite-call", "completed")])];
+      await screen.rerender(
+        <MessagesTimeline
+          {...props()}
+          timelineEntries={[...applyDisplayMode(MESSAGES_ONLY_DISPLAY_MODE, rewritten)]}
+          repliesChosen={false}
+        />,
+      );
+      await expect.element(screen.getByText("The build is green again.")).toBeVisible();
+      expect(screen.container.textContent ?? "").not.toContain("The build is red.");
+    });
+
+    it("draws no row for a replace call in any mode, running or done", () => {
+      for (const mode of [NORMAL_DISPLAY_MODE, MESSAGES_ONLY_DISPLAY_MODE])
+        for (const status of ["running", "completed"] as const) {
+          const shown = applyDisplayMode(mode, [...sent, ...entriesOf([replace("call", status)])]);
+          expect(shown.map((entry) => entry.id)).toEqual(["rewrite-ask", "rewrite-send"]);
+        }
+    });
+  });
+
   it("returns the same rows when nothing changes, and a stable reply when it does", () => {
     const withoutSend = entries.filter((entry) => entry.id !== "sent");
     expect(applyDisplayMode(NORMAL_DISPLAY_MODE, withoutSend)).toBe(withoutSend);

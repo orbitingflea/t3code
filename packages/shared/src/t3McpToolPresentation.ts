@@ -70,6 +70,7 @@ export type T3McpToolSummaryAction =
   | "html-preview"
   | "html-render"
   | "send-to-user"
+  | "rewrite-to-user"
   | "dashboard";
 
 export interface T3McpToolDefinition {
@@ -375,6 +376,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   html_preview: tool(["Preview", "Previewing", "Previewed", "an HTML page"], "html-preview"),
   html_render: tool(["Render", "Rendering", "Rendered", "an HTML page"], "html-render"),
   send_to_user: tool(["Send", "Sending", "Sent", "a message to the user"], "send-to-user"),
+  replace_send_to_user: tool(
+    ["Rewrite", "Rewriting", "Rewrote", "a message to the user"],
+    "rewrite-to-user",
+  ),
   dashboard_get: tool(["Read", "Reading", "Read", "the Dashboard"], "dashboard"),
   dashboard_set: tool(["Update", "Updating", "Updated", "the Dashboard"], "dashboard"),
 };

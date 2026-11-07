@@ -58,37 +58,42 @@ const fakeClaudeCli = () => {
   return { spawn, spawns };
 };
 
-it.effect("starts the Claude CLI with send_to_user as a terminal tool", () =>
-  Effect.gen(function* () {
-    const cli = fakeClaudeCli();
-    const runner = yield* ClaudeAdapterV2.ClaudeAgentSdkQueryRunner;
-    const session = yield* runner.open({
-      threadId: ThreadId.make("thread-claude-terminal-tool"),
-      providerSessionId: ProviderSessionId.make("provider-session-claude-terminal-tool"),
-      options: {
-        ...ClaudeAdapterV2.makeClaudeQueryOptions({
-          modelSelection: {
-            instanceId: ProviderInstanceId.make(ClaudeAdapterV2.CLAUDE_PROVIDER),
-            model: "claude-sonnet-4-6",
-          },
-          nativeThreadId: "native-thread-claude-terminal-tool",
-          title: "Terminal tool",
-          resume: false,
-          cwd: null,
-          environment: { PATH: "/usr/bin" },
-        }),
-        pathToClaudeCodeExecutable: "/opt/claude/cli.js",
-        spawnClaudeCodeProcess: cli.spawn,
-      },
-    });
-    yield* session.close;
-    assert.equal(cli.spawns[0]?.env.CLAUDE_CODE_TERMINAL_MCP_TOOLS, "mcp__t3-code__send_to_user");
-  }).pipe(
-    Effect.provide(ClaudeAdapterV2.layerQueryRunner.pipe(Layer.provide(PortScanner.layerTest))),
-    Effect.provideService(
-      ProviderEventLoggers.ProviderEventLoggers,
-      ProviderEventLoggers.NoOpProviderEventLoggers,
+it.effect(
+  "starts the Claude CLI with send_to_user and replace_send_to_user as terminal tools",
+  () =>
+    Effect.gen(function* () {
+      const cli = fakeClaudeCli();
+      const runner = yield* ClaudeAdapterV2.ClaudeAgentSdkQueryRunner;
+      const session = yield* runner.open({
+        threadId: ThreadId.make("thread-claude-terminal-tool"),
+        providerSessionId: ProviderSessionId.make("provider-session-claude-terminal-tool"),
+        options: {
+          ...ClaudeAdapterV2.makeClaudeQueryOptions({
+            modelSelection: {
+              instanceId: ProviderInstanceId.make(ClaudeAdapterV2.CLAUDE_PROVIDER),
+              model: "claude-sonnet-4-6",
+            },
+            nativeThreadId: "native-thread-claude-terminal-tool",
+            title: "Terminal tool",
+            resume: false,
+            cwd: null,
+            environment: { PATH: "/usr/bin" },
+          }),
+          pathToClaudeCodeExecutable: "/opt/claude/cli.js",
+          spawnClaudeCodeProcess: cli.spawn,
+        },
+      });
+      yield* session.close;
+      assert.equal(
+        cli.spawns[0]?.env.CLAUDE_CODE_TERMINAL_MCP_TOOLS,
+        "mcp__t3-code__send_to_user,mcp__t3-code__replace_send_to_user",
+      );
+    }).pipe(
+      Effect.provide(ClaudeAdapterV2.layerQueryRunner.pipe(Layer.provide(PortScanner.layerTest))),
+      Effect.provideService(
+        ProviderEventLoggers.ProviderEventLoggers,
+        ProviderEventLoggers.NoOpProviderEventLoggers,
+      ),
+      Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
     ),
-    Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)),
-  ),
 );

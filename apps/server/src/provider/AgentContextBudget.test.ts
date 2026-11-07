@@ -11,6 +11,7 @@ import { AssetSigner } from "../assets/AssetSigner.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import { ServerConfig } from "../config.ts";
 import { DeviceService } from "../device/DeviceService.ts";
+import { DisplayModeWrap } from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import { ThreadDashboard } from "../fork/threadDashboard/ThreadDashboard.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { GitWorkflowService } from "../git/GitWorkflowService.ts";
@@ -52,6 +53,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(AssetSigner)({}),
   Layer.mock(DeviceService)({}),
   Layer.mock(ThreadDashboard)({}),
+  Layer.mock(DisplayModeWrap)({ forgetNotesAfterCompaction: () => (ingest) => ingest }),
   Layer.mock(DocumentText)({}),
   Layer.mock(GitVcsDriver)({}),
   Layer.mock(GitWorkflowService)({}),

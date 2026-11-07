@@ -7,7 +7,7 @@ import {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
-import { displayModeShowsText, sentMessageText } from "@t3tools/shared/displayModes";
+import { displayModeShowsText, foldSentTexts } from "@t3tools/shared/displayModes";
 import { searchableMessageSegments, searchablePlanSegments } from "@t3tools/shared/threadFindText";
 import { countThreadSearchOccurrences } from "@t3tools/shared/threadSearch";
 import * as Cache from "effect/Cache";
@@ -53,6 +53,7 @@ function textKey(
   item: OrchestrationV2TurnItem,
   cwd: string | undefined,
   skills: TextKey["skills"],
+  sentTexts: ReadonlyMap<string, string>,
 ) {
   return new TextKey({
     text:
@@ -60,7 +61,7 @@ function textKey(
         ? item.markdown
         : item.type === "user_message" || item.type === "assistant_message"
           ? item.text
-          : (sentMessageText(item) ?? ""),
+          : (sentTexts.get(item.id) ?? ""),
     role:
       item.type === "proposed_plan" ? "plan" : item.type === "user_message" ? "user" : "assistant",
     streaming: item.type === "assistant_message" && item.streaming,
@@ -352,6 +353,13 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
           if (item.type === "user_input_request" && item.questionAnswer)
             foldedAnswers.add(`async-answer:${item.questionAnswer.requestId}`);
         }
+        // A rewrite can sit in a later load chunk than its send, so the fold covers every row.
+        const sentTexts = foldSentTexts(
+          yield* Effect.forEach(
+            payloads.filter((row) => row.type === "dynamic_tool"),
+            (row) => Effect.map(decode(row), ({ item }) => item),
+          ),
+        );
         const rows = payloads.filter(
           (row) =>
             row.type !== "user_input_request" &&
@@ -362,7 +370,7 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
           const cached = documents.get(row.position);
           if (cached) return cached;
           const decoded = yield* decode(row);
-          const key = textKey(decoded.item, cwd, input.skills ?? []);
+          const key = textKey(decoded.item, cwd, input.skills ?? [], sentTexts);
           const segments = yield* Cache.get(
             key.text.length <= 32_768 ? textCache : largeTextCache,
             key,

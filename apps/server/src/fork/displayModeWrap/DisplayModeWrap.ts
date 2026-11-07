@@ -8,7 +8,6 @@ import {
   type ThreadId,
 } from "@t3tools/contracts";
 import {
-  type DisplayEvent,
   type DisplayMode,
   displayEventFromTurnItem,
   isWebTypedMessage,
@@ -26,6 +25,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
+import type * as SqlError from "effect/sql/SqlError";
 
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
@@ -80,6 +80,19 @@ export interface DisplayModeWrapShape {
     readonly text: string;
     readonly context?: NoteContext;
   }) => Effect.Effect<WrappedUserText>;
+  /**
+   * The user messages and send_to_user and replace_send_to_user calls that the thread's screen
+   * shows, oldest first, in any state. It reads back from the thread's end past the user's last
+   * typed message, and past at least WRAPPED_CORE_COUNT messages. With `ownNativeId`, both are
+   * counted only from the item with that native id back, so the caller can read what came before it.
+   */
+  readonly latestShownItems: (
+    threadId: ThreadId,
+    ownNativeId?: string,
+  ) => Effect.Effect<
+    ReadonlyArray<OrchestrationV2TurnItem>,
+    SqlError.SqlError | Schema.SchemaError | ProjectionStore.ProjectionStoreV2Error
+  >;
   /**
    * The thread's agent lost turns from its conversation, such as by a rollback, and they may have
    * held its mode note. It logs a failure and does not fail.
@@ -175,26 +188,32 @@ export const layer: Layer.Layer<
       Effect.forkScoped,
     );
 
-    // Reads the thread's history newest first, a few rows at a time, until it has the events that
-    // `wrap` needs. Visibility uses the screen's own rules. They get no items because the items only
-    // decide interrupt results, which never enter the agent's transcript.
-    const eventsBefore = Effect.fn("DisplayModeWrap.eventsBefore")(function* (
+    // Reads newest first from before `before`, or from the end, until WRAPPED_CORE_COUNT messages
+    // (not rewrites) and, without `before`, a typed message, counted from `ownNativeId` back when
+    // given. Visibility gets no items: they only decide interrupt results, which never enter the
+    // agent's transcript.
+    const shownItems = Effect.fn("DisplayModeWrap.shownItems")(function* (
       threadId: ThreadId,
-      messageId: MessageId,
+      before: MessageId | null,
+      ownNativeId?: string,
     ) {
-      const anchors = yield* sql<{ readonly turn_item_id: string; readonly ordinal: number }>`
-        SELECT turn_item_id, ordinal FROM orchestration_v2_projection_turn_items
-        WHERE thread_id = ${threadId} AND type = 'user_message'
-          AND json_extract(payload_json, '$.messageId') = ${messageId}
-        ORDER BY ordinal DESC LIMIT 1
-      `;
-      const anchor = anchors[0];
-      if (anchor === undefined) return [];
+      let start = { ordinal: Number.MAX_SAFE_INTEGER, itemId: "" };
+      if (before !== null) {
+        const anchors = yield* sql<{ readonly turn_item_id: string; readonly ordinal: number }>`
+          SELECT turn_item_id, ordinal FROM orchestration_v2_projection_turn_items
+          WHERE thread_id = ${threadId} AND type = 'user_message'
+            AND json_extract(payload_json, '$.messageId') = ${before}
+          ORDER BY ordinal DESC LIMIT 1
+        `;
+        const anchor = anchors[0];
+        if (anchor === undefined) return [];
+        start = { ordinal: anchor.ordinal, itemId: anchor.turn_item_id };
+      }
       let records = yield* projections.getThreadRecords(threadId, ["runs", "attempts"]);
       const segments: Segment[] = [
         {
           threadId,
-          before: { ordinal: anchor.ordinal, itemId: anchor.turn_item_id },
+          before: start,
           shows: createOrchestrationV2TurnItemVisibility({ ...records, items: [] }),
         },
       ];
@@ -221,10 +240,13 @@ export const layer: Layer.Layer<
         records = source;
       }
 
-      // The recap lists only user messages and send_to_user calls, so the query steps over other rows.
+      // The screen shows only user messages and send_to_user calls, so the query steps over other rows.
       const shownOnly = sql`(item.type = 'user_message' OR (item.type = 'dynamic_tool'
         AND item.payload_json LIKE ${SEND_TO_USER_PAYLOAD_LIKE}))`;
-      const found: DisplayEvent[] = [];
+      const found: OrchestrationV2TurnItem[] = [];
+      let cores = 0;
+      let passedTyped = before !== null;
+      let passedOwn = ownNativeId === undefined;
       for (const segment of segments) {
         let { ordinal, itemId } = segment.before;
         while (true) {
@@ -244,10 +266,13 @@ export const layer: Layer.Layer<
           for (const row of rows) {
             const item = yield* decodeTurnItem(row.payload_json);
             if (!segment.shows(item)) continue;
+            found.push(item);
+            if (item.nativeItemRef?.nativeId === ownNativeId) passedOwn = true;
+            if (!passedOwn) continue;
             const event = displayEventFromTurnItem(item);
-            if (event === null || event.type === "other") continue;
-            found.push(event);
-            if (found.length >= WRAPPED_CORE_COUNT) return found.reverse();
+            if (event?.type === "user") passedTyped = true;
+            if (event?.type === "user" || event?.type === "sent") cores++;
+            if (passedTyped && cores >= WRAPPED_CORE_COUNT) return found.reverse();
           }
           const last = rows.at(-1);
           if (last === undefined || rows.length < PAGE_ROWS) break;
@@ -402,7 +427,15 @@ export const layer: Layer.Layer<
             ? unchanged
             : { ...unchanged, commandNote: { text: note, delivered: recordTold(threadId, mode) } };
         const wrapped =
-          mode.wrap === null ? text : mode.wrap(yield* eventsBefore(threadId, message.id), text);
+          mode.wrap === null
+            ? text
+            : mode.wrap(
+                (yield* shownItems(threadId, message.id)).flatMap((item) => {
+                  const event = displayEventFromTurnItem(item);
+                  return event === null ? [] : [event];
+                }),
+                text,
+              );
         return note === null
           ? { text: wrapped, accepted: Effect.void }
           : { text: `${note}\n${wrapped}`, accepted: recordTold(threadId, mode) };
@@ -417,13 +450,25 @@ export const layer: Layer.Layer<
       );
     });
 
-    return DisplayModeWrap.of({ wrapUserText, forgetNotes, forgetNotesAfterCompaction });
+    const latestShownItems: DisplayModeWrapShape["latestShownItems"] = Effect.fn(
+      "DisplayModeWrap.latestShownItems",
+    )((threadId, ownNativeId) => shownItems(threadId, null, ownNativeId));
+
+    return DisplayModeWrap.of({
+      wrapUserText,
+      latestShownItems,
+      forgetNotes,
+      forgetNotesAfterCompaction,
+    });
   }),
 ).pipe(Layer.provide(ProjectionStore.layer));
 
 const unchanged = DisplayModeWrap.of({
   wrapUserText: Effect.fn("DisplayModeWrap.wrapUserTextUnchanged")(({ text }) =>
     Effect.succeed({ text, accepted: Effect.void }),
+  ),
+  latestShownItems: Effect.fn("DisplayModeWrap.latestShownItemsUnchanged")(() =>
+    Effect.succeed([]),
   ),
   forgetNotes: Effect.fn("DisplayModeWrap.forgetNotesUnchanged")(() => Effect.void),
   forgetNotesAfterCompaction: () => (ingest) => ingest,

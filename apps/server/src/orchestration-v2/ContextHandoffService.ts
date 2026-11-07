@@ -24,7 +24,7 @@ import {
   selectHistory,
 } from "@t3tools/provider-core/server/handoffBudget";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
-import { sentMessageText } from "@t3tools/shared/displayModes";
+import { foldSentTexts } from "@t3tools/shared/displayModes";
 import { createOrchestrationV2TurnItemVisibility } from "@t3tools/shared/orchestrationV2Timeline";
 import type { ProjectionStoreV2Shape } from "./ProjectionStore.ts";
 
@@ -205,7 +205,10 @@ export const readForkHistoryItems = Effect.fn(
   ];
 });
 
-function summarizeDeltaItem(item: OrchestrationV2TurnItem): string | null {
+function summarizeDeltaItem(
+  item: OrchestrationV2TurnItem,
+  sentTexts: ReadonlyMap<string, string>,
+): string | null {
   switch (item.type) {
     case "user_message":
       return `- User: ${compactText(item.text)}`;
@@ -220,8 +223,8 @@ function summarizeDeltaItem(item: OrchestrationV2TurnItem): string | null {
     case "handoff":
       return `- Handoff: ${compactText(item.summary ?? item.strategy)}`;
     default: {
-      const sent = sentMessageText(item);
-      return sent === null ? null : `- Assistant: ${compactText(sent)}`;
+      const sent = sentTexts.get(item.id);
+      return sent === undefined ? null : `- Assistant: ${compactText(sent)}`;
     }
   }
 }
@@ -232,8 +235,9 @@ function makeForkDeltaSummary(input: {
   readonly coveredRunOrdinals: OrchestrationV2ContextHandoff["coveredRunOrdinals"];
   readonly deltaItems: ReadonlyArray<OrchestrationV2TurnItem>;
 }): string {
+  const sentTexts = foldSentTexts(input.deltaItems, { unmatchedRewrite: true });
   const itemLines = input.deltaItems.flatMap((item) => {
-    const line = summarizeDeltaItem(item);
+    const line = summarizeDeltaItem(item, sentTexts);
     return line === null ? [] : [line];
   });
   return [
@@ -264,9 +268,13 @@ export function makeSideChatContext(input: {
   // The cap covers the whole block, so the fixed lines are reserved before any digest line.
   let remaining =
     SIDE_CHAT_CONTEXT_MAX_CHARS - [framing, "", header, truncated, "", footer].join("\n").length;
+  const sentTexts = foldSentTexts(
+    input.digest.filter((item) => typeof item !== "string"),
+    { unmatchedRewrite: true },
+  );
   for (let index = input.digest.length - 1; index >= 0; index--) {
     const item = input.digest[index]!;
-    const line = typeof item === "string" ? item : summarizeDeltaItem(item);
+    const line = typeof item === "string" ? item : summarizeDeltaItem(item, sentTexts);
     if (line === null) continue;
     if (line.length + 1 > remaining) {
       omitted = true;
@@ -383,9 +391,10 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
             ),
           );
         const coverage = handoffCoverage({ ...input, coveredRunOrdinals: { from: 1, to: 1 } });
+        const sentTexts = foldSentTexts(input.items);
         const selected = selectHistory({
           messages: input.items.flatMap((item) => {
-            const message = historicalMessage(item);
+            const message = historicalMessage(item, sentTexts);
             return message === null ? [] : [message];
           }),
           coverage,
@@ -453,9 +462,10 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
           coveredRunOrdinals: input.coveredRunOrdinals,
           items: input.deltaItems,
         });
+        const sentTexts = foldSentTexts(input.deltaItems, { unmatchedRewrite: true });
         const selected = selectHistory({
           messages: input.deltaItems.flatMap((item) => {
-            const message = historicalMessage(item);
+            const message = historicalMessage(item, sentTexts);
             return message === null ? [] : [message];
           }),
           coverage,
@@ -525,9 +535,10 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
         );
       const runStatuses = new Map(input.runs?.map((run) => [run.id, run.status]));
       const coverage = handoffCoverage(input);
+      const sentTexts = foldSentTexts(input.items);
       const selected = selectHistory({
         messages: input.items.flatMap((item) => {
-          const message = historicalMessage(item);
+          const message = historicalMessage(item, sentTexts);
           return message === null
             ? []
             : [

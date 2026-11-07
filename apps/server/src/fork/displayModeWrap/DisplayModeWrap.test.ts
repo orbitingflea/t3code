@@ -44,6 +44,9 @@ const longId = ThreadId.make("thread:display-wrap:long");
 const busyId = ThreadId.make("thread:display-wrap:busy");
 const doneId = ThreadId.make("thread:display-wrap:done");
 const newId = ThreadId.make("thread:display-wrap:new");
+const rewrittenId = ThreadId.make("thread:display-wrap:rewritten");
+const latestId = ThreadId.make("thread:display-wrap:latest");
+const ownCallId = ThreadId.make("thread:display-wrap:own-call");
 const switchId = ThreadId.make("thread:display-wrap:switch");
 const providerThreadId = ProviderThreadId.make("provider-thread:display-wrap");
 const providerTurnId = ProviderTurnId.make("provider-turn:display-wrap");
@@ -69,6 +72,7 @@ const settings = ServerSettings.layerTest({
     [busyId]: "messages-only",
     [doneId]: "messages-only",
     [newId]: "messages-only",
+    [rewrittenId]: "messages-only",
   },
 });
 const providers = Layer.mock(ProviderRegistry.ProviderRegistry)({
@@ -169,9 +173,14 @@ type ItemFields =
       readonly text: string;
       readonly inputIntent: "turn_start" | "steer" | "queued_turn";
       readonly status?: "pending";
+      readonly creationSource?: "web" | "server";
     }
   | { readonly type: "assistant_message"; readonly messageId: MessageId; readonly text: string }
-  | { readonly type: "send_to_user"; readonly text: string; readonly status?: "failed" }
+  | {
+      readonly type: "send_to_user" | "replace_send_to_user";
+      readonly text: string;
+      readonly status?: "failed" | "running";
+    }
   | { readonly type: "command_execution" };
 
 const itemUpdated = (
@@ -199,16 +208,19 @@ const itemUpdated = (
   };
   const payload: OrchestrationV2TurnItem =
     fields.type === "user_message"
-      ? { ...base, ...fields, attachments: [], createdBy: "user", creationSource: "web" }
+      ? { ...base, creationSource: "web", ...fields, attachments: [], createdBy: "user" }
       : fields.type === "assistant_message"
         ? { ...base, ...fields, streaming: false }
-        : fields.type === "send_to_user"
+        : fields.type === "send_to_user" || fields.type === "replace_send_to_user"
           ? {
               ...base,
               status: fields.status ?? base.status,
               type: "dynamic_tool",
-              toolName: "mcp__t3-code__send_to_user",
-              input: { text: fields.text },
+              toolName: `mcp__t3-code__${fields.type}`,
+              input:
+                fields.type === "send_to_user"
+                  ? { text: fields.text }
+                  : { user_message: "", old_text: "", new_text: fields.text },
             }
           : { ...base, type: "command_execution", input: "make test" };
   return {
@@ -479,6 +491,130 @@ it.effect("counts the history a fork inherits from its source", () =>
       text,
       told(recap(["[user] Fix the build.", "[you] On it."], "Try another way.")),
     );
+    const wrap = yield* DisplayModeWrap.DisplayModeWrap;
+    assert.deepEqual(
+      (yield* wrap.latestShownItems(forkId)).map((item) => item.ordinal),
+      [100, 101, 1_000_100],
+    );
+  }).pipe(Effect.provide(Layer.merge(store, wrapper))),
+);
+
+it.effect("recaps a send with its latest rewrite, and does not count rewrites as messages", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const message = (ordinal: number, text: string) =>
+      itemUpdated(now, rewrittenId, runId, ordinal, {
+        type: "user_message",
+        messageId: MessageId.make(`message:display-wrap:rewritten:${ordinal}`),
+        text,
+        inputIntent: ordinal === 1 ? "turn_start" : "steer",
+      });
+    const rewrites = Array.from({ length: 10 }, (_, index) =>
+      itemUpdated(now, rewrittenId, runId, 5 + index, {
+        type: "replace_send_to_user",
+        text: `On it, take ${index + 1}.`,
+      }),
+    );
+    const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+      threadCreated(now, rewrittenId, null),
+      runCreated(now, rewrittenId, runId, "running"),
+      message(1, "First."),
+      itemUpdated(now, rewrittenId, runId, 2, { type: "send_to_user", text: "Hello." }),
+      message(3, "Fix the build."),
+      itemUpdated(now, rewrittenId, runId, 4, { type: "send_to_user", text: "On it." }),
+      ...rewrites,
+      message(15, "Any news?"),
+    ];
+    yield* Effect.forEach(events, (event) => projections.apply(event), { discard: true });
+    const text = yield* deliver({
+      threadId: rewrittenId,
+      id: MessageId.make("message:display-wrap:rewritten:15"),
+      text: "Any news?",
+    });
+    assert.strictEqual(
+      text,
+      told(recap(["[you] Hello.", "[user] Fix the build.", "[you] On it, take 10."], "Any news?")),
+    );
+  }).pipe(Effect.provide(Layer.merge(store, wrapper))),
+);
+
+it.effect("reads the latest shown items back past the user's last typed message", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const wrap = yield* DisplayModeWrap.DisplayModeWrap;
+    const message = (ordinal: number, text: string, creationSource: "web" | "server" = "web") =>
+      itemUpdated(now, latestId, runId, ordinal, {
+        type: "user_message",
+        messageId: MessageId.make(`message:display-wrap:latest:${ordinal}`),
+        text,
+        inputIntent: "steer",
+        creationSource,
+      });
+    const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+      threadCreated(now, latestId, null),
+      runCreated(now, latestId, runId, "running"),
+      itemUpdated(now, latestId, runId, 1, { type: "send_to_user", text: "Earlier." }),
+      message(2, "Fix the build."),
+      itemUpdated(now, latestId, runId, 3, { type: "send_to_user", text: "On it." }),
+      message(4, "Continue where you left off.", "server"),
+      itemUpdated(now, latestId, runId, 5, { type: "replace_send_to_user", text: "On it, 1." }),
+      itemUpdated(now, latestId, runId, 6, { type: "command_execution" }),
+      itemUpdated(now, latestId, runId, 7, { type: "send_to_user", text: "Done." }),
+      itemUpdated(now, latestId, runId, 8, {
+        type: "send_to_user",
+        text: "Also.",
+        status: "running",
+      }),
+    ];
+    yield* Effect.forEach(events, (event) => projections.apply(event), { discard: true });
+    const ordinals = (yield* wrap.latestShownItems(latestId)).map((item) => item.ordinal);
+    // Back to the typed message at 2, which with the sends after it makes 3 messages.
+    assert.deepEqual(ordinals, [2, 3, 4, 5, 7, 8]);
+  }).pipe(Effect.provide(Layer.merge(store, wrapper))),
+);
+
+it.effect("counts back from the caller's own item when it names one", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const wrap = yield* DisplayModeWrap.DisplayModeWrap;
+    const message = (ordinal: number, text: string) =>
+      itemUpdated(now, ownCallId, runId, ordinal, {
+        type: "user_message",
+        messageId: MessageId.make(`message:display-wrap:own-call:${ordinal}`),
+        text,
+        inputIntent: "steer",
+      });
+    const ownCall = itemUpdated(now, ownCallId, runId, 2, {
+      type: "send_to_user",
+      text: "On it.",
+      status: "running",
+    });
+    const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+      threadCreated(now, ownCallId, null),
+      runCreated(now, ownCallId, runId, "running"),
+      message(1, "Fix the build."),
+      ownCall.type === "turn-item.updated"
+        ? {
+            ...ownCall,
+            payload: {
+              ...ownCall.payload,
+              nativeItemRef: { driver, nativeId: "toolu_own", strength: "strong" },
+            },
+          }
+        : ownCall,
+      message(3, "Also run the tests."),
+      message(4, "And the linter."),
+      itemUpdated(now, ownCallId, runId, 5, { type: "send_to_user", text: "Tests pass." }),
+    ];
+    yield* Effect.forEach(events, (event) => projections.apply(event), { discard: true });
+    const ordinals = (yield* wrap.latestShownItems(ownCallId, "toolu_own")).map(
+      (item) => item.ordinal,
+    );
+    // The typed message before the call's own item is read, though two came after it.
+    assert.deepEqual(ordinals, [1, 2, 3, 4, 5]);
   }).pipe(Effect.provide(Layer.merge(store, wrapper))),
 );
 
@@ -1044,6 +1180,76 @@ it.effect("finds in a thread only the text that its display mode shows", () =>
   ),
 );
 
+it.effect("finds a rewritten send by its new text, with the rewrite many rows later", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const projects = yield* ProjectStore.ProjectStoreV2;
+    const projectId = ProjectId.make("project:display-wrap");
+    yield* projects.apply({
+      sequence: 0,
+      eventId: EventId.make("display-wrap:project"),
+      aggregateKind: "project",
+      aggregateId: projectId,
+      occurredAt: DateTime.formatIso(now),
+      commandId: null,
+      causationEventId: null,
+      correlationId: null,
+      metadata: {},
+      type: "project.created",
+      payload: {
+        projectId,
+        title: "Display wrap",
+        workspaceRoot: "/workspace",
+        defaultModelSelection: null,
+        scripts: [],
+        createdAt: DateTime.formatIso(now),
+        updatedAt: DateTime.formatIso(now),
+      },
+    });
+    const notes = Array.from({ length: 200 }, (_, index) =>
+      itemUpdated(now, sourceId, runId, 3 + index, {
+        type: "user_message",
+        messageId: MessageId.make(`message:display-wrap:find:note:${index}`),
+        text: `Note ${index}`,
+        inputIntent: "steer",
+      }),
+    );
+    const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+      threadCreated(now, sourceId, null),
+      runCreated(now, sourceId, runId, "completed"),
+      itemUpdated(now, sourceId, runId, 1, {
+        type: "user_message",
+        messageId: MessageId.make("message:display-wrap:find:ask"),
+        text: "Find the needle.",
+        inputIntent: "turn_start",
+      }),
+      itemUpdated(now, sourceId, runId, 2, { type: "send_to_user", text: "A haystack." }),
+      ...notes,
+      itemUpdated(now, sourceId, runId, 300, {
+        type: "replace_send_to_user",
+        text: "A rewritten pin.",
+      }),
+    ];
+    yield* Effect.forEach(events, (event) => projections.apply(event), { discard: true });
+    const matches = Effect.fn("matches")(function* (query: string, displayMode: string) {
+      const result = yield* projections.searchThread({ threadId: sourceId, query, displayMode });
+      return result.navigation?.map((entry) => entry.entryId) ?? [];
+    });
+    const sentId = `item:${sourceId}:2`;
+    for (const mode of [NORMAL_DISPLAY_MODE.id, MESSAGES_ONLY_DISPLAY_MODE.id]) {
+      assert.deepEqual(yield* matches("pin", mode), [sentId]);
+      assert.deepEqual(yield* matches("haystack", mode), []);
+    }
+  }).pipe(
+    Effect.provide(
+      Layer.merge(ProjectionStore.layer, ProjectStore.layer).pipe(
+        Layer.provideMerge(SqlitePersistence.layerMemory),
+      ),
+    ),
+  ),
+);
+
 it.effect("drops the mode of a deleted thread and keeps the others", () =>
   Effect.gen(function* () {
     const now = yield* DateTime.now;
@@ -1063,6 +1269,7 @@ it.effect("drops the mode of a deleted thread and keeps the others", () =>
       [busyId]: "messages-only",
       [doneId]: "messages-only",
       [newId]: "messages-only",
+      [rewrittenId]: "messages-only",
     });
   }).pipe(Effect.provide(Layer.merge(store, settings))),
 );

@@ -156,3 +156,12 @@ it.effect("keeps a sent message out of the folded tool work", () =>
     assert.strictEqual(yield* seedTurn(ThreadId.make("thread:other"), "mcp__other__lookup"), 2);
   }).pipe(Effect.provide(layer)),
 );
+
+it.effect("keeps a replace_send_to_user call out of the folded tool work, like a send", () =>
+  Effect.gen(function* () {
+    assert.strictEqual(
+      yield* seedTurn(ThreadId.make("thread:replaced"), "mcp__t3-code__replace_send_to_user"),
+      3,
+    );
+  }).pipe(Effect.provide(layer)),
+);

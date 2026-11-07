@@ -1,21 +1,28 @@
 import {
   DEFAULT_SERVER_SETTINGS,
+  EnvironmentId,
+  MessageId,
   type OrchestrationV2TurnItem,
   ServerSettings,
+  ThreadId,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
+import { serializeAssistantCitation } from "../../assistantCitations.ts";
 import { applyServerSettingsPatch } from "../../serverSettings.ts";
 
 import {
   type DisplayEvent,
   displayEventFromTurnItem,
   displayModeShowsText,
+  foldSentTexts,
+  isReplaceSendCall,
   isWebTypedMessage,
   MESSAGES_DASHBOARD_DISPLAY_MODE,
   MESSAGES_ONLY_DISPLAY_MODE,
   NORMAL_DISPLAY_MODE,
+  recapText,
   resolveDisplayMode,
   sentMessageText,
 } from "./displayModes.ts";
@@ -24,6 +31,7 @@ const decodeServerSettings = Schema.decodeSync(ServerSettings);
 
 const user = (text: string): DisplayEvent => ({ type: "user", id: `user:${text}`, text });
 const sent = (text: string): DisplayEvent => ({ type: "sent", id: `sent:${text}`, text });
+const rewrite = (text: string): DisplayEvent => ({ type: "rewrite", id: `rewrite:${text}`, text });
 const other: DisplayEvent = { type: "other" };
 
 const wrap = (events: ReadonlyArray<DisplayEvent>, text: string) =>
@@ -188,6 +196,45 @@ describe("displayEventFromTurnItem", () => {
       },
       { type: "user", id: "m1", text: "next" },
     ],
+    [
+      "a completed replace",
+      {
+        type: "dynamic_tool",
+        toolName: "mcp__t3-code__replace_send_to_user",
+        input: { user_message: "Hi", old_text: "Done", new_text: "Done, and pushed" },
+      },
+      { type: "rewrite", id: "item-1", text: "Done, and pushed" },
+    ],
+    [
+      "a replace the tool refused",
+      {
+        type: "dynamic_tool",
+        toolName: "t3-code.replace_send_to_user",
+        input: { user_message: "Hi", old_text: "Done", new_text: "Done, and pushed" },
+        output: { content: [{ type: "text", text: "Refused" }], isError: true },
+      },
+      { type: "other" },
+    ],
+    [
+      "a cancelled replace",
+      {
+        type: "dynamic_tool",
+        status: "cancelled",
+        toolName: "mcp__t3-code__replace_send_to_user",
+        input: { user_message: "Hi", old_text: "Done", new_text: "Done, and pushed" },
+      },
+      { type: "other" },
+    ],
+    [
+      "a running replace",
+      {
+        type: "dynamic_tool",
+        status: "running",
+        toolName: "mcp__t3-code__replace_send_to_user",
+        input: { user_message: "Hi", old_text: "Done", new_text: "Done, and pushed" },
+      },
+      null,
+    ],
     ["another tool", { type: "dynamic_tool", toolName: "Read", input: {} }, { type: "other" }],
     ["a command", { type: "command_execution", input: "ls" }, { type: "other" }],
     ["a checkpoint", { type: "checkpoint" }, null],
@@ -205,6 +252,31 @@ describe("visibleCores", () => {
       { id: "user:A", from: "user", text: "A" },
       { id: "sent:B", from: "agent", text: "B" },
       { id: "user:C", from: "user", text: "C" },
+    ]);
+  });
+
+  it("shows a rewrite as the new text of the latest send before it, even across user messages", () => {
+    expect(
+      MESSAGES_ONLY_DISPLAY_MODE.visibleCores!([
+        sent("A"),
+        user("B"),
+        sent("C"),
+        other,
+        user("D"),
+        rewrite("C2"),
+        rewrite("C3"),
+      ]),
+    ).toEqual([
+      { id: "sent:A", from: "agent", text: "A" },
+      { id: "user:B", from: "user", text: "B" },
+      { id: "sent:C", from: "agent", text: "C3" },
+      { id: "user:D", from: "user", text: "D" },
+    ]);
+  });
+
+  it("shows nothing for a rewrite with no send before it", () => {
+    expect(MESSAGES_ONLY_DISPLAY_MODE.visibleCores!([rewrite("X"), user("A")])).toEqual([
+      { id: "user:A", from: "user", text: "A" },
     ]);
   });
 
@@ -302,6 +374,30 @@ describe("Messages only wrap", () => {
     );
   });
 
+  it("recaps a rewritten send with its new text, and a rewrite adds no line", () => {
+    expect(wrap([user("A"), sent("B"), user("C"), rewrite("B2")], "D")).toBe(
+      wrapped(["[user] A", "[you] B2", "[user] C"], "D"),
+    );
+  });
+
+  it("shows a quote as its quoted text and comment", () => {
+    const quote = serializeAssistantCitation({
+      version: 1,
+      environmentId: EnvironmentId.make("env"),
+      threadId: ThreadId.make("thread"),
+      messageId: MessageId.make("message"),
+      text: "the token check",
+      start: 0,
+      end: 15,
+      prefix: "",
+      suffix: "",
+      comment: "Why here?",
+    });
+    expect(wrap([user(`Look at ${quote} again`)], "E")).toBe(
+      wrapped(["[user] Look at the token check\nComment: Why here? again"], "E"),
+    );
+  });
+
   it("wraps the same way in Messages + Dashboard", () => {
     const events = [user("A"), sent("B"), other];
     expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!(events, "C")).toBe(
@@ -315,6 +411,13 @@ describe("Messages only wrap", () => {
     // user-view is an outside tool that shows a transcript as the user saw it.
     // It removes the blocks that match this pattern, and then it trims the whitespace around them.
     expect(text.replace(/<([a-z][a-z0-9_-]*-mode)>[\s\S]*?<\/\1>/g, "").trim()).toBe("C");
+  });
+});
+
+describe("recapText", () => {
+  it("cuts a message at 2000 UTF-8 bytes after quotes become their text", () => {
+    expect(recapText("a".repeat(2000))).toBe("a".repeat(2000));
+    expect(recapText("汉".repeat(700))).toBe(`${"汉".repeat(666)}…[truncated]`);
   });
 });
 
@@ -332,6 +435,16 @@ describe("resolveDisplayMode", () => {
         (id) => resolveDisplayMode(id).dashboard,
       ),
     ).toEqual([false, false, true]);
+  });
+});
+
+describe("oneSendPerMessage", () => {
+  it("limits the agent to one send per typed message only where the user sees only messages", () => {
+    expect(
+      ["normal", "messages-only", "messages-dashboard"].map(
+        (id) => resolveDisplayMode(id).oneSendPerMessage,
+      ),
+    ).toEqual([false, true, true]);
   });
 });
 
@@ -404,6 +517,15 @@ describe("displayModeShowsText", () => {
   });
 });
 
+const replace = (id: string, newText: string, status = "completed") =>
+  item({
+    id,
+    type: "dynamic_tool",
+    toolName: "mcp__t3-code__replace_send_to_user",
+    input: { user_message: "", old_text: "", new_text: newText },
+    status,
+  });
+
 describe("sentMessageText", () => {
   it("returns the text of a completed send only", () => {
     const send = {
@@ -414,5 +536,91 @@ describe("sentMessageText", () => {
     expect(sentMessageText(item(send))).toBe("hi");
     expect(sentMessageText(item({ ...send, status: "failed" }))).toBeNull();
     expect(sentMessageText(item({ type: "command_execution", input: "ls" }))).toBeNull();
+    expect(sentMessageText(replace("r", "hi"))).toBeNull();
+  });
+});
+
+describe("foldSentTexts", () => {
+  const send = (id: string, text: string) =>
+    item({ id, type: "dynamic_tool", toolName: "mcp__t3-code__send_to_user", input: { text } });
+  const typed = (id: string) =>
+    item({
+      type: "user_message",
+      messageId: id,
+      createdBy: "user",
+      creationSource: "web",
+      text: id,
+    });
+
+  it("gives each send the text of its latest rewrite, and replace calls no entry", () => {
+    expect(
+      foldSentTexts([
+        send("s1", "First"),
+        replace("r1", "First, fixed"),
+        typed("u1"),
+        send("s2", "Second"),
+        replace("r2", "Not shown", "failed"),
+        typed("u2"),
+        replace("r3", "Second, fixed"),
+      ]),
+    ).toEqual(
+      new Map([
+        ["s1", "First, fixed"],
+        ["s2", "Second, fixed"],
+      ]),
+    );
+  });
+
+  it("keeps the latest rewrite before the first send by its own id, when asked", () => {
+    const items = [replace("r1", "Old fix"), replace("r2", "New fix"), send("s1", "Next")];
+    expect(foldSentTexts(items)).toEqual(new Map([["s1", "Next"]]));
+    expect(foldSentTexts(items, { unmatchedRewrite: true })).toEqual(
+      new Map([
+        ["s1", "Next"],
+        ["r2", "New fix"],
+      ]),
+    );
+  });
+});
+
+describe("isReplaceSendCall", () => {
+  it("names a replace call in any state, and nothing else", () => {
+    expect(isReplaceSendCall(replace("r", "x", "running"))).toBe(true);
+    expect(isReplaceSendCall(replace("r", "x", "failed"))).toBe(true);
+    expect(
+      isReplaceSendCall(
+        item({
+          type: "dynamic_tool",
+          toolName: "mcp__t3-code__send_to_user",
+          input: { text: "x" },
+        }),
+      ),
+    ).toBe(false);
+  });
+
+  it("is never drawn as text", () => {
+    for (const modeId of ["normal", "messages-only", "messages-dashboard"])
+      expect(displayModeShowsText(modeId, replace("r", "x"))).toBe(false);
+  });
+
+  it("names an OpenCode replace call, whose label also ends with send_to_user", () => {
+    expect(
+      isReplaceSendCall(
+        item({
+          type: "dynamic_tool",
+          toolName: "t3-code-thread_opencode2-adapter_replace_send_to_user",
+          input: { user_message: "", old_text: "", new_text: "x" },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      isReplaceSendCall(
+        item({
+          type: "dynamic_tool",
+          toolName: "t3-code-thread_opencode2-adapter_send_to_user",
+          input: { text: "x" },
+        }),
+      ),
+    ).toBe(false);
   });
 });

@@ -4,8 +4,9 @@ import * as Effect from "effect/Effect";
 import type * as SqlClient from "effect/sql/SqlClient";
 
 /**
- * Returns the ids of the `send_to_user` calls that Find should also search. A search names a display
- * mode only when it comes from a screen that draws these calls as replies, so other clients get none.
+ * Returns the ids of the `send_to_user` calls that Find should also search, and of the
+ * `replace_send_to_user` calls that change their text. A search names a display mode only when it
+ * comes from a screen that draws sends as replies, so other clients get none.
  */
 export const readSentItemIds = Effect.fn("readSentItemIds")(function* (
   sql: SqlClient.SqlClient,
