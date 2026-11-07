@@ -4,7 +4,7 @@ Every command accepts `--room <absolute project directory>`, or the room name it
 
 ## `wb pages`
 
-```
+```text
 wb pages
 ```
 
@@ -12,7 +12,7 @@ Prints one entry per page in page-menu order: `{page, id, name, shapes}`. `page`
 
 ## `wb read`
 
-```
+```text
 wb read [x,y,w,h | board://r/x,y,w,h] [--page P]
 ```
 
@@ -26,7 +26,7 @@ wb read 'board://r/120,80,300,180'
 
 ## `wb write`
 
-```
+```text
 wb write [--page P] [--id ID] [--type text|rect|ellipse|line|arrow|note] --at x,y [--to x2,y2]
          [--text "..."] [--size w,h] [--color C] [--fill F] [--dash D]
          [--weight s|m|l|xl] [--font draw|sans|serif|mono] [--rotate degrees]
@@ -38,7 +38,7 @@ wb write [--page P] [--id ID] [--type text|rect|ellipse|line|arrow|note] --at x,
 - `--page` puts a new shape on that page; the default is the first page. With `--id`, it moves the shape to that page.
 - `--size w,h` sets the width and height of a `rect` or `ellipse`. `--size w` sets the width of a `text` shape, and the text wraps at that width. `--to` sets the end point of a `line` or `arrow`.
 - `--text` is the body of a `text` or `note` shape, or the label of a `rect`, `ellipse`, or `arrow`. `$...$` spans render as mathematics. Each newline starts a new line. A run of lines that begin with `- ` becomes one bulleted list.
-- `--color`, `--fill`, and `--dash` take tldraw style names. Colors: `black`, `grey`, `light-violet`, `violet`, `blue`, `light-blue`, `yellow`, `orange`, `green`, `light-green`, `light-red`, `red`, `white`. Fills: `none`, `semi`, `solid`, `pattern`, `fill`, `lined-fill`. Dashes: `draw`, `solid`, `dashed`, `dotted`, `none`. `--fill` applies to `rect`, `ellipse`, and `arrow`. `--dash` also applies to `line`.
+- `--color`, `--fill`, and `--dash` take tldraw style names. Colors: `black`, `grey`, `light-violet`, `violet`, `blue`, `light-blue`, `yellow`, `orange`, `green`, `light-green`, `light-red`, `red`, `white`. Fills: `none`, `semi`, `solid`, `pattern`, `fill`, `lined-fill`. Dashes: `draw`, `solid`, `dashed`, `dotted`, `none`. `--fill` applies to `rect`, `ellipse`, and `arrow`. `--dash` also applies to `line`. The board draws each color per theme, and in the dark theme `black` and `white` both draw near-white.
 - `--weight` is tldraw's `size` style. It scales the font size and the stroke width.
 - `--rotate` takes degrees clockwise.
 - `--order front` or `--order back` moves the shape above or below all other shapes in the room.
@@ -62,7 +62,7 @@ wb write --id shape:wb-abc123 --color orange
 
 ## `wb delete`
 
-```
+```text
 wb delete <id...>
 ```
 
@@ -70,13 +70,14 @@ Deletes the shapes with those ids.
 
 ## `wb shot`
 
-```
-wb shot [x,y,w,h | board://r/x,y,w,h] [--page P] [--out file]
+```text
+wb shot [x,y,w,h | board://r/x,y,w,h] [--page P] [--out file] [--theme light|dark]
 ```
 
-Renders one page and writes a PNG. Prints `{file}`. The page is the one the board link names, else `--page`, else the first page. Without a region, the image fits the whole content of the page. With a region, the view frames that region. `--out` defaults to a file in the temporary directory.
+Renders one page and writes a PNG. Prints `{file}`. The page is the one the board link names, else `--page`, else the first page. Without a region, the image fits the whole content of the page. With a region, the view frames that region. `--out` defaults to a file in the temporary directory. `--theme` picks the color theme of the picture, `light` or `dark`, and defaults to `dark`.
 
 ```bash
 wb shot 'board://r/120,80,300,180' --out /tmp/area1.png
 wb shot --page 2
+wb shot --theme light --out /tmp/board-light.png
 ```

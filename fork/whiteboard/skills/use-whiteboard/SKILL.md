@@ -17,7 +17,7 @@ Work on the board with the `wb` command. `wb --help` prints the syntax. Every co
 
 1. Read the board with `wb read`. It prints one entry per shape with its id, type, position, size, text, and style. Give it a board link (defined below) to get the shapes in that region. A hand-drawn shape has no text. To see a drawing, take a picture with `wb shot` and open the PNG.
 2. Draw with `wb write`. You set every position. Read the coordinates that step 1 printed, then place new content below or to the right of the existing shapes.
-3. Check the result before you reply: take a picture of the region you changed with `wb shot`, open the PNG, and fix what is wrong. Look for new content on top of existing shapes, label or note text that runs past its box, a formula shown as raw `$...$` text, an arrow whose end misses its target, and a wrapped line that leaves one word alone on the last line, which a different `--size` width would fix.
+3. Check the result before you reply: take a picture of the region you changed with `wb shot`, open the PNG, and fix what is wrong. The picture is dark by default. When the drawing uses black, white, or grey, or when contrast matters, also take a picture with `--theme light`. Look for new content on top of existing shapes, label or note text that runs past its box, a formula shown as raw `$...$` text, an arrow whose end misses its target, and a wrapped line that leaves one word alone on the last line, which a different `--size` width would fix.
 4. Refer to what you drew with a board link.
 
 Edit and delete the shapes you created; their ids start with `shape:wb-`. Change a shape the user drew when the user asks for it.

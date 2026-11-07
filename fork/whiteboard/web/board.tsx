@@ -106,7 +106,7 @@ function ExportImage() {
         padding: 0,
         pixelRatio: 1,
         background: true,
-        darkMode: false,
+        darkMode: params.get("theme") === "dark",
       })
       .then(({ url }) => url);
   }, [editor]);
