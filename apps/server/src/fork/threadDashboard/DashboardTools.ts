@@ -21,15 +21,16 @@ const ONLY_IN_DASHBOARD_MODE = "Only in threads set to Messages + Dashboard; ref
 // Both texts travel in one tool input, which loses its text on the wire over 16 KiB of JSON.
 const SLOT_TEXT_MAX_BYTES = 6_000;
 
+// The description goes before the checks: one set after a custom check is left out of the JSON schema.
 const slotText = (description: string) =>
-  Schema.String.check(
+  Schema.String.annotate({ description }).check(
     Schema.isMaxLength(SLOT_TEXT_MAX_BYTES),
     Schema.makeFilter((text: string) =>
       Buffer.byteLength(JSON.stringify(text), "utf8") - 2 <= SLOT_TEXT_MAX_BYTES
         ? true
         : `The text is over ${SLOT_TEXT_MAX_BYTES} bytes of UTF-8 once JSON-escaped. Shorten it.`,
     ),
-  ).annotate({ description });
+  );
 
 const DashboardSetTool = Tool.make(DASHBOARD_SET_TOOL_NAME, {
   description: `${ONLY_IN_DASHBOARD_MODE} Replace one whole slot of this thread's Dashboard, which the user sees beside the chat. Refused when old_text no longer matches the slot.`,

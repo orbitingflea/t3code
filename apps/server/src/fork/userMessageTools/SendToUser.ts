@@ -7,7 +7,10 @@ import { Tool, Toolkit } from "effect/ai";
 import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../../mcp/McpToolAccess.ts";
 
-const MessageText = Schema.String.check(
+// The description goes before the checks: one set after a custom check is left out of the JSON schema.
+const MessageText = Schema.String.annotate({
+  description: `Markdown, at most ${SEND_TO_USER_MAX_BYTES} bytes of UTF-8 after JSON escaping. A quote, a backslash, a tab, or a line break counts as 2 bytes, and most other control characters count as 6.`,
+}).check(
   Schema.isMinLength(1),
   Schema.isMaxLength(SEND_TO_USER_MAX_BYTES),
   // A tool input over 16 KiB of JSON loses its text on the wire, so the check measures the escaped form.
@@ -16,9 +19,7 @@ const MessageText = Schema.String.check(
       ? true
       : `The message is over ${SEND_TO_USER_MAX_BYTES} bytes of UTF-8 once JSON-escaped (a quote, backslash, or control character takes 2 or more bytes). Shorten it or split it.`,
   ),
-).annotate({
-  description: `Markdown, at most ${SEND_TO_USER_MAX_BYTES} bytes of UTF-8 after JSON escaping. A quote, a backslash, a tab, or a line break counts as 2 bytes, and most other control characters count as 6.`,
-});
+);
 
 // The tool changes only what the caller's thread shows, so read-only sandboxes and plan mode may use it.
 const SendToUserTool = Tool.make(SEND_TO_USER_TOOL_NAME, {
