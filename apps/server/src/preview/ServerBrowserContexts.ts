@@ -28,13 +28,10 @@ interface Options {
   ) => Promise<{ readonly path: string; readonly release: () => Promise<void> } | undefined>;
   readonly diagnose?: (executable: string, cause: unknown) => Promise<unknown>;
   readonly env?: NodeJS.ProcessEnv;
-<<<<<<< origin/main
   /** Chrome's environment on a display, or undefined to run headless. */
   readonly display?: (env: NodeJS.ProcessEnv) => Promise<NodeJS.ProcessEnv | undefined>;
-=======
   /** Closes the shared browser once it has held no context for this long. */
   readonly idleBrowserMs?: number;
->>>>>>> upstream/main
   readonly onContextClose?: (context: BrowserContext) => void;
 }
 
@@ -85,12 +82,9 @@ export class ServerBrowserContexts {
   private readonly clearing = new Map<string, Promise<void>>();
   private browser: Promise<Browser> | undefined;
   private closing: Promise<void> | undefined;
-<<<<<<< origin/main
   private restarting: Promise<void> | undefined;
-=======
   private idleTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingSharedContexts = 0;
->>>>>>> upstream/main
 
   constructor(options: Options) {
     this.options = options;
@@ -282,19 +276,9 @@ export class ServerBrowserContexts {
     return this.closing;
   }
 
-<<<<<<< origin/main
   /** Closes every context and the shared browser. Later requests reopen only what they need. */
   restart() {
     const pending = [...this.contexts.values()];
-=======
-  private async dispose() {
-    clearTimeout(this.idleTimer);
-    await Promise.allSettled(
-      [...this.contexts.values()].map(async (pending) => (await pending).close()),
-    );
-    const browser = await this.browser?.catch(() => undefined);
-    await browser?.close().catch(constVoid);
->>>>>>> upstream/main
     this.contexts.clear();
     // New `contextFor` calls wait until the old browsers close,
     // since two Chromes cannot share a profile directory.
@@ -308,6 +292,7 @@ export class ServerBrowserContexts {
   }
 
   private async dispose() {
+    clearTimeout(this.idleTimer);
     await this.restart();
   }
 }

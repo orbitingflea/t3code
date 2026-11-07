@@ -8137,12 +8137,9 @@ it.layer(layerTest)("usage-limit recovery", (it) => {
 
   it.effect.each([
     "resume",
-<<<<<<< origin/main
-    "early-retry",
-=======
     "resume-started",
     "resume-untagged",
->>>>>>> upstream/main
+    "early-retry",
     "queued-resume",
     "rearm",
     "snooze-race",
