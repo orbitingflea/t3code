@@ -1619,7 +1619,7 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..d7cbe1cb43449cc29822b2646deabbdd
      }
    }
 diff --git a/react.js b/react.js
-index 914d2dafaafa001c9ab6791a0a0581659295e333..8c320b0dfb3ea60ef145274b37b1297b7dee26dc 100644
+index 914d2dafaafa001c9ab6791a0a0581659295e333..c2d1dc47525b377773291c699ee5cbdc629b39ce 100644
 --- a/react.js
 +++ b/react.js
 @@ -1908,6 +1908,10 @@ function updateScroll(ctx, newScroll, forceUpdate, options) {
@@ -1902,8 +1902,20 @@ index 914d2dafaafa001c9ab6791a0a0581659295e333..8c320b0dfb3ea60ef145274b37b1297b
              void contentNode.offsetHeight;
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
+@@ -7965,6 +8036,11 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+     state.dataChangeNeedsScrollUpdate = true;
+     state.didDataChange = true;
+     state.previousData = state.props.data;
++    // A target past the end makes the size check and the final scroll adjustment read a missing row, which sends the list to the top.
++    const scrollingTo = state.scrollingTo;
++    if ((scrollingTo == null ? void 0 : scrollingTo.index) !== void 0 && scrollingTo.index >= dataProp.length && dataProp.length > 0) {
++      scrollingTo.index = dataProp.length - 1;
++    }
+   }
+   if (shouldResetFreshDataLayout) {
+     state.freshDataTransitionEpoch += 1;
 diff --git a/react.mjs b/react.mjs
-index 95465f2ab89ce41a10553f58af83618f7310e83c..252a9d5b23e271c089d30c357a78dff754f1c899 100644
+index 95465f2ab89ce41a10553f58af83618f7310e83c..946efd9145c77ddadf78c4557ca2154bdfb13317 100644
 --- a/react.mjs
 +++ b/react.mjs
 @@ -1887,6 +1887,10 @@ function updateScroll(ctx, newScroll, forceUpdate, options) {
@@ -2186,6 +2198,18 @@ index 95465f2ab89ce41a10553f58af83618f7310e83c..252a9d5b23e271c089d30c357a78dff7
              void contentNode.offsetHeight;
              scrollBy();
              if (resetPaddingRafRef.current !== void 0) {
+@@ -7944,6 +8015,11 @@ var LegendListInner = typedForwardRef(function LegendListInner2(props, forwarded
+     state.dataChangeNeedsScrollUpdate = true;
+     state.didDataChange = true;
+     state.previousData = state.props.data;
++    // A target past the end makes the size check and the final scroll adjustment read a missing row, which sends the list to the top.
++    const scrollingTo = state.scrollingTo;
++    if ((scrollingTo == null ? void 0 : scrollingTo.index) !== void 0 && scrollingTo.index >= dataProp.length && dataProp.length > 0) {
++      scrollingTo.index = dataProp.length - 1;
++    }
+   }
+   if (shouldResetFreshDataLayout) {
+     state.freshDataTransitionEpoch += 1;
 diff --git a/reanimated.d.ts b/reanimated.d.ts
 index e5043320700b12f34f4c0babbc341f85ca8135c1..e8cbd461325a2e2e9ffd61de26a85ae4d108555c 100644
 --- a/reanimated.d.ts
