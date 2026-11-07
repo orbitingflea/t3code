@@ -26,7 +26,7 @@ const usage = `usage:
            [--weight s|m|l|xl] [--font draw|sans|serif|mono] [--rotate degrees]
            [--opacity 0..1] [--order front|back]
   wb delete [--room R] <id...>
-  wb shot [x,y,w,h | board://r/x,y,w,h] [--page P] [--room R] [--out file]
+  wb shot [x,y,w,h | board://r/x,y,w,h] [--page P] [--room R] [--out file] [--theme light|dark]
   wb read-raw [--room R]
   wb write-raw [--room R]   # reads {"puts":[...],"deletes":[...]} from stdin`;
 
@@ -57,6 +57,7 @@ const { values: flags, positionals } = (() => {
         opacity: { type: "string" },
         order: { type: "string" },
         page: { type: "string" },
+        theme: { type: "string" },
       },
     });
   } catch (error) {
@@ -510,6 +511,8 @@ async function pages() {
 }
 
 async function shot() {
+  const theme = flags.theme ?? "dark";
+  if (theme !== "light" && theme !== "dark") fail("--theme expects light or dark");
   const { chromium } = await import("playwright-core");
   const out = flags.out ?? `${NodeOS.tmpdir()}/wb-shot-${Date.now()}.png`;
   const arg = positionals[1];
@@ -523,7 +526,9 @@ async function shot() {
   });
   try {
     const page = await browser.newPage();
-    await page.goto(`${web}/?room=${room}&export=${request}&page=${encodeURIComponent(pageId)}`);
+    await page.goto(
+      `${web}/?room=${room}&export=${request}&page=${encodeURIComponent(pageId)}&theme=${theme}`,
+    );
     await page.waitForFunction(() => window.wbExport);
     const dataUrl = await page.evaluate(() => window.wbExport);
     NodeFS.writeFileSync(out, Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"));
