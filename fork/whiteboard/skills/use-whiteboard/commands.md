@@ -85,7 +85,7 @@ wb write --id shape:wb-abc123 --size 600
 wb delete <id...>
 ```
 
-Deletes the shapes with those ids.
+Deletes the shapes with those ids. Deleting a group or frame also deletes the shapes inside it. An arrow bound to a deleted shape stays, unbound. Prints `{deleted}`, the ids of every deleted shape.
 
 ## `wb shot`
 

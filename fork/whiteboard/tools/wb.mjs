@@ -134,9 +134,10 @@ function pageOf(board, value) {
   );
 }
 // A shape inside a frame or group has that container as parent; its page is at the top of the chain.
+// A room edited through write-raw can hold a shape whose parent is gone; it is on no page.
 function pageIdOf(byId, shape) {
   let id = shape.parentId;
-  while (!id.startsWith("page:")) id = byId.get(id).parentId;
+  while (id && !id.startsWith("page:")) id = byId.get(id)?.parentId;
   return id;
 }
 
@@ -526,7 +527,8 @@ async function read() {
   const page = (r || flags.page !== undefined) && pageOf(board, r?.page ?? flags.page).id;
   return shapes
     .filter((shape) => {
-      if (page && pageIdOf(byId, shape) !== page) return false;
+      const on = pageIdOf(byId, shape);
+      if (!on || (page && on !== page)) return false;
       if (!r) return true;
       const a = pageBounds(shape);
       return a.x <= r.x + r.w && a.x + a.w >= r.x && a.y <= r.y + r.h && a.y + a.h >= r.y;
@@ -582,6 +584,27 @@ async function shot() {
   return { file: out };
 }
 
+// Deleting a group or frame deletes the shapes inside it, and with them every binding that would
+// otherwise point at a missing shape.
+async function remove(ids) {
+  const board = await loadBoard();
+  const byId = new Map(board.map((record) => [record.id, record]));
+  const inside = (id) =>
+    ids.includes(id) || (byId.get(id)?.typeName === "shape" && inside(byId.get(id).parentId));
+  const shapes = new Set([
+    ...ids,
+    ...board.filter((record) => record.typeName === "shape" && inside(record.id)).map((r) => r.id),
+  ]);
+  const bindings = board
+    .filter(
+      (record) =>
+        record.typeName === "binding" && (shapes.has(record.fromId) || shapes.has(record.toId)),
+    )
+    .map((record) => record.id);
+  await editBoard([], [...shapes, ...bindings]);
+  return { deleted: [...shapes] };
+}
+
 // Sends a raw {puts, deletes} body straight to the API, for records the high-level commands do not model.
 async function writeRaw() {
   const body = JSON.parse(await NodeStreamConsumers.text(process.stdin));
@@ -602,7 +625,7 @@ const result =
           : command === "write"
             ? await write()
             : command === "delete"
-              ? (await editBoard([], positionals.slice(1)), { deleted: positionals.slice(1) })
+              ? await remove(positionals.slice(1))
               : command === "shot"
                 ? await shot()
                 : fail(`unknown command ${command ?? ""}\n${usage}`);
