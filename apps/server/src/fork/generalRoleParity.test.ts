@@ -41,6 +41,7 @@ import { AssetSigner } from "../assets/AssetSigner.ts";
 import { ServerSecretStore } from "../auth/ServerSecretStore.ts";
 import * as ServerConfig from "../config.ts";
 import { DeviceService } from "../device/DeviceService.ts";
+import { ThreadDashboard } from "./threadDashboard/ThreadDashboard.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import { GitWorkflowService } from "../git/GitWorkflowService.ts";
 import * as McpHttpServer from "../mcp/McpHttpServer.ts";
@@ -640,6 +641,7 @@ it.effect.each(
 const toolHandlerServices = Layer.mergeAll(
   Layer.mock(AssetSigner)({}),
   Layer.mock(DeviceService)({}),
+  Layer.mock(ThreadDashboard)({}),
   Layer.mock(DocumentText)({}),
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),
   Layer.mock(GitWorkflowService)({}),

@@ -12,6 +12,8 @@ export const SEND_TO_USER_TOOL_NAME = "send_to_user";
 export const SEND_TO_USER_PAYLOAD_LIKE = `%"toolName":"%${SEND_TO_USER_TOOL_NAME}"%`;
 /** Keeps the call's input under the 16 KiB a tool input may take on the wire. */
 export const SEND_TO_USER_MAX_BYTES = 12_000;
+export const DASHBOARD_SET_TOOL_NAME = "dashboard_set";
+export const DASHBOARD_GET_TOOL_NAME = "dashboard_get";
 
 const WRAPPED_CORE_MAX_BYTES = 2_000;
 /** How many of the latest shown messages a wrapped message lists. */
@@ -56,6 +58,8 @@ export interface DisplayMode {
    * `user` and `sent` events, and the latest event that is not `user`.
    */
   readonly wrap: ((events: ReadonlyArray<DisplayEvent>, text: string) => string) | null;
+  /** Whether the thread has a Dashboard that the user sees and the agent writes. */
+  readonly dashboard: boolean;
 }
 
 const messagesOnlyCores = (events: ReadonlyArray<DisplayEvent>): VisibleCore[] =>
@@ -92,7 +96,27 @@ export const NORMAL_DISPLAY_MODE: DisplayMode = {
     "<t3-display-mode>This thread is in the full view. The user sees all your output; reply in plain text.</t3-display-mode>",
   visibleCores: null,
   wrap: null,
+  dashboard: false,
 };
+
+function messagesOnlyWrap(events: ReadonlyArray<DisplayEvent>, text: string): string {
+  // The block marks a message when the agent's transcript holds something the user did not see:
+  // anything but the user's own messages since the agent's last sent message, or since the thread
+  // began if it sent none.
+  const last = events.findLast((event) => event.type !== "user");
+  if (last === undefined || last.type === "sent") return text;
+  const shown = messagesOnlyCores(events).slice(-WRAPPED_CORE_COUNT);
+  return [
+    "<t3-messages-mode>",
+    "This message is from the user. Other things happened in this thread since your last message to them, or since the thread began if you sent none. The user's screen showed:",
+    ...shown.map(
+      (core) =>
+        `[${core.from === "user" ? "user" : "you"}] ${truncateUtf8(core.text, WRAPPED_CORE_MAX_BYTES)}`,
+    ),
+    "</t3-messages-mode>",
+    text,
+  ].join("\n");
+}
 
 export const MESSAGES_ONLY_DISPLAY_MODE: DisplayMode = {
   id: "messages-only",
@@ -102,29 +126,26 @@ export const MESSAGES_ONLY_DISPLAY_MODE: DisplayMode = {
   stateNotice:
     "<t3-display-mode>This thread is in Messages only. The user sees only their own messages and your send_to_user messages; reply with send_to_user.</t3-display-mode>",
   visibleCores: messagesOnlyCores,
-  wrap: (events, text) => {
-    // The block marks a message when the agent's transcript holds something the user did not see:
-    // anything but the user's own messages since the agent's last sent message, or since the thread
-    // began if it sent none.
-    const last = events.findLast((event) => event.type !== "user");
-    if (last === undefined || last.type === "sent") return text;
-    const shown = messagesOnlyCores(events).slice(-WRAPPED_CORE_COUNT);
-    return [
-      "<t3-messages-mode>",
-      "This message is from the user. Other things happened in this thread since your last message to them, or since the thread began if you sent none. The user's screen showed:",
-      ...shown.map(
-        (core) =>
-          `[${core.from === "user" ? "user" : "you"}] ${truncateUtf8(core.text, WRAPPED_CORE_MAX_BYTES)}`,
-      ),
-      "</t3-messages-mode>",
-      text,
-    ].join("\n");
-  },
+  wrap: messagesOnlyWrap,
+  dashboard: false,
+};
+
+export const MESSAGES_DASHBOARD_DISPLAY_MODE: DisplayMode = {
+  id: "messages-dashboard",
+  label: "Messages + Dashboard",
+  notice:
+    "<t3-display-mode>The user switched this thread to Messages + Dashboard. They see only their own messages and your send_to_user messages; reply with send_to_user. They also see this thread's Dashboard, six slots in this order: decide (needs their decision), waiting, working, autoreview, humanreview, merged. Read it with dashboard_get. To change a slot, call dashboard_set with the slot's current text as old_text and the whole new text as new_text.</t3-display-mode>",
+  stateNotice:
+    "<t3-display-mode>This thread is in Messages + Dashboard. The user sees only their own messages and your send_to_user messages; reply with send_to_user. They also see this thread's Dashboard, six slots in this order: decide (needs their decision), waiting, working, autoreview, humanreview, merged. Read it with dashboard_get. To change a slot, call dashboard_set with the slot's current text as old_text and the whole new text as new_text.</t3-display-mode>",
+  visibleCores: messagesOnlyCores,
+  wrap: messagesOnlyWrap,
+  dashboard: true,
 };
 
 export const DISPLAY_MODES: ReadonlyArray<DisplayMode> = [
   NORMAL_DISPLAY_MODE,
   MESSAGES_ONLY_DISPLAY_MODE,
+  MESSAGES_DASHBOARD_DISPLAY_MODE,
 ];
 
 /** An unknown or removed mode id shows the thread as Normal. */

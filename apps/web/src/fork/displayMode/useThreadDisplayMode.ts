@@ -17,6 +17,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { Atom } from "effect/reactivity";
 
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import type { TimelineEntry } from "../../session-logic";
 import { environmentServerConfigsAtom, serverEnvironment } from "../../state/server";
@@ -90,6 +91,16 @@ export function displayModePatch(threadRef: ScopedThreadRef, action: string) {
   };
 }
 
+/** Closes the thread's Dashboard tab when the mode `modeId` names has no Dashboard. */
+export function closeDashboardOutsideMode(threadRef: ScopedThreadRef, modeId: string): void {
+  if (resolveDisplayMode(modeId).dashboard) return;
+  const store = useRightPanelStore.getState();
+  const panel = selectThreadRightPanelState(store.byThreadKey, threadRef);
+  if (panel.surfaces.some((surface) => surface.kind === "dashboard")) {
+    store.closeSurface(threadRef, "dashboard");
+  }
+}
+
 /**
  * Returns a menu handler. For a `display-mode:<id>` item, the handler saves that mode and resolves to
  * true, even when the save fails. For any other item, it resolves to false.
@@ -102,6 +113,9 @@ export function useDisplayModeMenuAction() {
       environmentId: threadRef.environmentId,
       input: { patch: displayModePatch(threadRef, action) },
     });
+    if (result._tag === "Success") {
+      closeDashboardOutsideMode(threadRef, action.slice("display-mode:".length));
+    }
     if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
       const error = squashAtomCommandFailure(result);
       toastManager.add(

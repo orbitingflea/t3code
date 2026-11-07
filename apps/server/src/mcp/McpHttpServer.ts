@@ -79,6 +79,7 @@ import {
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
 import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
 import * as SendToUser from "../fork/userMessageTools/SendToUser.ts";
+import * as DashboardTools from "../fork/threadDashboard/DashboardTools.ts";
 import { requestUrl } from "../requestUrl.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
@@ -1243,6 +1244,7 @@ export const layerTools = Layer.mergeAll(
   layerDeviceToolkit,
   layerHtmlToolkit,
   toolkitRegistration(SendToUser.SendToUserToolkit, SendToUser.layerHandlers),
+  toolkitRegistration(DashboardTools.DashboardToolkit, DashboardTools.layerHandlers),
 );
 
 export const layer = layerMcpTransport(layerTools);

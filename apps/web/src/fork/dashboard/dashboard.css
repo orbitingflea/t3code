@@ -1,0 +1,4 @@
+/* Unread Dashboard text, painted without changing the rendered markdown or copied text. */
+::highlight(t3-dashboard-change) {
+  background-color: color-mix(in srgb, var(--success) 28%, transparent);
+}

@@ -5,7 +5,12 @@ import {
   buildThreadActionMenuItems,
   type ThreadActionMenuState,
 } from "../../components/threadActionMenu.logic";
-import { displayModeMenuItems, displayModePatch } from "./useThreadDisplayMode";
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
+import {
+  closeDashboardOutsideMode,
+  displayModeMenuItems,
+  displayModePatch,
+} from "./useThreadDisplayMode";
 
 const threadRef = {
   environmentId: EnvironmentId.make("environment-without-config"),
@@ -56,6 +61,20 @@ describe("Display mode menu", () => {
     expect(displayModePatch(threadRef, "display-mode:normal")).toEqual({
       threadDisplayModes: { "thread-a": null },
     });
+  });
+
+  it("closes the thread's Dashboard tab when the chosen mode has no Dashboard", () => {
+    useRightPanelStore.setState(useRightPanelStore.getInitialState());
+    useRightPanelStore.getState().open(threadRef, "dashboard");
+    const dashboardOpen = () =>
+      selectThreadRightPanelState(
+        useRightPanelStore.getState().byThreadKey,
+        threadRef,
+      ).surfaces.some((surface) => surface.kind === "dashboard");
+    closeDashboardOutsideMode(threadRef, "messages-dashboard");
+    expect(dashboardOpen()).toBe(true);
+    closeDashboardOutsideMode(threadRef, "messages-only");
+    expect(dashboardOpen()).toBe(false);
   });
 
   it("sits after Auto-settle behavior and is disabled with the others without permission", () => {

@@ -13,6 +13,7 @@ import {
   displayEventFromTurnItem,
   displayModeShowsText,
   isWebTypedMessage,
+  MESSAGES_DASHBOARD_DISPLAY_MODE,
   MESSAGES_ONLY_DISPLAY_MODE,
   NORMAL_DISPLAY_MODE,
   resolveDisplayMode,
@@ -298,6 +299,14 @@ describe("Messages only wrap", () => {
     );
   });
 
+  it("wraps the same way in Messages + Dashboard", () => {
+    const events = [user("A"), sent("B"), other];
+    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!(events, "C")).toBe(
+      wrapped(["[user] A", "[you] B"], "C"),
+    );
+    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!([user("A"), sent("B")], "C")).toBe("C");
+  });
+
   it("uses a tag that user-view's <x-mode> pattern strips", () => {
     const text = wrap([user("A"), other], "C");
     // user-view is an outside tool that shows a transcript as the user saw it.
@@ -311,6 +320,15 @@ describe("resolveDisplayMode", () => {
     expect(resolveDisplayMode(undefined)).toBe(NORMAL_DISPLAY_MODE);
     expect(resolveDisplayMode("retired-experiment")).toBe(NORMAL_DISPLAY_MODE);
     expect(resolveDisplayMode("messages-only")).toBe(MESSAGES_ONLY_DISPLAY_MODE);
+    expect(resolveDisplayMode("messages-dashboard")).toBe(MESSAGES_DASHBOARD_DISPLAY_MODE);
+  });
+
+  it("gives only Messages + Dashboard a Dashboard", () => {
+    expect(
+      ["normal", "messages-only", "messages-dashboard"].map(
+        (id) => resolveDisplayMode(id).dashboard,
+      ),
+    ).toEqual([false, false, true]);
   });
 });
 
@@ -374,6 +392,10 @@ describe("displayModeShowsText", () => {
     ["messages-only", send("completed"), true],
     ["messages-only", send("failed"), false],
     ["messages-only", tool, false],
+    ["messages-dashboard", typed, true],
+    ["messages-dashboard", assistant, false],
+    ["messages-dashboard", send("completed"), true],
+    ["messages-dashboard", tool, false],
   ])("for mode %s and item %#", (modeId, turnItem, shown) => {
     expect(displayModeShowsText(modeId, turnItem)).toBe(shown);
   });

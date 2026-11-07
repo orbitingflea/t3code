@@ -419,6 +419,10 @@
       "types": "./src/fork/displayModes/displayModes.ts",
       "import": "./src/fork/displayModes/displayModes.ts"
     },
+    "./textMatch": {
+      "types": "./src/fork/textMatch.ts",
+      "import": "./src/fork/textMatch.ts"
+    },
     "./t3McpToolPresentation": {
       "types": "./src/t3McpToolPresentation.ts",
       "import": "./src/t3McpToolPresentation.ts"

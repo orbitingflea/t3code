@@ -1,6 +1,7 @@
 import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
 
 import type { OpenPreviewMutation } from "./browser/openFileInPreview";
+import { threadHasDashboard } from "./fork/dashboard/dashboardSurface";
 import type { ClosedView, ClosedViewEntry } from "./closedViewStore";
 import type { PullRequestListPreferences } from "./components/pullRequest/pullRequestListPreferences";
 import { openPreviewSession } from "./components/preview/openPreviewSession";
@@ -120,6 +121,7 @@ export async function reopenClosedView(
     (surface.kind === "files" || (surface.kind === "file" && !surface.attachment))
   )
     return false;
+  if (surface.kind === "dashboard" && !threadHasDashboard(ref)) return false;
   switch (surface.kind) {
     case "preview":
       if (surface.resourceId !== null) return false;

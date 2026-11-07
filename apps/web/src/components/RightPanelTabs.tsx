@@ -24,6 +24,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
+import { dashboardSurfaceActions } from "~/fork/dashboard/dashboardSurface";
 import {
   closestCenter,
   DndContext,
@@ -43,6 +44,7 @@ import {
   FileDiff,
   Files,
   Globe2,
+  LayoutDashboard,
   MessagesSquare,
   Plus,
   TerminalSquare,
@@ -143,6 +145,8 @@ export interface RightPanelTabsProps {
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
+  /** Absent unless the thread's display mode has a Dashboard. */
+  onAddDashboard?: (() => void) | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -302,10 +306,10 @@ function SurfaceMenuItem(props: {
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
       disabled={!props.available}
-      aria-keyshortcuts={props.shortcut}
+      aria-keyshortcuts={props.shortcut || undefined}
     >
       {props.children}
-      <MenuShortcut>{props.shortcut}</MenuShortcut>
+      {props.shortcut ? <MenuShortcut>{props.shortcut}</MenuShortcut> : null}
     </MenuItem>
   );
   if (props.available || !props.disabledReason) return item;
@@ -324,6 +328,7 @@ function RightPanelEmptyState(props: {
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
   onAddSideChat?: (() => void) | undefined;
+  onAddDashboard?: (() => void) | undefined;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -407,6 +412,7 @@ function RightPanelEmptyState(props: {
           },
         ]
       : []),
+    ...dashboardSurfaceActions(props.onAddDashboard),
   ] as const;
 
   type SurfaceAction = (typeof actions)[number];
@@ -514,7 +520,7 @@ function RightPanelEmptyState(props: {
                   >
                     {action.label}
                   </span>
-                  <Kbd>{action.shortcut}</Kbd>
+                  {action.shortcut ? <Kbd>{action.shortcut}</Kbd> : null}
                 </button>
                 {action.label === "Browser" && props.browserProfiles.length > 1 ? (
                   <Menu>
@@ -555,7 +561,7 @@ function RightPanelEmptyState(props: {
                   >
                     {actionIcon(action, "size-4")}
                     <span className="min-w-0 flex-1 truncate">{action.label}</span>
-                    <Kbd>{action.shortcut}</Kbd>
+                    {action.shortcut ? <Kbd>{action.shortcut}</Kbd> : null}
                   </div>
                 }
               />
@@ -594,6 +600,8 @@ function surfaceTitle(
       return surface.title ?? surface.target?.name ?? "Device";
     case "side-chat":
       return "Side chat";
+    case "dashboard":
+      return "Dashboard";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -684,6 +692,8 @@ function SurfaceIcon({
       return <PullRequestGlyph.link className="size-3 shrink-0" />;
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
+    case "dashboard":
+      return <LayoutDashboard className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -1159,6 +1169,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           },
         ]
       : []),
+    ...dashboardSurfaceActions(props.onAddDashboard),
   ] as const;
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
@@ -1534,6 +1545,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
             onAddPullRequests={props.onAddPullRequests}
             onAddDevice={props.onAddDevice}
             onAddSideChat={props.onAddSideChat}
+            onAddDashboard={props.onAddDashboard}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}
