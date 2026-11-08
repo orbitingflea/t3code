@@ -23,6 +23,14 @@ export function useWhiteboardBoardHidden() {
   return boardHidden;
 }
 
+// The whiteboard build starts open only when standalone and wide enough; inside the board's iframe
+// the start state comes from its layout report (useWhiteboardSidebarStartState). It keeps no stored
+// open state: a stored `true` would open the sidebar over the board, and the iframe's setOpen(true)
+// would carry over to the standalone page.
+export function whiteboardSidebarProviderProps(sidebarFits: boolean) {
+  return { defaultOpen: !isEmbeddedInWhiteboard() && sidebarFits };
+}
+
 // In the whiteboard the first layout report sets the start state: with the board hidden this
 // frame is the whole page, so the sidebar opens by the same width rule as standalone.
 export function useWhiteboardSidebarStartState(

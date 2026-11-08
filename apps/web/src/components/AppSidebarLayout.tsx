@@ -18,6 +18,7 @@ import {
   useWhiteboardSidebarStartState,
   WHITEBOARD_BOARD_BUTTON_TITLEBAR_STYLE,
   WhiteboardBoardButton,
+  whiteboardSidebarProviderProps,
 } from "../fork/whiteboard/WhiteboardSidebar";
 import {
   releaseThreadUndoShortcut,
@@ -465,13 +466,9 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
-<<<<<<< origin/main
-        // The whiteboard build starts open only when standalone and wide enough; inside the
-        // board's iframe the start state comes from its layout report (useWhiteboardSidebarStartState).
-        defaultOpen={isWhiteboardBuild ? window.self === window.top && sidebarFits : true}
-=======
-        storageKey="chat_thread_sidebar_open"
->>>>>>> upstream/main
+        {...(isWhiteboardBuild
+          ? whiteboardSidebarProviderProps(sidebarFits)
+          : { storageKey: "chat_thread_sidebar_open" })}
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />

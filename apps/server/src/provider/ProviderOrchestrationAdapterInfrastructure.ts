@@ -13,11 +13,7 @@ export type ProviderOrchestrationAdapterInfrastructure =
   | CodexAdapterV2.CodexAppServerClientFactory
   | CursorAgentSdk.CursorAgentSdkRunner
   | CursorSdk.CursorSdk
-<<<<<<< origin/main
-  | CursorKeychain.CursorKeychain
   | DisplayModeCompactionNote.DisplayModeCompactionNote
-=======
->>>>>>> upstream/main
   | IdAllocator.IdAllocatorV2;
 
 /** Reuse the continuation worker's exact layer reference so memoization shares one queue. */
@@ -25,11 +21,7 @@ export const layer = Layer.mergeAll(
   ClaudeAdapterV2.layerQueryRunner,
   CodexAdapterV2.layerAppServerClientFactory,
   CursorAgentSdk.layer.pipe(Layer.provideMerge(CursorSdk.layer)),
-<<<<<<< origin/main
-  CursorKeychain.layer,
   DisplayModeCompactionNote.layer,
-=======
->>>>>>> upstream/main
   IdAllocator.layer,
   ProviderContinuationRequests.layer,
 );
