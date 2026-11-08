@@ -85,6 +85,17 @@ describe("DashboardCards", () => {
     expect(screen.container.querySelector("[data-unread]")).toBeNull();
   });
 
+  it("strikes only double-tilde text", async () => {
+    await using screen = await render(
+      <Cards
+        dashboard={dashboard({ working: { text: "1~2 and 3~4, ~~gone~~", updatedAt: null } })}
+      />,
+    );
+    const body = card(screen.container, "working").querySelector(".chat-markdown")!;
+    expect(body.textContent).toBe("1~2 and 3~4, gone");
+    expect([...body.querySelectorAll("del")].map((node) => node.textContent)).toEqual(["gone"]);
+  });
+
   it("highlights only what the user has not read, and all of a slot they never read", async () => {
     await using screen = await render(
       <Cards
