@@ -465,9 +465,13 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
       <SidebarProvider
         className="h-dvh! min-h-0!"
         data-panel-animations={routePanelAnimationsActive ? "true" : "false"}
+<<<<<<< origin/main
         // The whiteboard build starts open only when standalone and wide enough; inside the
         // board's iframe the start state comes from its layout report (useWhiteboardSidebarStartState).
         defaultOpen={isWhiteboardBuild ? window.self === window.top && sidebarFits : true}
+=======
+        storageKey="chat_thread_sidebar_open"
+>>>>>>> upstream/main
         style={sidebarProviderStyle}
       >
         <SidebarBrandWidthProbe isElectron={isElectron} onWidthChange={setBrandWidth} />
