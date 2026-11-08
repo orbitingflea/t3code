@@ -15,11 +15,8 @@ export const REPLACE_SEND_TO_USER_TOOL_NAME = "replace_send_to_user";
  * `send_to_user`, so it also selects `replace_send_to_user` calls, which change a send's text.
  */
 export const SEND_TO_USER_PAYLOAD_LIKE = `%"toolName":"%${SEND_TO_USER_TOOL_NAME}"%`;
-/**
- * With replace_send_to_user's two 2500-byte match inputs, keeps the call's input under the 16 KiB a
- * tool input may take on the wire.
- */
-export const SEND_TO_USER_MAX_BYTES = 11_000;
+/** One concise point per message: a longer send or rewrite is refused. */
+export const SEND_TO_USER_MAX_BYTES = 1_000;
 export const DASHBOARD_SET_TOOL_NAME = "dashboard_set";
 export const DASHBOARD_GET_TOOL_NAME = "dashboard_get";
 

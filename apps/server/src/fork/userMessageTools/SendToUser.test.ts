@@ -177,37 +177,134 @@ it.effect("refuses a caller outside a thread", () =>
   }).pipe(Effect.provide(layer)),
 );
 
-it.effect.each<readonly [string, string, boolean]>([
-  ["11,000 ASCII characters", "a".repeat(11_000), false],
-  ["11,001 ASCII characters", "a".repeat(11_001), true],
-  ["3,667 Chinese characters, over 11,000 bytes", "汉".repeat(3_667), true],
-  ["an empty message", "", true],
-  ["5,500 backslashes, 11,000 bytes once JSON-escaped", "\\".repeat(5_500), false],
-  ["5,501 backslashes, 11,002 bytes once JSON-escaped", "\\".repeat(5_501), true],
-])("checks the size of %s", ([_name, text, refused]) =>
-  Effect.gen(function* () {
-    const result = yield* send(text).pipe(Effect.exit);
-    expect(Exit.isFailure(result)).toBe(refused);
-  }).pipe(Effect.provide(layer)),
-);
+describe("the 1000-byte limit", () => {
+  const ONE_POINT = "only say one concise point at a time";
+  const oversize = "a".repeat(1_001);
+  const replaceWith = (
+    new_text: string,
+    options: { readonly threadId?: ThreadId; readonly old_text?: string } = {},
+  ) =>
+    call(
+      "replace_send_to_user",
+      { user_message: "Fix the build.", old_text: options.old_text ?? "On it.", new_text },
+      { threadId: options.threadId ?? messagesThread },
+    );
+  /** The parts of a result the agent reads. */
+  const seen = (result: McpSchema.CallToolResult) => ({
+    isError: result.isError,
+    content: result.content,
+    structuredContent: result.structuredContent,
+  });
+  const REFUSED = {
+    isError: true,
+    content: [{ type: "text", text: ONE_POINT }],
+    structuredContent: undefined,
+  };
 
-it.effect("tells the agent that escaping counts toward the limit", () =>
-  Effect.gen(function* () {
-    const error = yield* send("\\".repeat(9_000)).pipe(Effect.flip);
-    expect(error.message).toContain("once JSON-escaped");
-  }).pipe(Effect.provide(layer)),
-);
+  it.effect("refuses an oversize send with only the sentence", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build."), sent("s1", "On it."), typed("u2", "Any news?")];
+      expect(seen(yield* call("send_to_user", { text: oversize }))).toEqual(REFUSED);
+    }).pipe(Effect.provide(layer)),
+  );
 
-it.effect("advertises the size limit", () =>
-  Effect.gen(function* () {
-    const server = yield* McpServer.McpServer;
-    const tool = server.tools.find((entry) => entry.tool.name === "send_to_user")?.tool;
-    expect(tool?.inputSchema).toMatchObject({
-      properties: { text: { maxLength: 11_000 } },
-      required: ["text"],
-    });
-  }).pipe(Effect.provide(layer)),
-);
+  it.effect("refuses an oversize new_text with only the sentence", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build."), sent("s1", "On it.")];
+      expect(seen(yield* replaceWith(oversize))).toEqual(REFUSED);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect.each<readonly [string, string]>([
+    ["ASCII letters", "a".repeat(1_000)],
+    ["backslashes", "\\".repeat(500)],
+    ["line breaks", "\n".repeat(500)],
+    ["quotes", '"'.repeat(500)],
+    ["Chinese characters", "汉".repeat(333) + "a"],
+    ["control characters", "\u0001".repeat(166) + "aaaa"],
+    ["emoji", "😀".repeat(250)],
+  ])("shows 1000 bytes of %s and refuses one byte more", ([_name, atLimit]) =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build.")];
+      expect((yield* call("send_to_user", { text: atLimit })).structuredContent).toEqual(SHOWN);
+      expect(refusalText(yield* call("send_to_user", { text: `${atLimit}a` }))).toBe(ONE_POINT);
+      history = [typed("u1", "Fix the build."), sent("s1", "On it.")];
+      expect((yield* replaceWith(atLimit)).structuredContent).toEqual(SHOWN);
+      expect(refusalText(yield* replaceWith(`${atLimit}a`))).toBe(ONE_POINT);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("gives the same answer in every display mode", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build.")];
+      for (const threadId of [normalThread, messagesThread, dashboardThread]) {
+        expect(seen(yield* call("send_to_user", { text: oversize }, { threadId }))).toEqual(
+          REFUSED,
+        );
+      }
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("refuses an oversize new_text before the replace's other refusals", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build."), sent("s1", "On it.")];
+      const normal = yield* replaceWith(oversize, { threadId: normalThread });
+      expect(refusalText(normal)).toBe(ONE_POINT);
+      const unlike = yield* replaceWith(oversize, { old_text: "Something else entirely." });
+      expect(refusalText(unlike)).toBe(ONE_POINT);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("does not hold the one send for a refused unnamed send", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build.")];
+      expect((yield* call("send_to_user", { text: oversize })).isError).toBe(true);
+      expect((yield* call("send_to_user", { text: "Done." })).structuredContent).toEqual(SHOWN);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect.each<readonly [string, OrchestrationV2TurnItem]>([
+    ["failed", sent("refused", oversize, "failed")],
+    [
+      "completed with an error result",
+      {
+        ...sent("refused", oversize),
+        output: { content: [{ type: "text", text: ONE_POINT }], isError: true },
+      },
+    ],
+  ])("does not count a refused send stored as %s", ([_name, refused]) =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build."), refused];
+      const named = yield* call("send_to_user", { text: "Done." }, { toolUseId: "toolu_own" });
+      expect(named.structuredContent).toEqual(SHOWN);
+      const unnamed = yield* call("send_to_user", { text: "Done." });
+      expect(unnamed.structuredContent).toEqual(SHOWN);
+    }).pipe(Effect.provide(layer)),
+  );
+
+  it.effect("states the limit in the schema, which keeps only the minimum length", () =>
+    Effect.gen(function* () {
+      const server = yield* McpServer.McpServer;
+      const parameter = (tool: string, name: string) => {
+        const schema = server.tools.find((entry) => entry.tool.name === tool)?.tool.inputSchema as
+          | { readonly properties: Record<string, Record<string, unknown>> }
+          | undefined;
+        return schema?.properties[name];
+      };
+      for (const schema of [
+        parameter("send_to_user", "text"),
+        parameter("replace_send_to_user", "new_text"),
+      ]) {
+        expect(schema).toMatchObject({ minLength: 1 });
+        expect(schema).not.toHaveProperty("maxLength");
+        expect(schema?.description).toContain("at most 1000 bytes");
+        expect(schema?.description).toContain("a longer text is refused and not shown");
+      }
+      const empty = yield* call("send_to_user", { text: "" }).pipe(Effect.exit);
+      expect(Exit.isFailure(empty)).toBe(true);
+    }).pipe(Effect.provide(layer)),
+  );
+});
 
 describe("one send per typed message", () => {
   it.effect("shows the first send after the user's message, as sends before it do not count", () =>
@@ -431,18 +528,6 @@ describe("replace_send_to_user", () => {
         expect.stringContaining("Over 2000 bytes of UTF-8 once JSON-escaped"),
         expect.stringContaining("Over 2000 bytes of UTF-8 once JSON-escaped"),
       ]);
-    }).pipe(Effect.provide(layer)),
-  );
-
-  it.effect("checks new_text like a send's text", () =>
-    Effect.gen(function* () {
-      history = [typed("u1", "Fix the build."), sent("s1", "On it.")];
-      const result = yield* call("replace_send_to_user", {
-        user_message: "Fix the build.",
-        old_text: "On it.",
-        new_text: "a".repeat(11_001),
-      }).pipe(Effect.exit);
-      expect(Exit.isFailure(result)).toBe(true);
     }).pipe(Effect.provide(layer)),
   );
 

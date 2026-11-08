@@ -31,17 +31,21 @@ import { DisplayModeWrap } from "../displayModeWrap/DisplayModeWrap.ts";
 
 // The description goes before the checks: one set after a custom check is left out of the JSON schema.
 const MessageText = Schema.String.annotate({
-  description: `Markdown, at most ${SEND_TO_USER_MAX_BYTES} bytes of UTF-8 after JSON escaping. A quote, a backslash, a tab, or a line break counts as 2 bytes, and most other control characters count as 6.`,
-}).check(
-  Schema.isMinLength(1),
-  Schema.isMaxLength(SEND_TO_USER_MAX_BYTES),
-  // A tool input over 16 KiB of JSON loses its text on the wire, so the check measures the escaped form.
-  Schema.makeFilter((text: string) =>
-    Buffer.byteLength(JSON.stringify(text), "utf8") - 2 <= SEND_TO_USER_MAX_BYTES
-      ? true
-      : `The message is over ${SEND_TO_USER_MAX_BYTES} bytes of UTF-8 once JSON-escaped (a quote, backslash, or control character takes 2 or more bytes). Shorten it or split it.`,
-  ),
-);
+  description: `Markdown, at most ${SEND_TO_USER_MAX_BYTES} bytes of UTF-8 after JSON escaping; a longer text is refused and not shown. Most CJK characters count as 3 bytes, a quote, a backslash, a tab, or a line break as 2, and most other control characters as 6.`,
+}).check(Schema.isMinLength(1));
+
+const jsonEscapedBytes = (text: string) => Buffer.byteLength(JSON.stringify(text), "utf8") - 2;
+
+// Each MessageText field goes through this in its handler; a schema failure loses the exact text.
+const checkMessageSize = (text: string) =>
+  jsonEscapedBytes(text) <= SEND_TO_USER_MAX_BYTES
+    ? Effect.void
+    : Effect.fail(
+        new OrchestratorMcpFailure({
+          code: "invalid_request",
+          message: "only say one concise point at a time",
+        }),
+      );
 
 // Agents are told 2000 bytes and a little over still passes; 2500 + 2500 + SEND_TO_USER_MAX_BYTES
 // keeps a replace call's input under the 16 KiB a tool input may take on the wire.
@@ -51,7 +55,7 @@ const MATCH_INPUT_MAX_BYTES = 2500;
 const MatchInput = (description: string) =>
   Schema.String.annotate({ description }).check(
     Schema.makeFilter((text: string) =>
-      Buffer.byteLength(JSON.stringify(text), "utf8") - 2 <= MATCH_INPUT_MAX_BYTES
+      jsonEscapedBytes(text) <= MATCH_INPUT_MAX_BYTES
         ? true
         : `Over ${MATCH_INPUT_TOLD_BYTES} bytes of UTF-8 once JSON-escaped. Pass the text as the recap shows it.`,
     ),
@@ -227,8 +231,9 @@ export const layerHandlers = McpToolAccess.toLayer(
     >();
 
     return {
-      [SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller(() =>
+      [SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller(({ text }) =>
         Effect.gen(function* () {
+          yield* checkMessageSize(text);
           const { threadId, mode } = yield* callerThread;
           if (!mode.oneSendPerMessage) return SHOWN;
           return yield* Effect.gen(function* () {
@@ -252,51 +257,53 @@ export const layerHandlers = McpToolAccess.toLayer(
           }).pipe(lockFor(threadId).withPermits(1));
         }),
       ),
-      [REPLACE_SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller(({ user_message, old_text }) =>
-        Effect.gen(function* () {
-          const { threadId, mode } = yield* callerThread;
-          return yield* Effect.gen(function* () {
-            const turn = yield* readThreadTurn(threadId);
-            if (!mode.oneSendPerMessage) {
-              return yield* refusal(
-                "capability_denied",
-                [
-                  "replace_send_to_user works only in threads set to Messages only or Messages + Dashboard. Use send_to_user.",
-                ],
-                turn,
+      [REPLACE_SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller(
+        ({ user_message, old_text, new_text }) =>
+          Effect.gen(function* () {
+            yield* checkMessageSize(new_text);
+            const { threadId, mode } = yield* callerThread;
+            return yield* Effect.gen(function* () {
+              const turn = yield* readThreadTurn(threadId);
+              if (!mode.oneSendPerMessage) {
+                return yield* refusal(
+                  "capability_denied",
+                  [
+                    "replace_send_to_user works only in threads set to Messages only or Messages + Dashboard. Use send_to_user.",
+                  ],
+                  turn,
+                );
+              }
+              if (turn.current === undefined) {
+                return yield* refusal(
+                  "invalid_request",
+                  [
+                    "you have sent no message since the user's last one, so there is nothing to replace. Use send_to_user.",
+                  ],
+                  turn,
+                );
+              }
+              const typed = turn.typed?.text ?? "";
+              const userSimilarity = Math.max(
+                textSimilarity(quoted(user_message), recapText(typed)),
+                textSimilarity(quoted(user_message), providerForm(typed)),
               );
-            }
-            if (turn.current === undefined) {
-              return yield* refusal(
-                "invalid_request",
-                [
-                  "you have sent no message since the user's last one, so there is nothing to replace. Use send_to_user.",
-                ],
-                turn,
-              );
-            }
-            const typed = turn.typed?.text ?? "";
-            const userSimilarity = Math.max(
-              textSimilarity(quoted(user_message), recapText(typed)),
-              textSimilarity(quoted(user_message), providerForm(typed)),
-            );
-            const oldSimilarity = textSimilarity(quoted(old_text), recapText(turn.current.text));
-            const mismatches = [
-              ...(userSimilarity >= TEXT_MATCH_MIN_RATIO
-                ? []
-                : [
-                    `user_message is ${percent(userSimilarity)}% like the user's last message; ${typed === "" ? "expected an empty string" : `needs ${MIN_PERCENT}%`}.`,
-                  ]),
-              ...(oldSimilarity >= TEXT_MATCH_MIN_RATIO
-                ? []
-                : [
-                    `old_text is ${percent(oldSimilarity)}% like your current message; needs ${MIN_PERCENT}%.`,
-                  ]),
-            ];
-            if (mismatches.length > 0) return yield* refusal("invalid_request", mismatches, turn);
-            return SHOWN;
-          }).pipe(lockFor(threadId).withPermits(1));
-        }),
+              const oldSimilarity = textSimilarity(quoted(old_text), recapText(turn.current.text));
+              const mismatches = [
+                ...(userSimilarity >= TEXT_MATCH_MIN_RATIO
+                  ? []
+                  : [
+                      `user_message is ${percent(userSimilarity)}% like the user's last message; ${typed === "" ? "expected an empty string" : `needs ${MIN_PERCENT}%`}.`,
+                    ]),
+                ...(oldSimilarity >= TEXT_MATCH_MIN_RATIO
+                  ? []
+                  : [
+                      `old_text is ${percent(oldSimilarity)}% like your current message; needs ${MIN_PERCENT}%.`,
+                    ]),
+              ];
+              if (mismatches.length > 0) return yield* refusal("invalid_request", mismatches, turn);
+              return SHOWN;
+            }).pipe(lockFor(threadId).withPermits(1));
+          }),
       ),
     };
   }),
