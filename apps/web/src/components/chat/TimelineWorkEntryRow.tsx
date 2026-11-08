@@ -136,6 +136,8 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
           onUseArtifactTemplate={ctx.onUseArtifactTemplate}
           onImageExpand={ctx.onImageExpand}
           lineBreaks
+          // Fork: selects upstream's single-tilde list, so a thinking line's "1~2" keeps its tilde.
+          assistantReply
         />
       ))}
     </WorkLogDetails>
@@ -427,6 +429,8 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                   text={workEntry.detail ?? previewText}
                   cwd={ctx.markdownCwd}
                   parseRawHtml={false}
+                  // Fork: selects upstream's single-tilde list, so a thinking line's "1~2" keeps its tilde.
+                  assistantReply
                   extraRemarkPlugins={
                     workEntry.toolLifecycleStatus === "inProgress"
                       ? THINKING_PREVIEW_PLUGINS

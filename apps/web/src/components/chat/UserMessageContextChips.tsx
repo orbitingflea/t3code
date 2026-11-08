@@ -564,6 +564,8 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
             skills={ctx.skills}
             parseRawHtml={false}
             lineBreaks
+            // Fork: selects upstream's single-tilde list, so a sent "1~2" keeps its tilde.
+            assistantReply
           />
         </div>
       )}

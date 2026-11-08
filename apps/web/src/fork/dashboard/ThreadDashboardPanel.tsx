@@ -6,8 +6,8 @@ import {
   type ThreadDashboardSlot,
 } from "@t3tools/contracts";
 import {
+  ASSISTANT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
-  CHAT_MARKDOWN_REMARK_PLUGINS,
 } from "@t3tools/shared/markdownPipeline";
 import {
   type KeyboardEvent as ReactKeyboardEvent,
@@ -37,7 +37,7 @@ import "./dashboard.css";
 // A plain synchronous path: no highlighted code blocks or file chips, so the text blocks the
 // change marks are drawn on exist as soon as the card commits.
 const renderMarkdown = createMarkdownRenderer({
-  remarkPlugins: [...CHAT_MARKDOWN_REMARK_PLUGINS, remarkEndLinksAtCjkPunctuation],
+  remarkPlugins: [...ASSISTANT_MARKDOWN_REMARK_PLUGINS, remarkEndLinksAtCjkPunctuation],
   rehypePlugins: CHAT_MARKDOWN_REHYPE_PLUGINS,
   components: {
     a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
