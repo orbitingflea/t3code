@@ -360,6 +360,7 @@ import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDashboardSurfaceAdder } from "../fork/dashboard/dashboardSurface";
+import { timelineCitation } from "../fork/dashboard/dashboardCitation";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem, extensionStatusBannerItem } from "./chat/ThreadActivityBanners";
 import { ThreadNow } from "./chat/ThreadNow";
@@ -575,7 +576,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const citationLocation = { href: citationHref, key: citationKey };
   const citationRequest = (() => {
-    const citation = assistantCitationFromLocation(citationLocation.href);
+    const citation = timelineCitation(assistantCitationFromLocation(citationLocation.href));
     return citation && citation.environmentId === environmentId && citation.threadId === threadId
       ? { citation, key: citationLocation.key ?? citationLocation.href }
       : null;
@@ -3239,6 +3240,7 @@ export default function ChatView(props: ChatViewProps) {
       onSendAnnotation={sendPreviewAnnotationStable}
       onCloseSurface={closeRightPanelSurface}
       sideChatParentPanel={sideChatParentPanel}
+      onCiteAssistantText={citeAssistantTextStable}
       terminal={{
         launchContext: activeTerminalLaunchContext ?? null,
         keybindings,
