@@ -14,15 +14,22 @@ import {
   type MouseEvent as ReactMouseEvent,
   useLayoutEffect,
   useRef,
+  useState,
 } from "react";
 import { defaultUrlTransform } from "react-markdown";
 
+import { AssistantSelectionToolbar } from "../../components/chat/AssistantSelectionToolbar";
 import { createMarkdownRenderer } from "../../components/chat/markdownRenderer";
 import { RelativeTime } from "../../components/RelativeTime";
 import { cn } from "../../lib/utils";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { remarkEndLinksAtCjkPunctuation } from "../cjkLinkEnd";
+import {
+  type CiteAssistantText,
+  dashboardCitationSourceProps,
+  releaseDashboardCitationViewport,
+} from "./dashboardCitation";
 import { unreadCharacters } from "./dashboardDiff";
 import { markThreadDashboardSlotSeen, threadDashboard } from "./threadDashboardState";
 import "./dashboard.css";
@@ -101,6 +108,7 @@ function sharedHighlight(): Highlight | null {
 }
 
 function DashboardCard(props: {
+  readonly threadRef: ScopedThreadRef;
   readonly slot: ThreadDashboardSlot;
   readonly onMarkSeen: (slot: DashboardSlotId, text: string) => void;
 }) {
@@ -153,7 +161,7 @@ function DashboardCard(props: {
       aria-label={unread ? `${title}, changed. Mark as read` : title}
       data-slot={slot}
       data-unread={unread ? "" : undefined}
-      {...(unread ? { role: "button", tabIndex: 0 } : {})}
+      tabIndex={unread ? 0 : -1}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
       className={cn(
@@ -171,6 +179,7 @@ function DashboardCard(props: {
       </header>
       <div
         ref={bodyRef}
+        {...(text.trim() === "" ? {} : dashboardCitationSourceProps(props.threadRef, slot))}
         className="chat-markdown min-w-0 text-foreground text-sm leading-relaxed [overflow-wrap:anywhere]"
       >
         {text.trim() === "" ? (
@@ -190,19 +199,44 @@ function DashboardCard(props: {
 
 /** The Dashboard's cards in slot order. */
 export function DashboardCards(props: {
+  readonly threadRef: ScopedThreadRef;
   readonly dashboard: ThreadDashboard;
   readonly onMarkSeen: (slot: DashboardSlotId, text: string) => void;
+  readonly onCite: CiteAssistantText;
 }) {
+  const [viewport, setViewport] = useState<HTMLDivElement | null>(null);
+  const attachViewport = (element: HTMLDivElement) => {
+    setViewport(element);
+    return () => releaseDashboardCitationViewport(element);
+  };
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+    <div
+      ref={attachViewport}
+      data-assistant-citation-viewport="true"
+      className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3"
+    >
       {props.dashboard.slots.map((slot) => (
-        <DashboardCard key={slot.slot} slot={slot} onMarkSeen={props.onMarkSeen} />
+        <DashboardCard
+          key={slot.slot}
+          threadRef={props.threadRef}
+          slot={slot}
+          onMarkSeen={props.onMarkSeen}
+        />
       ))}
+      {/* Outside every card, so a Cite click never reaches a card's mark-as-read handler. */}
+      <AssistantSelectionToolbar
+        viewport={viewport}
+        threadRef={props.threadRef}
+        onCite={props.onCite}
+      />
     </div>
   );
 }
 
-export function ThreadDashboardPanel(props: { readonly threadRef: ScopedThreadRef }) {
+export function ThreadDashboardPanel(props: {
+  readonly threadRef: ScopedThreadRef;
+  readonly onCite: CiteAssistantText;
+}) {
   const { environmentId, threadId } = props.threadRef;
   const query = useEnvironmentQuery(threadDashboard({ environmentId, input: { threadId } }));
   const markSeen = useAtomCommand(markThreadDashboardSlotSeen, { reportFailure: false });
@@ -213,7 +247,9 @@ export function ThreadDashboardPanel(props: { readonly threadRef: ScopedThreadRe
   }
   return (
     <DashboardCards
+      threadRef={props.threadRef}
       dashboard={query.data}
+      onCite={props.onCite}
       onMarkSeen={(slot, text) => {
         void markSeen({ environmentId, input: { threadId, slot, text } });
       }}

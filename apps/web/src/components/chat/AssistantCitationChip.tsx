@@ -32,6 +32,10 @@ import { observeAssistantCitationCommentSource } from "./AssistantCitationSource
 import { composerFloatingLayerProps } from "./composerEventScope";
 import { observeResize } from "~/lib/observeResize";
 import { textDirection } from "~/textDirection";
+import {
+  focusDashboardCitationSource,
+  isDashboardCitation,
+} from "../../fork/dashboard/dashboardCitation";
 
 export function AssistantCitationChip({
   citation,
@@ -125,7 +129,15 @@ export function AssistantCitationChip({
       void navigate(assistantCitationNavigation(citation));
     },
   };
-  const composerSourceLink = (
+  const navigable = !isDashboardCitation(citation);
+  const composerSourceLink = !navigable ? (
+    <span className="inline-flex min-w-0 items-center gap-[0.2em] self-baseline">
+      <QuoteIcon aria-hidden="true" />
+      <ContextChipLabel className="max-w-[16em]" dir={textDirection(label)}>
+        {label}
+      </ContextChipLabel>
+    </span>
+  ) : (
     <Link
       {...sourceLinkProps}
       className="inline-flex min-w-0 items-center gap-[0.2em] self-baseline text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current rounded-sm"
@@ -148,12 +160,14 @@ export function AssistantCitationChip({
       >
         <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col items-start gap-3 p-1 text-sm">
           <AssistantCitationQuote citation={citation} />
-          <PopoverClose
-            render={<Button variant="outline" size="sm" render={<Link {...sourceLinkProps} />} />}
-          >
-            <ArrowUpRightIcon aria-hidden="true" />
-            Go to source
-          </PopoverClose>
+          {navigable ? (
+            <PopoverClose
+              render={<Button variant="outline" size="sm" render={<Link {...sourceLinkProps} />} />}
+            >
+              <ArrowUpRightIcon aria-hidden="true" />
+              Go to source
+            </PopoverClose>
+          ) : null}
         </div>
       </ContextChipPopover>
     );
@@ -204,7 +218,9 @@ export function AssistantCitationChip({
                         activeElement === document.body ||
                         (activeElement !== null && commentPopupRef.current?.contains(activeElement))
                       ) {
-                        commentEditor.onRestoreFocus?.();
+                        if (!focusDashboardCitationSource(citation, sourceAnchor)) {
+                          commentEditor.onRestoreFocus?.();
+                        }
                       }
                       return false;
                     }

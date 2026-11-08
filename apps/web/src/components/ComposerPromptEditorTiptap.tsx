@@ -126,6 +126,7 @@ import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { ComposerCodeBlockNodeView } from "./chat/ComposerCodeBlockNodeView";
 import { resolveAssistantCitationCommentDismissal } from "./chat/assistantCitationCommentDismissal";
+import { focusDashboardCitationSource } from "../fork/dashboard/dashboardCitation";
 import { composerCodeBlockHighlight } from "./composerCodeBlockHighlight";
 import { importPastedComposerText } from "./composerInlineTokenPaste";
 import { didComposerSelectionChangeVisibly } from "./composerSelection";
@@ -436,7 +437,10 @@ function ComposerCitationNodeView({ node, editor, getPos }: NodeViewProps) {
     const end = pos + current.nodeSize;
     const from = removeOnCancel.before && doc.textBetween(pos - 1, pos) === " " ? pos - 1 : pos;
     const to = removeOnCancel.after && doc.textBetween(end, end + 1) === " " ? end + 1 : end;
-    editor.chain().focus().deleteRange({ from, to }).run();
+    const chain = focusDashboardCitationSource(citation, commentTarget?.sourceAnchor)
+      ? editor.chain()
+      : editor.chain().focus();
+    chain.deleteRange({ from, to }).run();
   };
 
   const onRestoreFocus = () => {
