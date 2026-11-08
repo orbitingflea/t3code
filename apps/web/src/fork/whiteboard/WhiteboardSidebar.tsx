@@ -53,9 +53,14 @@ export const WHITEBOARD_BOARD_BUTTON_TITLEBAR_STYLE = {
     "calc(var(--workspace-controls-left) + var(--workspace-titlebar-control-size) + var(--workspace-titlebar-control-gap) + 5rem)",
 };
 
+// Below 760px RightPanelSheet switches to its phone width, which can start under the Board button.
+// Sheets render in portals beside the app's #root.
+const HIDDEN_UNDER_PHONE_RIGHT_PANEL_SHEET =
+  "max-[760px]:in-[#root:has(~[data-base-ui-portal]>[data-slot=sheet-viewport]>[data-slot=sheet-popup]:is([data-open],[data-ending-style]))]:hidden";
+
 export function WhiteboardBoardButton() {
   return (
-    <div className="pointer-events-auto mr-2 w-18">
+    <div className={`pointer-events-auto mr-2 w-18 ${HIDDEN_UNDER_PHONE_RIGHT_PANEL_SHEET}`}>
       <Button
         size="sm"
         variant="ghost"
