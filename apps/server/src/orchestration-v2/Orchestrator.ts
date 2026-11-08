@@ -2812,6 +2812,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     // An interrupted wake disposes only the results it carried. The cohort stays open, and its
     // delivery stays the wake's, so the wake's terminal reserves any sibling's result.
     readonly interruptedWakeTaskIds?: ReadonlyArray<NodeId>;
+    // Keeps the cohort's delivery while its wake is still queued. Those tasks already finished, so
+    // the wake still delivers their results; other undelivered tasks are still disposed.
+    readonly keepQueuedDelivery?: boolean;
   }) {
     const parentRun = input.projection.runs.find((candidate) => candidate.id === input.parentRunId);
     if (parentRun === undefined) {
@@ -2826,8 +2829,9 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     }
     const emitEvent = emit(input.events, input.command);
     const wakeTaskIds = input.interruptedWakeTaskIds;
-    const keptTaskIds = new Set(
-      wakeTaskIds !== undefined && cohort?.disposition === "open"
+    const deliveryRun = completionDeliveryRun(input.projection, cohort?.delivery ?? null);
+    const keptTaskIds = new Set([
+      ...(wakeTaskIds !== undefined && cohort?.disposition === "open"
         ? tasks
             .filter(
               (task) =>
@@ -2837,8 +2841,13 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 task.completionDelivery?.state !== "disposed",
             )
             .map((task) => task.id)
-        : [],
-    );
+        : []),
+      ...(input.keepQueuedDelivery === true &&
+      cohort?.disposition === "open" &&
+      deliveryRun?.status === "queued"
+        ? cohort.delivery!.taskIds
+        : []),
+    ]);
     const nextCohort =
       keptTaskIds.size > 0
         ? cohort!
@@ -2886,7 +2895,6 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         },
       });
     }
-    const deliveryRun = completionDeliveryRun(input.projection, cohort?.delivery ?? null);
     if (
       keptTaskIds.size === 0 &&
       input.cancelQueuedDelivery !== false &&
@@ -11665,6 +11673,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
                 parentRunId,
                 disposition: "stopped",
                 now,
+                keepQueuedDelivery: true,
                 ...(parentRunId !== run.id && completionMessage?.delegatedCompletion !== undefined
                   ? { interruptedWakeTaskIds: completionMessage.delegatedCompletion.taskIds }
                   : {}),
