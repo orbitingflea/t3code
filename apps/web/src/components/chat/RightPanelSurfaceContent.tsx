@@ -173,7 +173,13 @@ export function RightPanelSurfaceContent(props: {
     case "pull-requests":
       return <ThreadPullRequestsPanel threadRef={threadRef} />;
     case "dashboard":
-      return <ThreadDashboardPanel threadRef={threadRef} onCite={props.onCiteAssistantText} />;
+      return (
+        <ThreadDashboardPanel
+          threadRef={threadRef}
+          cwd={props.files.workspaceRoot}
+          onCite={props.onCiteAssistantText}
+        />
+      );
     case "side-chat":
       // Not lazy: revealing a suspended tiptap editor tears down its view and crashes the composer.
       return (

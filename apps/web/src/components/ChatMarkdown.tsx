@@ -256,6 +256,8 @@ interface ChatMarkdownProps {
   /** The change request's repository, when it can differ from the checkout at `cwd`. */
   sourceControlMediaRepository?: string | undefined;
   headingLevelOffset?: number | undefined;
+  // Fork: other file paths shown alongside this text; parent suffixes disambiguate against them too.
+  fileLinkPeerPaths?: readonly string[] | undefined;
 }
 
 export interface ChatMarkdownContextReference {
@@ -450,6 +452,7 @@ function fileLinkSourcesKey(
   text: string,
   cwd: string | undefined,
   imageBaseDir: string | undefined,
+  peerPaths: readonly string[] = [],
 ): string {
   const hrefs = extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(text))
     .filter((href) => !parseComposerContextHref(href))
@@ -458,7 +461,7 @@ function fileLinkSourcesKey(
   const spans = extractInlineCodeSpans(text).filter((span) =>
     resolveInlineCodeFileLinkMeta(span, cwd, imageBaseDir ?? cwd),
   );
-  return JSON.stringify([[...new Set(hrefs)], [...new Set(spans)]]);
+  return JSON.stringify([[...new Set(hrefs)], [...new Set(spans)], peerPaths]);
 }
 
 function resolveFileLinkSources(
@@ -466,7 +469,7 @@ function resolveFileLinkSources(
   cwd: string | undefined,
   imageBaseDir: string | undefined,
 ) {
-  const [hrefs, spans] = JSON.parse(key) as [string[], string[]];
+  const [hrefs, spans, peerPaths] = JSON.parse(key) as [string[], string[], string[]];
   const markdownFileLinkMetaByHref = new Map<string, MarkdownFileLinkMeta>();
   for (const href of hrefs) {
     const meta = resolveMarkdownFileLinkMeta(href, cwd, imageBaseDir ?? cwd);
@@ -478,6 +481,7 @@ function resolveFileLinkSources(
     if (meta) inlineCodeFileLinkMetaByText.set(span, meta);
   }
   const fileLinkParentSuffixByPath = buildFileLinkParentSuffixByPath([
+    ...peerPaths,
     ...[...markdownFileLinkMetaByHref.values()].map((meta) => meta.filePath),
     ...[...inlineCodeFileLinkMetaByText.values()].map((meta) => meta.filePath),
   ]);
@@ -503,6 +507,7 @@ function useChatMarkdownState({
   headingLevelOffset = 0,
   sourceControlMedia = false,
   sourceControlMediaRepository,
+  fileLinkPeerPaths,
 }: ChatMarkdownProps) {
   const resolvedTheme = useRenderedAppearance();
   const markdownRef = useRef<HTMLElement>(null);
@@ -679,7 +684,7 @@ function useChatMarkdownState({
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
   // renderer context, and every block reading it, unchanged.
   // A template literal marks the key as a string, so the compiler memoizes the maps on its value.
-  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir)}`;
+  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, fileLinkPeerPaths)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
   const resolveThreadPullRequest = (
