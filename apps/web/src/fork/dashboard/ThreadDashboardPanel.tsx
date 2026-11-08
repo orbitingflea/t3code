@@ -6,44 +6,30 @@ import {
   type ThreadDashboardSlot,
 } from "@t3tools/contracts";
 import {
-  ASSISTANT_MARKDOWN_REMARK_PLUGINS,
-  CHAT_MARKDOWN_REHYPE_PLUGINS,
-} from "@t3tools/shared/markdownPipeline";
-import {
+  type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type SyntheticEvent,
   useLayoutEffect,
   useRef,
   useState,
 } from "react";
-import { defaultUrlTransform } from "react-markdown";
 
 import { AssistantSelectionToolbar } from "../../components/chat/AssistantSelectionToolbar";
-import { createMarkdownRenderer } from "../../components/chat/markdownRenderer";
 import { RelativeTime } from "../../components/RelativeTime";
 import { cn } from "../../lib/utils";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { remarkEndLinksAtCjkPunctuation } from "../cjkLinkEnd";
+import { chatMarkdownClipboardPayload } from "../../markdown-clipboard";
 import {
   type CiteAssistantText,
   dashboardCitationSourceProps,
   releaseDashboardCitationViewport,
 } from "./dashboardCitation";
 import { unreadCharacters } from "./dashboardDiff";
+import { DashboardLinkScope, DashboardMarkdown } from "./dashboardMarkdown";
 import { markThreadDashboardSlotSeen, threadDashboard } from "./threadDashboardState";
 import "./dashboard.css";
-
-// A plain synchronous path: no highlighted code blocks or file chips, so the text blocks the
-// change marks are drawn on exist as soon as the card commits.
-const renderMarkdown = createMarkdownRenderer({
-  remarkPlugins: [...ASSISTANT_MARKDOWN_REMARK_PLUGINS, remarkEndLinksAtCjkPunctuation],
-  rehypePlugins: CHAT_MARKDOWN_REHYPE_PLUGINS,
-  components: {
-    a: ({ node: _node, ...props }) => <a {...props} target="_blank" rel="noreferrer" />,
-  },
-  urlTransform: defaultUrlTransform,
-});
 
 const BLOCKS = "li,p,h1,h2,h3,h4,h5,h6,td,th,pre,blockquote";
 const HIGHLIGHT_NAME = "t3-dashboard-change";
@@ -107,6 +93,11 @@ function sharedHighlight(): Highlight | null {
   return created;
 }
 
+/** React bubbles events from portaled children, such as a chip's image dialog, into the card. */
+function isFromOutside(event: SyntheticEvent<HTMLElement>): boolean {
+  return !(event.target instanceof Node) || !event.currentTarget.contains(event.target);
+}
+
 function DashboardCard(props: {
   readonly threadRef: ScopedThreadRef;
   readonly slot: ThreadDashboardSlot;
@@ -144,9 +135,20 @@ function DashboardCard(props: {
     if (unread) props.onMarkSeen(slot, text);
   };
   const handleClick = (event: ReactMouseEvent<HTMLElement>) => {
+    if (isFromOutside(event)) return;
     if (event.target instanceof Element && event.target.closest("a,button")) return;
     if (window.getSelection()?.isCollapsed === false) return;
     markSeen();
+  };
+  const handleCopy = (event: ReactClipboardEvent<HTMLElement>) => {
+    if (isFromOutside(event)) return;
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed) return;
+    const payload = chatMarkdownClipboardPayload(selection);
+    if (!payload) return;
+    event.preventDefault();
+    event.clipboardData.setData("text/plain", payload.text);
+    event.clipboardData.setData("text/html", payload.html);
   };
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) {
@@ -180,17 +182,18 @@ function DashboardCard(props: {
       <div
         ref={bodyRef}
         {...(text.trim() === "" ? {} : dashboardCitationSourceProps(props.threadRef, slot))}
+        onCopy={handleCopy}
         className="chat-markdown min-w-0 text-foreground text-sm leading-relaxed [overflow-wrap:anywhere]"
       >
         {text.trim() === "" ? (
           <span className="text-muted-foreground text-xs">(empty)</span>
         ) : (
-          renderMarkdown(text, true)
+          <DashboardMarkdown text={text} pairedText={readText} />
         )}
       </div>
       {unread && readText.trim() !== "" ? (
         <div ref={readRef} hidden>
-          {renderMarkdown(readText, true)}
+          <DashboardMarkdown text={readText} pairedText={text} />
         </div>
       ) : null}
     </section>
@@ -235,6 +238,7 @@ export function DashboardCards(props: {
 
 export function ThreadDashboardPanel(props: {
   readonly threadRef: ScopedThreadRef;
+  readonly cwd: string | undefined;
   readonly onCite: CiteAssistantText;
 }) {
   const { environmentId, threadId } = props.threadRef;
@@ -246,13 +250,19 @@ export function ThreadDashboardPanel(props: {
     );
   }
   return (
-    <DashboardCards
-      threadRef={props.threadRef}
-      dashboard={query.data}
-      onCite={props.onCite}
-      onMarkSeen={(slot, text) => {
-        void markSeen({ environmentId, input: { threadId, slot, text } });
-      }}
-    />
+    // Chip labels depend on the scope; a new key remounts the cards so their highlight repaints.
+    <DashboardLinkScope
+      key={`${environmentId}:${threadId}:${props.cwd ?? ""}`}
+      value={{ threadRef: props.threadRef, cwd: props.cwd }}
+    >
+      <DashboardCards
+        threadRef={props.threadRef}
+        dashboard={query.data}
+        onCite={props.onCite}
+        onMarkSeen={(slot, text) => {
+          void markSeen({ environmentId, input: { threadId, slot, text } });
+        }}
+      />
+    </DashboardLinkScope>
   );
 }
