@@ -291,7 +291,14 @@ function ComposerReviewCommentDetails({ comment }: { comment: ReviewCommentConte
           {comment.sectionTitle} · {comment.rangeLabel}
         </div>
       </div>
-      {comment.text.trim() ? <ChatMarkdown text={comment.text.trim()} cwd={undefined} /> : null}
+      {comment.text.trim() ? (
+        <ChatMarkdown
+          text={comment.text.trim()}
+          cwd={undefined}
+          // Fork: selects upstream's single-tilde list, so "1~2" keeps its tilde before sending.
+          assistantReply
+        />
+      ) : null}
       {comment.diff.trim() ? (
         <div className="flex h-64 min-h-0 flex-col overflow-hidden rounded-md border border-border">
           <ReadOnlySourcePreview name="review.diff" text={comment.diff} />

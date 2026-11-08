@@ -35,7 +35,8 @@ import {
   shouldPreserveAssistantLineBreaks,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS,
-  CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
+  ASSISTANT_MARKDOWN_REMARK_PLUGINS,
+  ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
 } from "./markdownPipeline.ts";
 
 // Inline wrappers (including Shiki token spans) must not split a search phrase.
@@ -83,14 +84,20 @@ const assistantProcessor = unified()
   .use(CHAT_MARKDOWN_REMARK_PLUGINS)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
-const assistantBreaksProcessor = unified()
+const replyProcessor = unified()
   .use(remarkParse)
-  .use(CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
+  .use(ASSISTANT_MARKDOWN_REMARK_PLUGINS)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
+const replyBreaksProcessor = unified()
+  .use(remarkParse)
+  .use(ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
+// Fork: selects upstream's single-tilde list, as sent messages render, so find matches them.
 const userProcessor = unified()
   .use(remarkParse)
-  .use(CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
+  .use(ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
   .use(remarkRehype, { allowDangerousHtml: true });
 
 interface TextTree {
@@ -111,12 +118,15 @@ function markdownThreadFindText(
   cwd?: string,
   skills: readonly InlineSkill[] = [],
   lineBreaks = false,
+  assistantReply = false,
 ): string[] {
   const processor = userMessage
     ? userProcessor
-    : lineBreaks
-      ? assistantBreaksProcessor
-      : assistantProcessor;
+    : !assistantReply
+      ? assistantProcessor
+      : lineBreaks
+        ? replyBreaksProcessor
+        : replyProcessor;
   const tree = processor.runSync(processor.parse(markdown));
   const paths = [
     ...extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(markdown)),
@@ -209,7 +219,8 @@ function markdownThreadFindText(
 export function searchablePlanSegments(markdown: string, cwd?: string): readonly string[] {
   return [
     proposedPlanTitle(markdown) ?? "Proposed plan",
-    ...markdownThreadFindText(stripDisplayedPlanMarkdown(markdown), false, cwd, []),
+    // Fork: selects upstream's single-tilde list, as plan cards render, so find matches them.
+    ...markdownThreadFindText(stripDisplayedPlanMarkdown(markdown), false, cwd, [], false, true),
   ];
 }
 
@@ -231,5 +242,6 @@ export function searchableMessageSegments(
     cwd,
     skills,
     shouldPreserveAssistantLineBreaks(message.text),
+    true,
   );
 }

@@ -543,6 +543,8 @@ export function LiveWorkEntryTimelineRow({
                 text={thoughtLine}
                 cwd={ctx.markdownCwd}
                 parseRawHtml={false}
+                // Fork: selects upstream's single-tilde list, so a thinking line's "1~2" keeps its tilde.
+                assistantReply
                 extraRemarkPlugins={THOUGHT_PREVIEW_PLUGINS}
               />
             </span>
@@ -564,6 +566,8 @@ export function LiveWorkEntryTimelineRow({
               text={row.entry.detail ?? label}
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
+              // Fork: selects upstream's single-tilde list, so a thinking line's "1~2" keeps its tilde.
+              assistantReply
               extraRemarkPlugins={row.active ? THINKING_PREVIEW_PLUGINS : THOUGHT_PREVIEW_PLUGINS}
             />
           ) : threadLabel ? (
