@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 
 import type { AssistantSelectionToolbar } from "../../components/chat/AssistantSelectionToolbar";
 import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelection";
+import { isWorkspaceElementVisible } from "../../lib/workspaceFocus";
 
 // A Dashboard quote is an ordinary citation whose message id names a slot. Any id with this
 // prefix belongs to the Dashboard, so even a slot this client does not know never reaches the
@@ -30,15 +31,18 @@ export function timelineCitation(citation: AssistantCitation | null): AssistantC
 }
 
 /**
- * Gives keyboard focus back to the quoted slot's card when its comment box closes. The composer
- * can sit behind the modal Dashboard sheet, so it is the wrong place for focus. Returns false,
- * and leaves focus alone, for a message quote or a card that cannot take focus now.
+ * Moves focus as a Dashboard quote's comment box closes. `savedFrom` is an element in the composer
+ * the comment was saved from, null or omitted when the box closed without Save. After Save into a
+ * reachable composer, for a message quote, or with no source, returns false so the caller
+ * restores composer focus. Otherwise focuses the slot's card; returns whether it took focus.
  */
 export function focusDashboardCitationSource(
   citation: AssistantCitation,
   anchor: AssistantCitationSourceAnchor | undefined,
+  savedFrom?: HTMLElement | null,
 ): boolean {
   if (!isDashboardCitation(citation) || anchor === undefined) return false;
+  if (savedFrom != null && isWorkspaceElementVisible(savedFrom)) return false;
   const card = anchor.source.closest<HTMLElement>("[data-slot]");
   card?.focus({ preventScroll: true });
   return card != null && card.ownerDocument.activeElement === card;

@@ -58,6 +58,9 @@ export function AssistantCitationChip({
   const navigate = useNavigate();
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentPopupRef = useRef<HTMLDivElement>(null);
+  const commentTriggerRef = useRef<HTMLButtonElement>(null);
+  // Save sets this; finalFocus reads and clears it to tell Save from the other ways to close.
+  const closedBySaveRef = useRef(false);
   const draftCommentRef = useRef<string | null>(null);
   const [voiceSetupOpen, setVoiceSetupOpen] = useState(false);
   const [unavailableSourceAnchor, setUnavailableSourceAnchor] =
@@ -192,6 +195,7 @@ export function AssistantCitationChip({
           }}
         >
           <PopoverTrigger
+            ref={commentTriggerRef}
             aria-label={citation.comment ? "Edit citation comment" : "Add comment to citation"}
             data-citation-comment-trigger="true"
             render={<ContextChipAction />}
@@ -213,12 +217,14 @@ export function AssistantCitationChip({
               finalFocus={
                 commentEditor.onRestoreFocus
                   ? () => {
+                      const savedFrom = closedBySaveRef.current ? commentTriggerRef.current : null;
+                      closedBySaveRef.current = false;
                       const activeElement = document.activeElement;
                       if (
                         activeElement === document.body ||
                         (activeElement !== null && commentPopupRef.current?.contains(activeElement))
                       ) {
-                        if (!focusDashboardCitationSource(citation, sourceAnchor)) {
+                        if (!focusDashboardCitationSource(citation, sourceAnchor, savedFrom)) {
                           commentEditor.onRestoreFocus?.();
                         }
                       }
@@ -243,6 +249,7 @@ export function AssistantCitationChip({
                 }}
                 onSubmit={(comment) => {
                   if (!commentEditor.onSave(comment)) return false;
+                  closedBySaveRef.current = true;
                   commentEditor.onOpenChange(false);
                   return true;
                 }}
@@ -250,6 +257,7 @@ export function AssistantCitationChip({
                   ? {
                       onSubmitAndSend: (comment: string) => {
                         if (!commentEditor.onSaveAndSend?.(comment)) return false;
+                        closedBySaveRef.current = true;
                         commentEditor.onOpenChange(false);
                         return true;
                       },
