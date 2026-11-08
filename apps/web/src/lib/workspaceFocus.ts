@@ -32,7 +32,7 @@ function workspaceArea(element: Element): HTMLElement | null {
   return root instanceof ShadowRoot ? workspaceArea(root.host) : null;
 }
 
-function isWorkspaceElementVisible(element: HTMLElement): boolean {
+export function isWorkspaceElementVisible(element: HTMLElement): boolean {
   if (
     !element.isConnected ||
     element.closest(
