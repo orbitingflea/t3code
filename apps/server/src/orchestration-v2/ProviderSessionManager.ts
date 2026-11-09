@@ -2443,11 +2443,9 @@ export const layerWithOptions = (
               }
               const key = sessionKey(input.providerSessionId);
               const live = (yield* Ref.get(sessions)).get(key);
-<<<<<<< origin/main
-              if (live !== undefined) yield* releaseIfAccountChanged(live);
-=======
               if (live !== undefined) yield* releaseForLinkedEnvironments(live);
->>>>>>> upstream/main
+              const afterLinkCheck = (yield* Ref.get(sessions)).get(key);
+              if (afterLinkCheck !== undefined) yield* releaseIfAccountChanged(afterLinkCheck);
               const existing = (yield* Ref.get(sessions)).get(key);
               if (existing !== undefined) {
                 const attached = existing.attachedThreadIds.has(input.threadId);
