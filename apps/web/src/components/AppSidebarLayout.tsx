@@ -320,17 +320,15 @@ function registerAppShellCommands(router: AnyRouter, shellElement: Element): () 
   };
 }
 
-<<<<<<< origin/main
 function SidebarControl({
   boardHidden,
+  showSidebar,
   sidebarFits,
 }: {
-  boardHidden: boolean | null;
-  sidebarFits: boolean;
+  readonly boardHidden: boolean | null;
+  readonly showSidebar: boolean;
+  readonly sidebarFits: boolean;
 }) {
-=======
-function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
->>>>>>> upstream/main
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
@@ -401,26 +399,7 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
       )}
       data-sidebar-control=""
     >
-<<<<<<< origin/main
       {boardHidden && <WhiteboardBoardButton />}
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <SidebarTrigger
-              variant={isSidebarVisible && stageBackdropVariant ? "media-navigation" : "ghost"}
-              className={cn(
-                "pointer-events-auto",
-                isSidebarVisible && stageBackdropVariant && "relative top-auto translate-y-0",
-              )}
-              aria-label="Toggle main sidebar"
-            />
-          }
-        />
-        <TooltipPopup side="bottom">
-          Toggle main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
-        </TooltipPopup>
-      </Tooltip>
-=======
       {showSidebar ? (
         <Tooltip>
           <TooltipTrigger
@@ -440,7 +419,6 @@ function SidebarControl({ showSidebar }: { readonly showSidebar: boolean }) {
           </TooltipPopup>
         </Tooltip>
       ) : null}
->>>>>>> upstream/main
     </div>
   );
 }
@@ -533,11 +511,11 @@ export function AppSidebarLayout({
         ) : null}
         {children}
         <BackgroundThreadAnnouncer />
-<<<<<<< origin/main
-        <SidebarControl boardHidden={boardHidden} sidebarFits={sidebarFits} />
-=======
-        <SidebarControl showSidebar={showSidebar} />
->>>>>>> upstream/main
+        <SidebarControl
+          boardHidden={boardHidden}
+          showSidebar={showSidebar}
+          sidebarFits={sidebarFits}
+        />
         {isElectron ? <HistorySwipeNavigation /> : null}
       </SidebarProvider>
     </PanelAnimationSuppressionProvider>

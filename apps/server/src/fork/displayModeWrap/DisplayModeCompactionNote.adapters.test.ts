@@ -574,7 +574,7 @@ it.live(
             id: 5,
             nativeThreadId,
             nativeTurnId,
-            text: "Start working toward this goal: ship it",
+            text: "This thread's goal is already set. Do not call create_goal. Start working on it now: ship it",
             additionalContext: {
               "t3_display_mode_message-thread_command-note_codex-goal": {
                 kind: "application",
