@@ -100,11 +100,37 @@ const startsRunner = (command: unknown, homes: Homes, agent?: Agent): boolean =>
     command.startsWith(`${runner} run ${agent === undefined ? "" : `${agent} `}`),
   );
 
+// Codex replaces a hook context above its own limit with a preview and a file path. The runner
+// already cuts the context, so 0 turns that limit off on the events where the runner gives context.
+const CODEX_CONTEXT_EVENTS: ReadonlySet<string> = new Set([
+  "SessionStart",
+  "UserPromptSubmit",
+  "PostToolUse",
+]);
+const CODEX_NO_CONTEXT_LIMIT = 0;
+
 const shimHandler = (runner: string, agent: Agent, nativeEvent: string): JsonObject => ({
   type: "command",
   command: `${runner} run ${agent} ${nativeEvent}`,
   timeout: SHIM_TIMEOUT_SECONDS,
+  ...(agent === "codex" && CODEX_CONTEXT_EVENTS.has(nativeEvent)
+    ? { additionalContextLimit: CODEX_NO_CONTEXT_LIMIT }
+    : {}),
 });
+
+// Entries written before the context limit was set hold no such field.
+const shimHandlerForms = (
+  runner: string,
+  agent: Agent,
+  nativeEvent: string,
+): ReadonlyArray<JsonObject> => {
+  const { additionalContextLimit: _limit, ...withoutLimit } = shimHandler(
+    runner,
+    agent,
+    nativeEvent,
+  );
+  return [shimHandler(runner, agent, nativeEvent), withoutLimit];
+};
 
 const shimGroup = (runner: string, agent: "claude" | "codex", nativeEvent: string): JsonObject => ({
   ...(nativeEvent === "SessionStart" ? { matcher: SESSION_START_MATCHER } : {}),
@@ -685,11 +711,9 @@ export const planInstall = (
         codexHandlerPositions(isObject(file.hooks) ? file.hooks : {}, hooksFile, homes);
       const ourHashes = new Set(
         runnerWords(homes).flatMap((runner) =>
-          NATIVE_EVENTS.codex.map((nativeEvent) =>
-            codexTrustHash(
-              nativeEvent,
-              shimGroup(runner, "codex", nativeEvent),
-              shimHandler(runner, "codex", nativeEvent),
+          NATIVE_EVENTS.codex.flatMap((nativeEvent) =>
+            shimHandlerForms(runner, "codex", nativeEvent).map((handler) =>
+              codexTrustHash(nativeEvent, shimGroup(runner, "codex", nativeEvent), handler),
             ),
           ),
         ),
