@@ -1,4 +1,5 @@
 import { ADAPTERS, neutralOutput } from "./agentAdapters.ts";
+import { findProject, type Project } from "./projectHooks.ts";
 import {
   type Agent,
   AGENTS,
@@ -22,6 +23,7 @@ import {
   TOOL_CLASSES,
   type ToolClass,
   type UnifiedEvent,
+  userHookFile,
 } from "./shapes.ts";
 
 const NodeFS = process.getBuiltinModule("node:fs");
@@ -70,7 +72,9 @@ const parseMembers = <T extends string>(
   return members;
 };
 
-const parseHookSpec = (name: string, entry: unknown, home: string): HookSpec | string | null => {
+type ParsedHook = Omit<HookSpec, "dir" | "project">;
+
+const parseHookSpec = (name: string, entry: unknown, home: string): ParsedHook | string | null => {
   if (/^\d+$/.test(name)) return "the name must not be a number";
   if (!isObject(entry)) return "must be an object";
   const unknownKey = Object.keys(entry).find((key) => !HOOK_KEYS.has(key));
@@ -115,8 +119,17 @@ const parseHookSpec = (name: string, entry: unknown, home: string): HookSpec | s
   };
 };
 
-export const loadConfig = (paths: RunnerPaths): HookConfig => {
-  const file = NodePath.join(paths.hooksDir, "hooks.json");
+/** A hook's name in the error log. A project hook is marked, so it differs from a user hook of the same name. */
+const hookLabel = (spec: HookSpec): string =>
+  spec.project === null ? spec.name : `project:${spec.name}`;
+
+/** A hook's name in a message for the user. */
+export const hookTitle = (name: string, project: string | null): string =>
+  `${project === null ? "hook" : "project hook"} "${name}"`;
+
+const NO_HOOKS: HookConfig = { hooks: [], problems: [] };
+
+const loadHookFile = (file: string, home: string, project: string | null): HookConfig => {
   let parsed: unknown;
   try {
     const text = readTextIfPresent(file);
@@ -137,15 +150,26 @@ export const loadConfig = (paths: RunnerPaths): HookConfig => {
   const hooks: Array<HookSpec> = [];
   const problems: Array<string> = [];
   for (const [name, entry] of Object.entries(parsed.hooks)) {
-    const spec = parseHookSpec(name, entry, paths.home);
-    if (typeof spec === "string") problems.push(`hook "${name}": ${spec}`);
-    else if (spec !== null) hooks.push(spec);
+    const spec = parseHookSpec(name, entry, home);
+    if (typeof spec === "string") {
+      problems.push(`${hookTitle(name, project)}: ${spec}`);
+    } else if (spec !== null) hooks.push({ ...spec, dir: NodePath.dirname(file), project });
   }
   return { hooks, problems };
 };
 
-const selectHooks = (config: HookConfig, occurrence: Occurrence): ReadonlyArray<HookSpec> =>
-  config.hooks.filter(
+export const loadConfig = (paths: RunnerPaths): HookConfig =>
+  loadHookFile(userHookFile(paths), paths.home, null);
+
+/** The hooks of a project's own file. A project that is not trusted has none: its file is not read. */
+export const loadProjectConfig = (project: Project | null, paths: RunnerPaths): HookConfig =>
+  project?.trusted ? loadHookFile(project.file, paths.home, project.folder) : NO_HOOKS;
+
+const selectHooks = (
+  hooks: ReadonlyArray<HookSpec>,
+  occurrence: Occurrence,
+): ReadonlyArray<HookSpec> =>
+  hooks.filter(
     (spec) =>
       spec.events.has(occurrence.event) &&
       spec.agents.has(occurrence.agent) &&
@@ -238,7 +262,6 @@ const runHook = async (
   spec: HookSpec,
   occurrence: Occurrence,
   stdin: string,
-  paths: RunnerPaths,
 ): Promise<HookResult> => {
   const NodeChildProcess = process.getBuiltinModule("node:child_process");
   const { setTimeout: startTimer, clearTimeout: stopTimer } =
@@ -249,7 +272,7 @@ const runHook = async (
     let problem: string | null = null;
     const start = () => {
       try {
-        return NodeChildProcess.spawn(resolveProgram(program, paths.hooksDir), args, {
+        return NodeChildProcess.spawn(resolveProgram(program, spec.dir), args, {
           ...(NodeFS.existsSync(occurrence.cwd) ? { cwd: occurrence.cwd } : {}),
           detached: true,
           stdio: ["pipe", "pipe", "pipe"],
@@ -293,16 +316,15 @@ const runHook = async (
       finish(code);
     });
   });
-  return interpretHookExit(occurrence.event, spec.name, exit);
+  return interpretHookExit(occurrence.event, hookLabel(spec), exit);
 };
 
 const runHooks = (
   specs: ReadonlyArray<HookSpec>,
   occurrence: Occurrence,
-  paths: RunnerPaths,
 ): Promise<ReadonlyArray<HookResult>> => {
   const stdin = JSON.stringify(hookStdin(occurrence));
-  return Promise.all(specs.map((spec) => runHook(spec, occurrence, stdin, paths)));
+  return Promise.all(specs.map((spec) => runHook(spec, occurrence, stdin)));
 };
 
 export const errorLogPath = (paths: RunnerPaths): string =>
@@ -325,16 +347,18 @@ const logError = (paths: RunnerPaths, record: JsonObject): void => {
 
 const decide = async (
   occurrence: Occurrence,
-  config: HookConfig,
+  hooks: ReadonlyArray<HookSpec>,
   paths: RunnerPaths,
 ): Promise<Decision> => {
-  const specs = selectHooks(config, occurrence);
+  const specs = selectHooks(hooks, occurrence);
   if (specs.length === 0) return { event: occurrence.event, blockReason: null, context: null };
-  const results = await runHooks(specs, occurrence, paths);
-  for (const result of results) {
+  const results = await runHooks(specs, occurrence);
+  for (const [index, result] of results.entries()) {
     if (result.failure === null) continue;
+    const project = specs[index]?.project ?? null;
     logError(paths, {
       hook: result.hook,
+      ...(project === null ? {} : { project }),
       event: occurrence.event,
       agent: occurrence.agent,
       session_id: occurrence.sessionId,
@@ -361,14 +385,22 @@ export const handleHookCall = async (
     const parsed = adapter.parse(nativeEvent, raw, paths);
     events = parsed.occurrences.map((occurrence) => occurrence.event);
     let decisions: ReadonlyArray<Decision> = [];
-    if (parsed.occurrences.length > 0) {
+    const [first] = parsed.occurrences;
+    if (first !== undefined) {
       const config = loadConfig(paths);
+      const project = findProject(first.cwd, paths);
+      const projectConfig = loadProjectConfig(project, paths);
       if (nativeEvent === "SessionStart") {
         for (const problem of config.problems) logError(paths, { agent, problem });
+        for (const problem of projectConfig.problems) {
+          logError(paths, { agent, project: project?.folder, problem });
+        }
       }
+      // The user's hooks come first, so their answers are merged before the project's.
+      const hooks = [...config.hooks, ...projectConfig.hooks];
       // The hooks of every event of the call run together, so the call ends within one hook timeout.
       decisions = await Promise.all(
-        parsed.occurrences.map((occurrence) => decide(occurrence, config, paths)),
+        parsed.occurrences.map((occurrence) => decide(occurrence, hooks, paths)),
       );
     }
     output = adapter.render(nativeEvent, raw, decisions, parsed, paths);

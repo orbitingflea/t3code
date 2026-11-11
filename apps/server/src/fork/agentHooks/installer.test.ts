@@ -271,8 +271,8 @@ describe("install", () => {
       `CODEX_HOME names ${other}: only ${sandbox.home}/.codex is used, so an agent that starts with this variable does not run the hooks`,
     ]);
     expect(
-      doctor(sandbox.homes, runnerPaths(elsewhere), runnerFiles, elsewhere).filter((finding) =>
-        finding.text.startsWith("C"),
+      doctor(sandbox.homes, runnerPaths(elsewhere), runnerFiles, elsewhere, sandbox.home).filter(
+        (finding) => finding.text.startsWith("C"),
       ),
     ).toEqual(otherFolderNotes(elsewhere, sandbox.homes).map((text) => ({ level: "warn", text })));
     const printed: Array<string> = [];
@@ -414,6 +414,7 @@ describe("install", () => {
       "agentHooks.mjs",
       "hookRunner.mjs",
       "installer.mjs",
+      "projectHooks.mjs",
       "shapes.mjs",
       "agent-hooks",
       "settings.json",
@@ -557,12 +558,13 @@ describe("install", () => {
     const command = (...args: ReadonlyArray<string>) =>
       NodeChildProcess.spawnSync(process.execPath, [sandbox.homes.runner, ...args], {
         env: sandbox.env,
+        cwd: sandbox.home,
         encoding: "utf8",
       });
 
     expect(command("install", "--dry-run").stdout).toBe("Nothing to change.\n");
     expect(command("doctor").stdout).toBe(
-      `ok    the runner and the agent hook entries are installed\nok    0 hook(s) in ${sandbox.home}/.agents/hooks/hooks.json\n`,
+      `ok    the runner and the agent hook entries are installed\nok    0 hook(s) in ${sandbox.home}/.agents/hooks/hooks.json\nok    no project hook file at or above ${sandbox.home}\n`,
     );
   });
 });
@@ -696,17 +698,62 @@ describe("uninstall", () => {
 
 describe("doctor", () => {
   const levels = (sandbox: ReturnType<typeof makeHome>) =>
-    doctor(sandbox.homes, runnerPaths(sandbox.env), runnerFiles, sandbox.env);
+    doctor(sandbox.homes, runnerPaths(sandbox.env), runnerFiles, sandbox.env, sandbox.home);
 
   it("reports what is not installed, and then a clean install", () => {
     const sandbox = makeHome();
 
-    expect(levels(sandbox).filter((finding) => finding.level === "warn")).toHaveLength(10);
+    expect(levels(sandbox).filter((finding) => finding.level === "warn")).toHaveLength(11);
     sandbox.install();
 
     expect(levels(sandbox)).toEqual([
       { level: "ok", text: "the runner and the agent hook entries are installed" },
       { level: "ok", text: `0 hook(s) in ${sandbox.home}/.agents/hooks/hooks.json` },
+      { level: "ok", text: `no project hook file at or above ${sandbox.home}` },
+    ]);
+  });
+
+  it("reports a project hook file that is not trusted, and checks its entries once it is", async () => {
+    const sandbox = makeHome();
+    sandbox.install();
+    const project = NodePath.join(sandbox.home, "work", "a project");
+    const hooksDir = NodePath.join(project, ".agents", "hooks");
+    const file = NodePath.join(hooksDir, "hooks.json");
+    const inside = NodePath.join(project, "src");
+    NodeFS.mkdirSync(hooksDir, { recursive: true });
+    NodeFS.mkdirSync(inside);
+    NodeFS.writeFileSync(
+      file,
+      json({
+        hooks: {
+          bad: { events: ["Sometimes"], command: ["x"] },
+          absent: { events: ["Stop"], command: ["project_rules.sh"] },
+          onPath: { events: ["Stop"], command: ["sh"] },
+        },
+      }),
+    );
+    const projectFindings = () =>
+      doctor(sandbox.homes, runnerPaths(sandbox.env), runnerFiles, sandbox.env, inside).slice(2);
+
+    expect(projectFindings()).toEqual([
+      {
+        level: "warn",
+        text: `the project hook file ${file} is not trusted, so its hooks do not run; to trust it, run "agent-hooks trust '${project}'"`,
+      },
+    ]);
+
+    expect(await main(["trust", inside], sandbox.env, () => undefined)).toBe(0);
+
+    expect(projectFindings()).toEqual([
+      {
+        level: "ok",
+        text: `2 project hook(s) in ${file}, trusted through the folder ${project}`,
+      },
+      { level: "error", text: 'project hook "bad": "events" has the unknown value "Sometimes"' },
+      {
+        level: "error",
+        text: 'project hook "absent": project_rules.sh is not next to hooks.json and not on PATH',
+      },
     ]);
   });
 
@@ -725,7 +772,7 @@ describe("doctor", () => {
     const env = { ...sandbox.env, PATH: bin };
 
     expect(
-      doctor(sandbox.homes, runnerPaths(env), runnerFiles, env).filter(
+      doctor(sandbox.homes, runnerPaths(env), runnerFiles, env, sandbox.home).filter(
         (finding) => finding.level === "error",
       ),
     ).toEqual(

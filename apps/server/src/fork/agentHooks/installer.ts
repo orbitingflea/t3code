@@ -1,4 +1,11 @@
-import { errorLogPath, loadConfig, resolveProgram } from "./hookRunner.ts";
+import {
+  errorLogPath,
+  hookTitle,
+  loadConfig,
+  loadProjectConfig,
+  resolveProgram,
+} from "./hookRunner.ts";
+import { describeKey, findProject, readTrustList } from "./projectHooks.ts";
 import {
   type Agent,
   errorText,
@@ -8,6 +15,7 @@ import {
   readTextIfPresent,
   type RunnerPaths,
   stringOr,
+  userHookFile,
   writeFileAtomic,
 } from "./shapes.ts";
 
@@ -856,6 +864,7 @@ export const doctor = (
   paths: RunnerPaths,
   runnerFiles: ReadonlyMap<string, string>,
   env: NodeJS.ProcessEnv,
+  cwd: string,
 ): ReadonlyArray<Finding> => {
   const findings: Array<Finding> = [];
   const plan = planInstall(homes, runnerFiles);
@@ -892,8 +901,34 @@ export const doctor = (
   for (const problem of config.problems) findings.push({ level: "error", text: problem });
   findings.push({
     level: "ok",
-    text: `${config.hooks.length} hook(s) in ${NodePath.join(paths.hooksDir, "hooks.json")}`,
+    text: `${config.hooks.length} hook(s) in ${userHookFile(paths)}`,
   });
+  try {
+    readTrustList(paths);
+  } catch (cause) {
+    findings.push({ level: "error", text: `no project is trusted: ${errorText(cause)}` });
+  }
+  const project = findProject(cwd, paths);
+  const projectConfig = loadProjectConfig(project, paths);
+  if (project === null) {
+    findings.push({ level: "ok", text: `no project hook file at or above ${cwd}` });
+  } else if (project.trusted && project.key !== null) {
+    findings.push({
+      level: "ok",
+      text: `${projectConfig.hooks.length} project hook(s) in ${project.file}, trusted through ${describeKey(project.key)}`,
+    });
+  } else if (project.key === null) {
+    findings.push({
+      level: "warn",
+      text: `the project hook file ${project.file} cannot be trusted, so its hooks do not run: ${project.folder} or its .git entry cannot be read`,
+    });
+  } else {
+    findings.push({
+      level: "warn",
+      text: `the project hook file ${project.file} is not trusted, so its hooks do not run; to trust it, run "agent-hooks trust ${shellQuote(project.folder)}"`,
+    });
+  }
+  for (const problem of projectConfig.problems) findings.push({ level: "error", text: problem });
   const pathFolders = new Set(
     (env.PATH ?? "").split(NodePath.delimiter).filter((folder) => folder !== ""),
   );
@@ -904,13 +939,14 @@ export const doctor = (
       return [];
     }
   });
-  for (const spec of config.hooks) {
-    const program = resolveProgram(spec.command[0] ?? "", paths.hooksDir);
+  for (const spec of [...config.hooks, ...projectConfig.hooks]) {
+    const hook = hookTitle(spec.name, spec.project);
+    const program = resolveProgram(spec.command[0] ?? "", spec.dir);
     if (NodePath.isAbsolute(program)) {
       if (!isExecutableFile(program)) {
         findings.push({
           level: "error",
-          text: `hook "${spec.name}": ${program} is missing or not executable`,
+          text: `${hook}: ${program} is missing or not executable`,
         });
       }
     } else if (
@@ -918,7 +954,7 @@ export const doctor = (
     ) {
       findings.push({
         level: "error",
-        text: `hook "${spec.name}": ${program} is not next to hooks.json and not on PATH`,
+        text: `${hook}: ${program} is not next to hooks.json and not on PATH`,
       });
     }
     const scripts = [program, ...spec.command.slice(1)].filter(
@@ -933,7 +969,7 @@ export const doctor = (
     if (twice !== undefined) {
       findings.push({
         level: "warn",
-        text: `hook "${spec.name}" is also wired in ${twice.file}, so it runs twice there`,
+        text: `${hook} is also wired in ${twice.file}, so it runs twice there`,
       });
     }
   }

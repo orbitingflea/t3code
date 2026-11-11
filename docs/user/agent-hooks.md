@@ -138,6 +138,29 @@ Each failure adds one line to `~/.local/state/agent-hooks/errors.jsonl`, or to `
 
 To see every hook call with its input and answer, set `AGENT_HOOKS_TRACE=<file>` in the environment of the agent.
 
+## Project hooks
+
+A project can carry its own hooks in `<project folder>/.agents/hooks/hooks.json`, with its scripts next to that file. The format, the events and the failure rule are the same as for your own hook file. Nothing is installed per project: the entries from `install` already start the runner, and the runner looks for the project file at each hook call.
+
+The runner starts at the agent's working folder and goes up, folder by folder, to the first one that holds `.agents/hooks/hooks.json`. That folder is the project folder. It does not have to be a git repository. Only this nearest file is read, and your own hook file never counts as a project file.
+
+Project hooks run only in a project you trust, because a repository you cloned could otherwise make the agent run its scripts. Read the project's hook file and scripts, then run this in any folder of the project:
+
+```bash
+~/.agents/bin/agent-hooks trust      # or: trust <folder>
+~/.agents/bin/agent-hooks untrust    # stops the project's hooks again
+```
+
+Until then the project file is not read, nothing in it runs, and no error is logged. `agent-hooks doctor`, run inside a project, says where the project file is and whether it is trusted. For a trusted project it also checks the entries and programs, like it does for your own file.
+
+- **Worktrees.** When the project folder is a git checkout, the trust is for the repository. It covers the main checkout and every linked worktree, also one you add later. A folder that only points at the repository, such as a copy of a worktree, is not covered.
+- **Other folders.** Without git, the trust is for that one folder. A copy in another place, a moved folder, and a hook file in a subfolder of a trusted repository each need their own `trust`.
+- **Order.** Your hooks and the project's hooks of one event run at the same time. The answers are merged with your hooks first, then the project's, each in file order. A project hook with the name of one of your hooks is a second hook; both run.
+- **Programs.** A program name without a folder part is looked up next to the project's `hooks.json`, then on `PATH`. A relative path with a folder part is looked up only next to the project's `hooks.json`.
+- **Names.** In the error log a project hook is `project:<name>`, and the line has the project folder. `doctor` calls it `project hook "<name>"`.
+
+The trust list is `~/.local/state/agent-hooks/trusted-projects.json`, next to the error log. It is kept outside your hook folder because it holds paths of this computer. `AGENT_HOOKS_DIR` moves only your own hook file.
+
 ## Limits
 
 - **Antigravity, automatic compaction.** Antigravity compacts after it has run the hook that comes before a model call. So after an automatic compaction the `PostCompact` text reaches the model one call late: at its next call in the same turn, or with your next prompt. After a manual `/compact` it arrives before the first call.
