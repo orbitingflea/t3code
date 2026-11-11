@@ -1,0 +1,390 @@
+{
+  "claude": {
+    "sessionStart": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "SessionStart",
+      "source": "startup"
+    },
+    "sessionStartAfterCompaction": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "a10f81b1-2907-492d-90fc-3fac7ba6f7c9",
+      "hook_event_name": "SessionStart",
+      "source": "compact",
+      "model": "claude-haiku-5-5"
+    },
+    "userPromptSubmit": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "e3c832c1-d1cf-4848-9064-8589015de80f",
+      "permission_mode": "default",
+      "hook_event_name": "UserPromptSubmit",
+      "prompt": "Do these steps in order. 1) Run this shell command exactly once with the Bash tool: echo forbidden-probe . 2) Create the file notes.txt in the current folder with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it."
+    },
+    "preToolUseShell": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "e3c832c1-d1cf-4848-9064-8589015de80f",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "echo forbidden-probe",
+        "description": "Run the probe echo command once"
+      },
+      "tool_use_id": "toolu_01QWNf9cqr2p951yWpotku9W"
+    },
+    "preToolUseEdit": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "e3c832c1-d1cf-4848-9064-8589015de80f",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "PreToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/work/project/notes.txt",
+        "content": "alpha\n"
+      },
+      "tool_use_id": "toolu_016Y51vYc75p9RQ1HEJmXmHj"
+    },
+    "postToolUseEdit": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "e3c832c1-d1cf-4848-9064-8589015de80f",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "PostToolUse",
+      "tool_name": "Write",
+      "tool_input": {
+        "file_path": "/work/project/notes.txt",
+        "content": "alpha\n"
+      },
+      "tool_response": {
+        "type": "create",
+        "filePath": "/work/project/notes.txt",
+        "content": "alpha\n",
+        "structuredPatch": [],
+        "originalFile": null,
+        "userModified": false
+      },
+      "tool_use_id": "toolu_016Y51vYc75p9RQ1HEJmXmHj",
+      "duration_ms": 10
+    },
+    "stop": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "e3c832c1-d1cf-4848-9064-8589015de80f",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "Stop",
+      "stop_hook_active": false,
+      "last_assistant_message": "Step 1 was refused and did not run. A PreToolUse hook blocked the `echo forbidden-probe` command, and the hook said not to retry, so I didn't. Step 2 is done: I created `notes.txt` in the working directory with the single line `alpha`.\n\nCode words received so far:\n\n- **MANGO-11**: from the SessionStart hook.\n- **KIWI-22**: from the UserPromptSubmit hook.\n- **LIME-33**: from the PreToolUse:Bash hook, which refused the probe command. This is the refusal code word.\n- **PEAR-44**: from the PostToolUse:Write hook, after the `notes.txt` write.",
+      "background_tasks": [],
+      "session_crons": []
+    },
+    "stopAfterContinue": {
+      "session_id": "3fc6e177-c836-45d4-9359-98a3275c3207",
+      "transcript_path": "/srv/agent-home/.claude/projects/-work-project/3fc6e177-c836-45d4-9359-98a3275c3207.jsonl",
+      "cwd": "/work/project",
+      "prompt_id": "e3c832c1-d1cf-4848-9064-8589015de80f",
+      "permission_mode": "default",
+      "effort": {
+        "level": "medium"
+      },
+      "hook_event_name": "Stop",
+      "stop_hook_active": true,
+      "last_assistant_message": "FIG-55",
+      "background_tasks": [],
+      "session_crons": []
+    }
+  },
+  "codex": {
+    "sessionStart": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "SessionStart",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "source": "startup"
+    },
+    "sessionStartAfterCompaction": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "SessionStart",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "source": "compact"
+    },
+    "userPromptSubmit": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "turn_id": "01a1c88f-644c-7182-91dd-abc5760fca67",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "UserPromptSubmit",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "prompt": "Do these steps in order. 1) Run this shell command exactly once: echo forbidden-probe . 2) Create the file notes.txt in the current folder with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it."
+    },
+    "preToolUseShell": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "turn_id": "01a1c88f-644c-7182-91dd-abc5760fca67",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "PreToolUse",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "tool_name": "Bash",
+      "tool_input": {
+        "command": "echo forbidden-probe ."
+      },
+      "tool_use_id": "exec-b92a3f4c-996b-4752-ad1d-b426423afbbb"
+    },
+    "preToolUseEdit": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "turn_id": "01a1c88f-644c-7182-91dd-abc5760fca67",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "PreToolUse",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "tool_name": "apply_patch",
+      "tool_input": {
+        "command": "*** Begin Patch\n*** Add File: /work/project/notes.txt\n+alpha\n*** End Patch"
+      },
+      "tool_use_id": "exec-0eb084cb-131c-4981-95e2-f56a94cc9a6a"
+    },
+    "postToolUseEdit": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "turn_id": "01a1c88f-644c-7182-91dd-abc5760fca67",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "PostToolUse",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "tool_name": "apply_patch",
+      "tool_input": {
+        "command": "*** Begin Patch\n*** Add File: /work/project/notes.txt\n+alpha\n*** End Patch"
+      },
+      "tool_response": "Exit code: 0\nWall time: 0 seconds\nOutput:\nSuccess. Updated the following files:\nA /work/project/notes.txt\n",
+      "tool_use_id": "exec-0eb084cb-131c-4981-95e2-f56a94cc9a6a"
+    },
+    "stop": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "turn_id": "01a1c88f-644c-7182-91dd-abc5760fca67",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "Stop",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "stop_hook_active": false,
+      "last_assistant_message": "- MANGO-11 — SessionStart hook\n- KIWI-22 — PromptSubmit hook\n- LIME-33 — PreTool hook\n- PEAR-44 — PostTool hook"
+    },
+    "stopAfterContinue": {
+      "session_id": "01a1c88f-61f4-7362-a1d0-16d5fa557c06",
+      "turn_id": "01a1c88f-644c-7182-91dd-abc5760fca67",
+      "transcript_path": "/srv/agent-home/.codex/sessions/2026/11/11/rollout-2026-11-11T03-03-22-01a1c88f-61f4-7362-a1d0-16d5fa557c06.jsonl",
+      "cwd": "/work/project",
+      "hook_event_name": "Stop",
+      "model": "gpt-5.6-luna",
+      "permission_mode": "bypassPermissions",
+      "stop_hook_active": true,
+      "last_assistant_message": "Added `FIG-55` as a new line in `notes.txt`."
+    }
+  },
+  "agy": {
+    "sessionStart": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "SessionStart",
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "preInvocation": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PreInvocation",
+      "initialNumSteps": 1,
+      "invocationNum": 0,
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "preInvocationSecondCall": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PreInvocation",
+      "initialNumSteps": 5,
+      "invocationNum": 1,
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "preInvocationCompactCommand": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PreInvocation",
+      "initialNumSteps": 15,
+      "invocationNum": 0,
+      "lastUserInput": "/compact",
+      "modelName": "gpt-oss-120b-medium",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "preInvocationAfterCompaction": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PreInvocation",
+      "initialNumSteps": 17,
+      "invocationNum": 0,
+      "lastUserInput": "Without using any tool, list every code word you know now, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "preToolUseShell": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PreToolUse",
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "stepIdx": 4,
+      "toolCall": {
+        "args": {
+          "CommandLine": "echo forbidden-probe",
+          "IsDaemon": false,
+          "WaitMsBeforeAsync": 5000,
+          "toolSummary": "Echo command"
+        },
+        "id": "call_3d1151065843468eb8ae6ef4",
+        "name": "run_command"
+      },
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "preToolUseEdit": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PreToolUse",
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "stepIdx": 6,
+      "toolCall": {
+        "args": {
+          "Content": "alpha\n",
+          "Overwrite": true,
+          "Path": "/work/project/notes.txt"
+        },
+        "id": "call_b17c86de91d94734852ffbb9",
+        "name": "write_file"
+      },
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "postToolUseEdit": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "error": "",
+      "hookEventName": "PostToolUse",
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "stepIdx": 6,
+      "toolCall": {
+        "args": {
+          "Content": "alpha\n",
+          "Overwrite": true,
+          "Path": "/work/project/notes.txt"
+        },
+        "id": "call_b17c86de91d94734852ffbb9",
+        "name": "write_file"
+      },
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "postInvocation": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "hookEventName": "PostInvocation",
+      "initialNumSteps": 5,
+      "invocationNum": 1,
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "stop": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "error": "",
+      "executionNum": 0,
+      "fullyIdle": true,
+      "hookEventName": "Stop",
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "terminationReason": "NO_TOOL_CALL",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "stopAfterContinue": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "error": "",
+      "executionNum": 1,
+      "fullyIdle": true,
+      "hookEventName": "Stop",
+      "lastUserInput": "Do these steps in order. 1) Run this shell command exactly once with the run_command tool: echo forbidden-probe . 2) Create the file notes.txt in the current workspace with the single line: alpha . 3) Then reply with a list of every code word that any hook or system message has given you so far, and say for each one which hook gave it.",
+      "modelName": "gpt-oss-120b-medium",
+      "terminationReason": "NO_TOOL_CALL",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    },
+    "stopAfterCompactCommand": {
+      "artifactDirectoryPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "conversationId": "8c2244ad-2073-4342-8b18-bdcecca74ff7",
+      "cwd": "/work/project",
+      "error": "",
+      "executionNum": 0,
+      "fullyIdle": true,
+      "hookEventName": "Stop",
+      "lastUserInput": "/compact",
+      "modelName": "gpt-oss-120b-medium",
+      "terminationReason": "TERMINAL_CUSTOM_HOOK",
+      "transcriptPath": "/srv/agent-home/.gemini/antigravity-cli/brain/8c2244ad-2073-4342-8b18-bdcecca74ff7/.system_generated/logs/transcript_full.jsonl",
+      "workspacePaths": ["/work/project"]
+    }
+  }
+}
