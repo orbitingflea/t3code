@@ -1,7 +1,8 @@
 # Antigravity
 
 T3 Code runs Google's official Antigravity ACP agent on your selected environment.
-It has its own sign-in, separate from the Antigravity IDE or CLI. Google controls
+It has its own sign-in, separate from the Antigravity IDE or CLI, unless you
+[use the Antigravity CLI](#use-the-antigravity-cli) as the runtime. Google controls
 which models and account access are available through this agent.
 
 ## Set up Antigravity
@@ -65,6 +66,20 @@ uses `.exe` files.
 Set **Binary path** to the ACP executable on the environment and update it yourself.
 Leave the field blank to use the managed runtime, or a compatible executable on
 `PATH` if no managed runtime is installed.
+
+### Use the Antigravity CLI
+
+Set **Binary path** to the `agy` executable of Antigravity CLI 1.5 or later to run
+the CLI's own ACP mode instead of the managed runtime.
+
+The instance then has no private profile. The agent uses the CLI's own Google
+login, settings, and state folder (`~/.gemini/antigravity-cli`), so sign in with
+`agy` on the environment first. Every instance that points at the CLI shares that
+login, and its sessions are stored with the CLI's own.
+
+The CLI's tool-permission setting decides whether it asks before a tool call. When
+it asks, T3 Code answers by the thread's [permission mode](./permission-modes.md).
+When the CLI is set to always proceed, tools run without asking in every mode.
 
 ## Models and threads
 

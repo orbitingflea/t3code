@@ -30,6 +30,10 @@ import {
   isAntigravityTextGenerationAvailable,
   makeAntigravityTextGeneration,
 } from "../../textGeneration/AntigravityTextGeneration.ts";
+import {
+  antigravityRuntimeState,
+  managedAntigravityRuntimeState,
+} from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { makeAntigravityAuth, type AntigravityAuth } from "../AntigravityAuth.ts";
 import * as AntigravityInstallation from "../AntigravityInstallation.ts";
 import * as AntigravityUsage from "./AntigravityUsage.ts";
@@ -463,6 +467,12 @@ export const AntigravityDriver: ProviderDriver<
       withProcess: authFlow.withProcess,
       defaultModel,
       profileDirectory,
+      runtimeState: installation.resolve(settings.binaryPath, processEnvironment).pipe(
+        Effect.map((executable) =>
+          antigravityRuntimeState(executable, { profileDirectory, userHome, path }),
+        ),
+        Effect.orElseSucceed(() => managedAntigravityRuntimeState(profileDirectory)),
+      ),
       onSessionStarted: provider.onSessionStarted,
       onSessionEvent: (event) => {
         if (event._tag === "ConfigOptionsUpdated") {

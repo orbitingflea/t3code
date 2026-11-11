@@ -7,6 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
+import { managedAntigravityRuntimeState } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { watchAntigravityPromptOutcome } from "./AntigravityTurnOutcome.ts";
 
 const USER_INPUT = 14;
@@ -64,7 +65,10 @@ describe("watchAntigravityPromptOutcome", () => {
         result: EffectAcpSchema.PromptResponse = { stopReason: "end_turn" },
       ) =>
         Effect.gen(function* () {
-          const check = yield* watchAntigravityPromptOutcome(profileDirectory, sessionId);
+          const check = yield* watchAntigravityPromptOutcome(
+            managedAntigravityRuntimeState(profileDirectory),
+            sessionId,
+          );
           appendSteps(steps);
           return yield* check(result);
         });
@@ -190,7 +194,10 @@ describe("watchAntigravityPromptOutcome", () => {
         path.join(conversations, `${peer}.db`),
         path.join(conversations, `${own}.db`),
       );
-      const linked = yield* watchAntigravityPromptOutcome(profileDirectory, own);
+      const linked = yield* watchAntigravityPromptOutcome(
+        managedAntigravityRuntimeState(profileDirectory),
+        own,
+      );
       append(peer, ERROR_MESSAGE, QUOTA_ERROR);
       assert.isUndefined(yield* linked({ stopReason: "end_turn" }));
       assert.equal((yield* linked({ stopReason: "refusal" }))?.class, "usage_limit");
@@ -198,7 +205,10 @@ describe("watchAntigravityPromptOutcome", () => {
       // An unreadable log gives no evidence, but the agent's typed refusal still fails the turn.
       yield* fs.remove(path.join(conversations, `${own}.db`));
       yield* fs.writeFileString(path.join(conversations, `${own}.db`), "not a database");
-      const corrupt = yield* watchAntigravityPromptOutcome(profileDirectory, own);
+      const corrupt = yield* watchAntigravityPromptOutcome(
+        managedAntigravityRuntimeState(profileDirectory),
+        own,
+      );
       assert.isUndefined(yield* corrupt({ stopReason: "end_turn" }));
       assert.deepEqual(yield* corrupt({ stopReason: "refusal" }), {
         class: "usage_limit",

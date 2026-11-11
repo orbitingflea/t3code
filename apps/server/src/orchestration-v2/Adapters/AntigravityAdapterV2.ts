@@ -9,18 +9,21 @@ import type { SelfInvocation } from "@t3tools/shared/nodeRuntime";
 import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
-import * as Hex from "effect/encoding/Hex";
 import * as FileSystem from "effect/FileSystem";
-import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Exit from "effect/Exit";
-import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Scope from "effect/Scope";
 import * as EffectAcpErrors from "effect-acp/errors";
 
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { PULL_REQUEST_LINKING_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
+import {
+  antigravitySessionDirectories,
+  managedAntigravityRuntimeState,
+  readAntigravityAccount,
+  type AntigravityRuntimeState,
+} from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import type { AntigravityAuth } from "../../provider/AntigravityAuth.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import {
@@ -95,6 +98,8 @@ export interface AntigravityAdapterV2Options {
   readonly continuationRequests?: Parameters<typeof makeAcpAdapterV2>[0]["continuationRequests"];
   /** The agent's GEMINI_HOME. Its session logs show turns that ended on an upstream error. */
   readonly profileDirectory: string;
+  /** Where the running runtime keeps its state; the managed profile when absent. */
+  readonly runtimeState?: Effect.Effect<AntigravityRuntimeState>;
 }
 
 /**
@@ -127,10 +132,6 @@ const extractAntigravitySubagentUpdate: NonNullable<AcpAdapterV2Flavor["extractS
   };
 };
 
-const decodeRefreshToken = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Struct({ refresh_token: Schema.NonEmptyString })),
-);
-
 interface AntigravityFlavorServices {
   readonly digest: Digest.Digest["Service"];
   readonly random: SecureRandom.SecureRandom["Service"];
@@ -143,6 +144,8 @@ export function makeAntigravityAcpAdapterFlavor(
   options: AntigravityAdapterV2Options & AntigravityFlavorServices,
 ): AcpAdapterV2Flavor {
   const { profileDirectory } = options;
+  const runtimeState =
+    options.runtimeState ?? Effect.succeed(managedAntigravityRuntimeState(profileDirectory));
   const antigravityClientFileRoots = (cwd: string | null) =>
     cwd === null ? [options.host.paths.attachmentsDir] : [cwd, options.host.paths.attachmentsDir];
   const makeRuntime = Effect.fn("AntigravityAdapterV2.makeRuntime")(
@@ -155,7 +158,10 @@ export function makeAntigravityAcpAdapterFlavor(
             ...input,
             clientFileReads: true,
             sessionSystemPromptAppend: PULL_REQUEST_LINKING_INSTRUCTIONS,
-            additionalDirectories: [options.host.paths.attachmentsDir],
+            additionalDirectories: antigravitySessionDirectories(
+              yield* runtimeState,
+              options.host.paths.attachmentsDir,
+            ),
           }),
         )
         .pipe(Effect.provideService(Scope.Scope, scope));
@@ -213,24 +219,6 @@ export function makeAntigravityAcpAdapterFlavor(
     ),
   );
 
-  // A new process may rewrite project_id after onboarding; the refresh token alone names the login.
-  const readAccount = Effect.fn("AntigravityAdapterV2.readAccount")(function* () {
-    const tokenPath = options.path.join(
-      options.profileDirectory,
-      "antigravity-acp",
-      "acp_token.json",
-    );
-    const token = Option.flatMap(
-      yield* options.fileSystem.readFileString(tokenPath).pipe(Effect.option),
-      decodeRefreshToken,
-    );
-    if (Option.isNone(token)) return Option.none<string>();
-    const digest = yield* options.digest
-      .digest(Digest.sha256, new TextEncoder().encode(token.value.refresh_token))
-      .pipe(Effect.option);
-    return Option.map(digest, Hex.encode);
-  });
-
   return {
     driver: ANTIGRAVITY_PROVIDER,
     runtimeHarness: "Antigravity",
@@ -239,7 +227,7 @@ export function makeAntigravityAcpAdapterFlavor(
     mcpOverHttp: true,
     sessionCarriesPullRequestLinking: antigravityAppendsSystemPrompt,
     makeRuntime,
-    readAccount: readAccount(),
+    readAccount: readAntigravityAccount(runtimeState, options),
     buildPrompt: ({
       text,
       attachments,
@@ -310,7 +298,9 @@ export function makeAntigravityAcpAdapterFlavor(
       ? {}
       : {
           watchPromptOutcome: (sessionId: string) =>
-            watchAntigravityPromptOutcome(profileDirectory, sessionId),
+            runtimeState.pipe(
+              Effect.flatMap((state) => watchAntigravityPromptOutcome(state, sessionId)),
+            ),
         }),
   };
 }
