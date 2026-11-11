@@ -749,6 +749,11 @@ describe("doctor", () => {
         hooks: {
           bad: { events: ["Sometimes"], command: ["x"] },
           twice: { events: ["PreTool"], command: ["/opt/guards/size.py", "--max", "20"] },
+          elsewhere: {
+            events: ["PreTool"],
+            command: ["/opt/guards/size.py", "--max", "20"],
+            agents: ["agy"],
+          },
           absent: { events: ["Stop"], command: ["house_rules.sh"] },
           below: { events: ["Stop"], command: ["scripts/house_rules.sh"] },
           onPath: { events: ["Stop"], command: ["sh"] },
@@ -765,6 +770,10 @@ describe("doctor", () => {
       {
         level: "warn",
         text: `hook "twice" is also wired in ${sandbox.files.claude}, so it runs twice there`,
+      },
+      {
+        level: "error",
+        text: 'hook "elsewhere": /opt/guards/size.py is missing or not executable',
       },
       {
         level: "error",
