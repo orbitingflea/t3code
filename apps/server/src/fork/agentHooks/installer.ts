@@ -830,10 +830,12 @@ export interface Finding {
   readonly text: string;
 }
 
-const NATIVE_HOOK_FILES = (homes: Homes): ReadonlyArray<string> => [
-  NodePath.join(homes.claude, "settings.json"),
-  NodePath.join(homes.codex, "hooks.json"),
-  NodePath.join(homes.gemini, "config", "hooks.json"),
+const NATIVE_HOOK_FILES = (
+  homes: Homes,
+): ReadonlyArray<{ readonly agent: Agent; readonly file: string }> => [
+  { agent: "claude", file: NodePath.join(homes.claude, "settings.json") },
+  { agent: "codex", file: NodePath.join(homes.codex, "hooks.json") },
+  { agent: "agy", file: NodePath.join(homes.gemini, "config", "hooks.json") },
 ];
 
 /** The oldest Node that runs the `.ts` entry of a checkout and the installed runner, as `major.minor`. */
@@ -895,9 +897,9 @@ export const doctor = (
   const pathFolders = new Set(
     (env.PATH ?? "").split(NodePath.delimiter).filter((folder) => folder !== ""),
   );
-  const nativeCommands = NATIVE_HOOK_FILES(homes).flatMap((file) => {
+  const nativeCommands = NATIVE_HOOK_FILES(homes).flatMap(({ agent, file }) => {
     try {
-      return commandsIn(readJsonObject(file)).map((command) => ({ file, command }));
+      return commandsIn(readJsonObject(file)).map((command) => ({ agent, file, command }));
     } catch {
       return [];
     }
@@ -923,8 +925,10 @@ export const doctor = (
       (part) => NodePath.isAbsolute(part) && !pathFolders.has(NodePath.dirname(part)),
     );
     const twice = nativeCommands.find(
-      ({ command }) =>
-        !startsRunner(command, homes) && scripts.some((script) => command.includes(script)),
+      ({ agent, command }) =>
+        spec.agents.has(agent) &&
+        !startsRunner(command, homes) &&
+        scripts.some((script) => command.includes(script)),
     );
     if (twice !== undefined) {
       findings.push({
