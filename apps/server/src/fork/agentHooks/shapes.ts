@@ -100,8 +100,15 @@ export const runnerPaths = (env: NodeJS.ProcessEnv): RunnerPaths => {
   };
 };
 
+export const userHookFile = (paths: RunnerPaths): string =>
+  NodePath.join(paths.hooksDir, "hooks.json");
+
 export interface HookSpec {
   readonly name: string;
+  /** The folder of the hook file, where a program without an absolute path is looked up. */
+  readonly dir: string;
+  /** The project folder of a project hook, and null for a hook of the user's file. */
+  readonly project: string | null;
   readonly events: ReadonlySet<UnifiedEvent>;
   readonly tools: ReadonlySet<ToolClass> | null;
   readonly command: ReadonlyArray<string>;

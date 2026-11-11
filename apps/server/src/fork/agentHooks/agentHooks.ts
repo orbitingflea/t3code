@@ -1,5 +1,6 @@
 import { handleHookCall } from "./hookRunner.ts";
-import { AGENTS, runnerPaths } from "./shapes.ts";
+import { describeKey, findProject, setTrusted } from "./projectHooks.ts";
+import { AGENTS, errorText, type RunnerPaths, runnerPaths } from "./shapes.ts";
 
 const NodeFS = process.getBuiltinModule("node:fs");
 
@@ -7,8 +8,47 @@ const USAGE = `Usage: agent-hooks <command>
   run <claude|codex|agy> <native event>   answer one hook call (the agents start this)
   install [--dry-run]                     add the runner and the hook entries of the three agents
   uninstall [--dry-run]                   remove them
-  doctor                                  check the install
+  doctor                                  check the install, and the project hooks of this folder
+  trust [folder]                          let the hooks of the project of this folder run
+  untrust [folder]                        stop them again
 `;
+
+const changeTrust = (
+  trusted: boolean,
+  folder: string,
+  paths: RunnerPaths,
+  print: (text: string) => void,
+): number => {
+  const project = findProject(folder, paths);
+  if (project === null) {
+    print(`error: no project hook file (.agents/hooks/hooks.json) at or above ${folder}\n`);
+    return 1;
+  }
+  if (project.key === null) {
+    print(`error: ${project.folder} or its .git entry cannot be read\n`);
+    return 1;
+  }
+  try {
+    const changed = setTrusted(project.key, trusted, paths);
+    const state = trusted
+      ? changed
+        ? "Trusted"
+        : "Already trusted"
+      : changed
+        ? "No longer trusted"
+        : "Was not trusted";
+    print(`${state}: ${describeKey(project.key)}\n`);
+    print(
+      trusted
+        ? `The hooks in ${project.file} run.\n`
+        : `The hooks in ${project.file} do not run.\n`,
+    );
+    return 0;
+  } catch (cause) {
+    print(`error: ${errorText(cause)}\nNothing was written.\n`);
+    return 1;
+  }
+};
 
 export const main = async (
   argv: ReadonlyArray<string>,
@@ -28,6 +68,13 @@ export const main = async (
     print(await handleHookCall(agent, args[1] ?? "", stdinText, env));
     return 0;
   }
+  if (command === "trust" || command === "untrust") {
+    if (args.length > 1) {
+      print(`error: ${command} takes at most one folder\n${USAGE}`);
+      return 1;
+    }
+    return changeTrust(command === "trust", args[0] ?? process.cwd(), runnerPaths(env), print);
+  }
   const isInstall = command === "install" || command === "uninstall";
   if (!isInstall && command !== "doctor") {
     print(USAGE);
@@ -43,7 +90,7 @@ export const main = async (
   const homes = installer.resolveHomes(env);
   const runnerFiles = installer.installedRunnerFiles(import.meta.dirname);
   if (command === "doctor") {
-    const findings = installer.doctor(homes, runnerPaths(env), runnerFiles, env);
+    const findings = installer.doctor(homes, runnerPaths(env), runnerFiles, env, process.cwd());
     for (const finding of findings) print(`${finding.level.padEnd(5)} ${finding.text}\n`);
     return findings.some((finding) => finding.level === "error") ? 1 : 0;
   }

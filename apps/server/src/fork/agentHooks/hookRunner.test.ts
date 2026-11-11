@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
+import { main } from "./agentHooks.ts";
 import recorded from "./fixtures/recordedPayloads.json" with { type: "json" };
 import {
   handleHookCall,
@@ -32,11 +33,11 @@ const STUB_SCRIPT =
 
 const context = (text: string): string => JSON.stringify({ context: text });
 
-const makeSandbox = (stubs: ReadonlyArray<Stub>) => {
-  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "agent-hooks-test-"));
-  const hooksDir = NodePath.join(root, "hooks");
-  NodeFS.mkdirSync(hooksDir);
-  const captureFile = (index: number) => NodePath.join(root, `captured-${index}.jsonl`);
+const writeHookFile = (
+  hooksDir: string,
+  stubs: ReadonlyArray<Stub>,
+  captureFile: (index: number) => string,
+): void => {
   const hooks = Object.fromEntries(
     stubs.map((stub, index) => [
       `stub${index}`,
@@ -57,10 +58,20 @@ const makeSandbox = (stubs: ReadonlyArray<Stub>) => {
       },
     ]),
   );
+  NodeFS.mkdirSync(hooksDir, { recursive: true });
   NodeFS.writeFileSync(
     NodePath.join(hooksDir, "hooks.json"),
     JSON.stringify({ version: 1, hooks }),
   );
+};
+
+const makeSandbox = (stubs: ReadonlyArray<Stub>) => {
+  const root = NodeFS.realpathSync(
+    NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "agent-hooks-test-")),
+  );
+  const hooksDir = NodePath.join(root, "hooks");
+  const captureFile = (index: number) => NodePath.join(root, `captured-${index}.jsonl`);
+  writeHookFile(hooksDir, stubs, captureFile);
   const env = {
     HOME: root,
     AGENT_HOOKS_DIR: hooksDir,
@@ -80,6 +91,24 @@ const makeSandbox = (stubs: ReadonlyArray<Stub>) => {
       handleHookCall(agent, nativeEvent, JSON.stringify(payload), env),
     payloads: (index = 0) => readLines(captureFile(index)),
     errors: () => readLines(NodePath.join(root, "state", "agent-hooks", "errors.jsonl")),
+    /** A folder below the sandbox with its own hook file. The stubs have the names of the user's stubs. */
+    project: (name: string, projectStubs: ReadonlyArray<Stub>) => {
+      const folder = NodePath.join(root, name);
+      const projectCapture = (index: number) =>
+        NodePath.join(root, `captured-${name.replaceAll("/", "-")}-${index}.jsonl`);
+      writeHookFile(NodePath.join(folder, ".agents", "hooks"), projectStubs, projectCapture);
+      const command = async (...argv: ReadonlyArray<string>) => {
+        const printed: Array<string> = [];
+        const exitCode = await main(argv, env, (text) => printed.push(text));
+        return { exitCode, output: printed.join("") };
+      };
+      return {
+        folder,
+        payloads: (index = 0) => readLines(projectCapture(index)),
+        trust: (from = folder) => command("trust", from),
+        untrust: (from = folder) => command("untrust", from),
+      };
+    },
   };
 };
 
@@ -717,6 +746,262 @@ describe("the failure rule", () => {
       },
       { agent: "claude", native_event: "Stop" },
     ]);
+  });
+});
+
+describe("project hooks", () => {
+  const claudeShell = (cwd: string) => ({ ...recorded.claude.preToolUseShell, cwd });
+  const refuses = (reason: string): Stub => ({ events: ["PreTool"], exit: 2, stderr: reason });
+  const denied = (reason: string): string =>
+    `{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"${reason}"}}`;
+  const git = (folder: string, ...args: ReadonlyArray<string>): void => {
+    const run = NodeChildProcess.spawnSync(
+      "git",
+      ["-c", "user.name=test", "-c", "user.email=test@example.com", ...args],
+      {
+        cwd: folder,
+        encoding: "utf8",
+        env: { PATH: process.env.PATH, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+      },
+    );
+    if (run.status !== 0) throw new Error(`git ${args.join(" ")}: ${run.stderr}`);
+  };
+
+  it.each([
+    {
+      agent: "claude",
+      nativeEvent: "PreToolUse",
+      payload: recorded.claude.preToolUseShell,
+      silent: "",
+      fired: denied("the project refuses"),
+    },
+    {
+      agent: "codex",
+      nativeEvent: "PreToolUse",
+      payload: recorded.codex.preToolUseShell,
+      silent: "",
+      fired: denied("the project refuses"),
+    },
+    {
+      agent: "agy",
+      nativeEvent: "PreToolUse",
+      payload: recorded.agy.preToolUseShell,
+      silent: '{"decision":"allow"}',
+      fired: '{"decision":"deny","reason":"the project refuses"}',
+    },
+  ] as const)(
+    "runs on $agent only while the project is trusted, from a folder deep inside it",
+    async (row) => {
+      const sandbox = makeSandbox([]);
+      const project = sandbox.project("plain", [refuses("the project refuses")]);
+      const deep = NodePath.join(project.folder, "src", "deep");
+      NodeFS.mkdirSync(deep, { recursive: true });
+      const call = () => sandbox.call(row.agent, row.nativeEvent, { ...row.payload, cwd: deep });
+
+      expect(await call()).toBe(row.silent);
+      expect(project.payloads()).toEqual([]);
+
+      await project.trust(deep);
+      expect(await call()).toBe(row.fired);
+      expect(project.payloads()).toMatchObject([{ event: "PreTool", agent: row.agent, cwd: deep }]);
+
+      await project.untrust();
+      expect(await call()).toBe(row.silent);
+      expect(project.payloads()).toHaveLength(1);
+      expect(sandbox.errors()).toEqual([]);
+    },
+  );
+
+  it("gets the three events that the runner works out for Antigravity, with no user hook", async () => {
+    const conversation = makeAgyConversation([]);
+    const project = conversation.project("plain", [
+      { events: ["SessionStart"], stdout: context("project rules") },
+      { events: ["PromptSubmit"], stdout: context("project note") },
+      { events: ["PostCompact"], stdout: context("project rules again") },
+    ]);
+    await project.trust();
+    const agy = recorded.agy;
+    const fire = (nativeEvent: string, payload: Record<string, unknown>) =>
+      conversation.fire(nativeEvent, { ...payload, cwd: project.folder });
+    conversation.append(userInput("first prompt"));
+
+    expect(await fire("SessionStart", agy.sessionStart)).toBe(injected("project rules"));
+    expect(await fire("PreInvocation", agy.preInvocation)).toBe(injected("project note"));
+    conversation.append(reply("ok"), checkpoint, userInput("next prompt"));
+    expect(await fire("PreInvocation", agy.preInvocationAfterCompaction)).toBe(
+      injected("project rules again", "project note"),
+    );
+  });
+
+  it("reads only the nearest hook file, and one folder's trust does not cover another", async () => {
+    const sandbox = makeSandbox([]);
+    const outer = sandbox.project("outer", [refuses("outer")]);
+    const inner = sandbox.project("outer/inner", [refuses("inner")]);
+    const other = sandbox.project("other", [refuses("other")]);
+    await outer.trust();
+
+    expect(await sandbox.call("claude", "PreToolUse", claudeShell(outer.folder))).toBe(
+      denied("outer"),
+    );
+    expect(await sandbox.call("claude", "PreToolUse", claudeShell(inner.folder))).toBe("");
+    expect(await sandbox.call("claude", "PreToolUse", claudeShell(other.folder))).toBe("");
+
+    await inner.trust();
+    expect(await sandbox.call("claude", "PreToolUse", claudeShell(inner.folder))).toBe(
+      denied("inner"),
+    );
+    expect(outer.payloads()).toHaveLength(1);
+  });
+
+  it("does not take the user's own hook file as a project file", async () => {
+    const sandbox = makeSandbox([]);
+    const home = sandbox.project("home", [refuses("the user refuses")]);
+    const above = sandbox.project("", [refuses("above the home folder")]);
+    await above.trust();
+    const env = { ...sandbox.env, AGENT_HOOKS_DIR: NodePath.join(home.folder, ".agents", "hooks") };
+    const printed: Array<string> = [];
+
+    expect(
+      await handleHookCall("claude", "PreToolUse", JSON.stringify(claudeShell(home.folder)), env),
+    ).toBe(denied("the user refuses"));
+    expect(home.payloads()).toHaveLength(1);
+    expect(await main(["trust", home.folder], env, (text) => printed.push(text))).toBe(1);
+    expect(printed.join("")).toContain("no project hook file");
+  });
+
+  it("covers a repository and its worktrees with one trust, and no folder that only points at it", async () => {
+    const sandbox = makeSandbox([]);
+    const project = sandbox.project("repo", [refuses("the repository refuses")]);
+    git(project.folder, "init", "--quiet");
+    git(project.folder, "add", "--all");
+    git(project.folder, "commit", "--quiet", "--message", "hooks");
+    const worktree = NodePath.join(sandbox.root, "linked");
+    git(project.folder, "worktree", "add", "--quiet", worktree);
+    const commonDir = NodePath.join(project.folder, ".git");
+    const copy = NodePath.join(sandbox.root, "copy");
+    NodeFS.cpSync(worktree, copy, { recursive: true });
+    const pointer = NodePath.join(sandbox.root, "pointer");
+    NodeFS.cpSync(NodePath.join(worktree, ".agents"), NodePath.join(pointer, ".agents"), {
+      recursive: true,
+    });
+    NodeFS.symlinkSync(commonDir, NodePath.join(pointer, ".git"));
+    const forged = NodePath.join(sandbox.root, "forged");
+    NodeFS.cpSync(NodePath.join(worktree, ".agents"), NodePath.join(forged, ".agents"), {
+      recursive: true,
+    });
+    NodeFS.mkdirSync(NodePath.join(forged, "meta"));
+    NodeFS.writeFileSync(NodePath.join(forged, ".git"), "gitdir: meta\n");
+    NodeFS.writeFileSync(NodePath.join(forged, "meta", "gitdir"), "../.git\n");
+    NodeFS.writeFileSync(NodePath.join(forged, "meta", "commondir"), `${commonDir}\n`);
+    const call = (cwd: string) => sandbox.call("claude", "PreToolUse", claudeShell(cwd));
+
+    expect(await call(worktree)).toBe("");
+    expect((await project.trust()).output).toContain(`the git repository ${commonDir}`);
+
+    expect(await call(project.folder)).toBe(denied("the repository refuses"));
+    expect(await call(worktree)).toBe(denied("the repository refuses"));
+    expect(await call(copy)).toBe("");
+    expect(await call(pointer)).toBe("");
+    expect(await call(forged)).toBe("");
+
+    expect((await project.untrust(worktree)).output).toContain("No longer trusted");
+    expect(await call(project.folder)).toBe("");
+
+    const trustList = NodePath.join(sandbox.root, "state", "agent-hooks", "trusted-projects.json");
+    NodeFS.writeFileSync(
+      trustList,
+      JSON.stringify({ version: 1, projects: [{ kind: "folder", path: commonDir }] }),
+    );
+    expect(await call(project.folder)).toBe("");
+    expect(sandbox.errors()).toEqual([]);
+  });
+
+  it("merges the user's answers first, and runs a hook of the same name in both files", async () => {
+    const sandbox = makeSandbox([{ events: ["PromptSubmit"], stdout: context("from the user") }]);
+    const project = sandbox.project("plain", [
+      { events: ["PromptSubmit"], stdout: context("from the project") },
+      { events: ["PromptSubmit"], stdout: context("and again") },
+    ]);
+    await project.trust();
+
+    expect(
+      await sandbox.call("codex", "UserPromptSubmit", {
+        ...recorded.codex.userPromptSubmit,
+        cwd: project.folder,
+      }),
+    ).toBe(
+      '{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":"from the user\\n\\nfrom the project\\n\\nand again"}}',
+    );
+    expect(sandbox.payloads()).toHaveLength(1);
+    expect(project.payloads()).toHaveLength(1);
+  });
+
+  it("looks up a project hook's program next to the project's hook file, and marks its failures", async () => {
+    const sandbox = makeSandbox([]);
+    const project = sandbox.project("plain", [
+      { events: ["PreTool"], command: ["refuse.sh"] },
+      { events: ["PreTool"], command: ["tools/refuse.sh"] },
+    ]);
+    const script = (folder: string, reason: string) => {
+      NodeFS.mkdirSync(folder, { recursive: true });
+      NodeFS.writeFileSync(
+        NodePath.join(folder, "refuse.sh"),
+        `#!/bin/sh\necho ${reason} >&2\nexit 2\n`,
+        { mode: 0o755 },
+      );
+    };
+    script(NodePath.join(project.folder, ".agents", "hooks"), "the project script");
+    script(sandbox.env.AGENT_HOOKS_DIR, "the user script");
+    script(NodePath.join(project.folder, "tools"), "the working folder script");
+    await project.trust();
+
+    expect(await sandbox.call("claude", "PreToolUse", claudeShell(project.folder))).toBe(
+      denied("the project script"),
+    );
+    expect(sandbox.errors()).toMatchObject([
+      {
+        hook: "project:stub1",
+        project: project.folder,
+        problem: expect.stringContaining("could not start"),
+      },
+    ]);
+  });
+
+  it("trusts and stops trusting once, and says each time what it did", async () => {
+    const sandbox = makeSandbox([]);
+    const project = sandbox.project("plain", [refuses("the project refuses")]);
+    const file = NodePath.join(project.folder, ".agents", "hooks", "hooks.json");
+    const trustList = NodePath.join(sandbox.root, "state", "agent-hooks", "trusted-projects.json");
+    const key = `the folder ${project.folder}`;
+
+    expect(await project.untrust()).toEqual({
+      exitCode: 0,
+      output: `Was not trusted: ${key}\nThe hooks in ${file} do not run.\n`,
+    });
+    expect(NodeFS.existsSync(trustList)).toBe(false);
+    expect(await project.trust()).toEqual({
+      exitCode: 0,
+      output: `Trusted: ${key}\nThe hooks in ${file} run.\n`,
+    });
+    expect((await project.trust()).output).toBe(
+      `Already trusted: ${key}\nThe hooks in ${file} run.\n`,
+    );
+    expect(JSON.parse(NodeFS.readFileSync(trustList, "utf8"))).toEqual({
+      version: 1,
+      projects: [{ kind: "folder", path: project.folder }],
+    });
+    expect((await project.untrust()).output).toBe(
+      `No longer trusted: ${key}\nThe hooks in ${file} do not run.\n`,
+    );
+    expect(JSON.parse(NodeFS.readFileSync(trustList, "utf8")).projects).toEqual([]);
+
+    NodeFS.writeFileSync(trustList, "{");
+    expect(await project.trust()).toMatchObject({
+      exitCode: 1,
+      output: expect.stringContaining("Nothing was written."),
+    });
+    expect(NodeFS.readFileSync(trustList, "utf8")).toBe("{");
+    expect(await sandbox.call("claude", "PreToolUse", claudeShell(project.folder))).toBe("");
   });
 });
 
