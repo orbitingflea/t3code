@@ -23,6 +23,7 @@ const RIGHT_PANEL_KINDS = [
   "pull-requests",
   "side-chat",
   "dashboard",
+  "replies",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -78,7 +79,8 @@ export type RightPanelSurface =
     }
   | { id: "pull-requests"; kind: "pull-requests" }
   | { id: `side-chat:${string}`; kind: "side-chat"; threadId: ThreadId }
-  | { id: "dashboard"; kind: "dashboard" };
+  | { id: "dashboard"; kind: "dashboard" }
+  | { id: "replies"; kind: "replies" };
 
 const RIGHT_PANEL_STORAGE_KEY = "t3code:right-panel-state:v2";
 const RIGHT_PANEL_STORAGE_VERSION = 14;
@@ -126,6 +128,7 @@ interface RightPanelStoreState {
   open: (
     ref: ScopedThreadRef,
     kind: Exclude<RightPanelKind, "file" | "terminal" | "pull-request" | "side-chat">,
+    automatic?: boolean,
   ) => void;
   openSideChat: (ref: ScopedThreadRef, threadId: ThreadId) => void;
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
@@ -223,6 +226,8 @@ const singletonSurface = (
       return { id: "device", kind };
     case "dashboard":
       return { id: "dashboard", kind };
+    case "replies":
+      return { id: "replies", kind };
   }
 };
 
@@ -691,9 +696,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         });
         return opened;
       },
-      open: (ref, kind) =>
+      open: (ref, kind, automatic = false) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) => {
+          (automatic ? automaticUpdate : userAction)(state, scopedThreadKey(ref), (current) => {
             if (kind === "preview") {
               const existing = current.surfaces.find((surface) => surface.kind === "preview");
               return upsertSurface(current, existing ?? browserSurface(null));

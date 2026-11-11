@@ -1,5 +1,6 @@
 import { assert, it } from "@effect/vitest";
 import {
+  ComposerContextId,
   EventId,
   MessageId,
   NodeId,
@@ -17,9 +18,13 @@ import {
   type OrchestrationV2TurnItem,
 } from "@t3tools/contracts";
 import {
+  CHAT_REPLIES_DISPLAY_MODE,
   type DisplayMode,
   MESSAGES_ONLY_DISPLAY_MODE,
   NORMAL_DISPLAY_MODE,
+  recapLine,
+  shortId,
+  SUB_THREAD_RECORD_KIND,
 } from "@t3tools/shared/displayModes";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -33,6 +38,7 @@ import * as ProviderTurnControlService from "../../orchestration-v2/ProviderTurn
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import * as SubThreads from "../subThreads/SubThreads.ts";
 import * as DisplayModeWrap from "./DisplayModeWrap.ts";
 import { layerNoProviders } from "./DisplayModeWrap.testkit.ts";
 
@@ -48,6 +54,7 @@ const rewrittenId = ThreadId.make("thread:display-wrap:rewritten");
 const latestId = ThreadId.make("thread:display-wrap:latest");
 const ownCallId = ThreadId.make("thread:display-wrap:own-call");
 const switchId = ThreadId.make("thread:display-wrap:switch");
+const repliesId = ThreadId.make("thread:display-wrap:replies");
 const providerThreadId = ProviderThreadId.make("provider-thread:display-wrap");
 const providerTurnId = ProviderTurnId.make("provider-turn:display-wrap");
 const providerSessionId = ProviderSessionId.make("session:display-wrap");
@@ -73,6 +80,7 @@ const settings = ServerSettings.layerTest({
     [doneId]: "messages-only",
     [newId]: "messages-only",
     [rewrittenId]: "messages-only",
+    [repliesId]: "chat-replies",
   },
 });
 const providers = Layer.mock(ProviderRegistry.ProviderRegistry)({
@@ -174,14 +182,31 @@ type ItemFields =
       readonly inputIntent: "turn_start" | "steer" | "queued_turn";
       readonly status?: "pending";
       readonly creationSource?: "web" | "server";
+      /** The first message that this message replies under. */
+      readonly under?: string;
     }
   | { readonly type: "assistant_message"; readonly messageId: MessageId; readonly text: string }
   | {
       readonly type: "send_to_user" | "replace_send_to_user";
       readonly text: string;
       readonly status?: "failed" | "running";
+      /** The short id of the user message that a send answers. */
+      readonly replyTo?: string;
     }
   | { readonly type: "command_execution" };
+
+const replyContext = (first: string) => ({
+  version: 1 as const,
+  records: [
+    {
+      version: 1 as const,
+      contextId: ComposerContextId.make("fork-reply"),
+      kind: SUB_THREAD_RECORD_KIND,
+      label: "Reply",
+      payload: { first },
+    },
+  ],
+});
 
 const itemUpdated = (
   now: DateTime.Utc,
@@ -208,7 +233,14 @@ const itemUpdated = (
   };
   const payload: OrchestrationV2TurnItem =
     fields.type === "user_message"
-      ? { ...base, creationSource: "web", ...fields, attachments: [], createdBy: "user" }
+      ? {
+          ...base,
+          creationSource: "web",
+          ...fields,
+          attachments: [],
+          createdBy: "user",
+          ...(fields.under === undefined ? {} : { context: replyContext(fields.under) }),
+        }
       : fields.type === "assistant_message"
         ? { ...base, ...fields, streaming: false }
         : fields.type === "send_to_user" || fields.type === "replace_send_to_user"
@@ -219,7 +251,10 @@ const itemUpdated = (
               toolName: `mcp__t3-code__${fields.type}`,
               input:
                 fields.type === "send_to_user"
-                  ? { text: fields.text }
+                  ? {
+                      text: fields.text,
+                      ...(fields.replyTo === undefined ? {} : { reply_to: fields.replyTo }),
+                    }
                   : { user_message: "", old_text: "", new_text: fields.text },
             }
           : { ...base, type: "command_execution", input: "make test" };
@@ -288,6 +323,7 @@ const deliver = Effect.fn("deliver")(function* (input: {
   readonly text: string;
   readonly creationSource?: "web" | "mobile" | "server";
   readonly context?: DisplayModeWrap.NoteContext;
+  readonly under?: string;
 }) {
   const wrap = yield* DisplayModeWrap.DisplayModeWrap;
   const wrapped = yield* wrap.wrapUserText({
@@ -297,6 +333,7 @@ const deliver = Effect.fn("deliver")(function* (input: {
       createdBy: "user",
       creationSource: input.creationSource ?? "web",
       text: input.text,
+      ...(input.under === undefined ? {} : { context: replyContext(input.under) }),
     },
     text: input.text,
     ...(input.context === undefined ? {} : { context: input.context }),
@@ -1107,6 +1144,83 @@ it.effect("tells the agent its mode again when history joins its conversation", 
   }).pipe(Effect.provide(Layer.mergeAll(store, settings, wrapper))),
 );
 
+it.effect("recaps a reply's own sub-thread in Chat + Replies, and reports the change", () => {
+  const changes: Array<{ readonly firstId: string; readonly lines: ReadonlyArray<string> }> = [];
+  const subThreads = Layer.mock(SubThreads.SubThreads)({
+    changed: ({ firstId, thread }) =>
+      Effect.sync(() => void changes.push({ firstId, lines: thread.map(recapLine) })),
+  });
+  return Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const id = (name: string) => MessageId.make(`message:display-wrap:replies:${name}`);
+    const typed = (ordinal: number, name: string, text: string, under?: string) =>
+      itemUpdated(now, repliesId, runId, ordinal, {
+        type: "user_message",
+        messageId: id(name),
+        text,
+        inputIntent: ordinal === 1 ? "turn_start" : "steer",
+        ...(under === undefined ? {} : { under }),
+      });
+    const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+      threadCreated(now, repliesId, null),
+      runCreated(now, repliesId, runId, "running"),
+      typed(1, "q1", "Is the build green?"),
+      itemUpdated(now, repliesId, runId, 2, {
+        type: "send_to_user",
+        text: "Yes, all checks pass.",
+        replyTo: shortId(id("q1")),
+      }),
+      typed(3, "other", "Unrelated question."),
+      itemUpdated(now, repliesId, runId, 4, { type: "command_execution" }),
+      typed(5, "q2", "And the lint job?", id("q1")),
+    ];
+    yield* Effect.forEach(events, (event) => projections.apply(event), { discard: true });
+    const block = (lines: ReadonlyArray<string>, text: string) =>
+      ["<t3-replies-mode>", ...lines, "</t3-replies-mode>", text].join("\n");
+    const answerWith = (name: string) =>
+      `To answer, call send_to_user with reply_to "${shortId(id(name))}" and the user's words below as user_message.`;
+    assert.strictEqual(
+      yield* deliver({
+        threadId: repliesId,
+        id: id("q2"),
+        text: "And the lint job?",
+        under: id("q1"),
+      }),
+      `${CHAT_REPLIES_DISPLAY_MODE.notice}\n${block(
+        [
+          `Message "${shortId(id("q2"))}" from the user, a reply in the sub-thread that showed:`,
+          "[user] Is the build green?",
+          "[you] Yes, all checks pass.",
+          answerWith("q2"),
+        ],
+        "And the lint job?",
+      )}`,
+    );
+    assert.deepStrictEqual(changes, [
+      {
+        firstId: id("q1"),
+        lines: [
+          "[user] Is the build green?",
+          "[you] Yes, all checks pass.",
+          "[user] And the lint job?",
+        ],
+      },
+    ]);
+    assert.strictEqual(
+      yield* deliver({ threadId: repliesId, id: id("other"), text: "Unrelated question." }),
+      block(
+        [
+          `Message "${shortId(id("other"))}" from the user, a new message in the main list.`,
+          answerWith("other"),
+        ],
+        "Unrelated question.",
+      ),
+    );
+    assert.strictEqual(changes.length, 1);
+  }).pipe(Effect.provide(Layer.merge(store, wrapper.pipe(Layer.provide(subThreads)))));
+});
+
 it.effect("finds in a thread only the text that its display mode shows", () =>
   Effect.gen(function* () {
     const now = yield* DateTime.now;
@@ -1270,6 +1384,7 @@ it.effect("drops the mode of a deleted thread and keeps the others", () =>
       [doneId]: "messages-only",
       [newId]: "messages-only",
       [rewrittenId]: "messages-only",
+      [repliesId]: "chat-replies",
     });
   }).pipe(Effect.provide(Layer.merge(store, settings))),
 );

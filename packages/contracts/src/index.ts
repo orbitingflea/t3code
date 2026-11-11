@@ -37,6 +37,7 @@ export {
 } from "./fork/idleCompactionLevels.ts";
 export * from "./fork/compactIdleChoice.ts";
 export * from "./fork/threadDashboard.ts";
+export * from "./fork/threadSubThreads.ts";
 export * from "./managedPolicy.ts";
 export * from "./git.ts";
 export * from "./vcs.ts";

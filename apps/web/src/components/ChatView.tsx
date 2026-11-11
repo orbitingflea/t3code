@@ -355,6 +355,8 @@ import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDashboardSurfaceAdder } from "../fork/dashboard/dashboardSurface";
+import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThreads/subThreadReply";
+import { SubThreadViewContext } from "../fork/subThreads/subThreadsState";
 import { timelineCitation } from "../fork/dashboard/dashboardCitation";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem, extensionStatusBannerItem } from "./chat/ThreadActivityBanners";
@@ -468,8 +470,9 @@ export default function ChatView(props: ChatViewProps) {
   const environmentById = new Map(
     environments.map((environment) => [environment.environmentId, environment]),
   );
+  const subThreadDraft = subThreadDraftId(routeThreadKey, use(SubThreadViewContext));
   const baseComposerDraftTarget: ScopedThreadRef | DraftId =
-    routeKind === "server" ? routeThreadRef : props.draftId;
+    routeKind === "server" ? (subThreadDraft ?? routeThreadRef) : props.draftId;
   const draftThread = useComposerDraftStore((store) =>
     routeKind === "server"
       ? store.getDraftSessionByRef(routeThreadRef)
@@ -502,7 +505,8 @@ export default function ChatView(props: ChatViewProps) {
     environmentId,
     routeThreadRef,
     threadDraftTarget: baseComposerDraftTarget,
-    activeThreadId: serverThread !== null || draftThread !== null ? threadId : null,
+    activeThreadId:
+      (serverThread !== null || draftThread !== null) && subThreadDraft === null ? threadId : null,
     serverProjection,
     promptRef,
     composerRef,
@@ -716,7 +720,7 @@ export default function ChatView(props: ChatViewProps) {
   const composerExpandedHeightRef = useRef(0);
   const [scrollToEndClearance, setScrollToEndClearance] = useState(0);
   const fanoutSelectionsAtom = draftFanoutSelectionsAtom(routeThreadKey);
-  const { sendInFlight: sendInFlightRef } = draftSendState(routeThreadKey);
+  const { sendInFlight: sendInFlightRef } = draftSendState(subThreadDraft ?? routeThreadKey);
   const multipleModelSelections = useAtomValue(fanoutSelectionsAtom);
   const setMultipleModelSelections = (
     selections: SetStateAction<ReadonlyArray<ModelSelection> | null>,
@@ -918,7 +922,7 @@ export default function ChatView(props: ChatViewProps) {
           title: parentSubagentThread?.title ?? "Parent thread",
         };
   const threadError = isServerThread
-    ? (localServerError ?? serverRuntime?.lastError ?? null)
+    ? (localServerError ?? (subThreadDraft === null ? serverRuntime?.lastError : null) ?? null)
     : localDraftError;
   const threadErrorBannerKey = getThreadErrorBannerKey(routeThreadKey, threadError);
   const visibleThreadError = shouldShowThreadErrorBanner(
@@ -2679,7 +2683,8 @@ export default function ChatView(props: ChatViewProps) {
     ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
     : EMPTY_PROVIDER_SKILLS;
   const threadFindEnabled = isServerThread && serverConfig?.threadFind === true;
-  const isThreadFindActive = useThreadFindOpen(activeThreadRef, threadFindEnabled);
+  const isThreadFindActive =
+    useThreadFindOpen(activeThreadRef, threadFindEnabled) && subThreadDraft === null;
   const openThreadFindStable = useStableCallback((threadRef: ScopedThreadRef) => {
     if (threadFindEnabled && scopedThreadKey(threadRef) === activeThreadKey) {
       openThreadFind(activeThreadKey);
@@ -3007,9 +3012,11 @@ export default function ChatView(props: ChatViewProps) {
           threadId={activeThread.id}
           optimisticMessages={optimisticUserMessages}
           editingRunId={queuedRunEdit.editingRunId}
-          editBlockedReason={queuedRunEditBlockedReason({
-            openQuestionCount: pendingUserInputs.length,
-          })}
+          editBlockedReason={
+            subThreadDraft === null
+              ? queuedRunEditBlockedReason({ openQuestionCount: pendingUserInputs.length })
+              : REPLY_BOX_QUEUE_EDIT_BLOCKED
+          }
           onEditQueuedRun={queuedRunEdit.beginEdit}
           onCancelEdit={queuedRunEdit.cancelEdit}
           timestampFormat={timestampFormat}
@@ -3347,11 +3354,11 @@ export default function ChatView(props: ChatViewProps) {
             onDragLeave={workspaceFileDropHandlers.onDragLeave}
             onDrop={workspaceFileDropHandlers.onDrop}
           >
-            <ThreadFind onClose={focusComposerStable} />
+            {subThreadDraft === null ? <ThreadFind onClose={focusComposerStable} /> : null}
             {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
             <ChatBannerLane
               environmentId={activeThread.environmentId}
-              providerStatus={visibleProviderStatus}
+              providerStatus={subThreadDraft === null ? visibleProviderStatus : null}
               providerStatusBannerKey={providerStatusBannerKey}
               setDismissedProviderStatusBannerKey={setDismissedProviderStatusBannerKey}
               onOpenProviderSetup={openProviderSetupStable}
@@ -3430,8 +3437,8 @@ export default function ChatView(props: ChatViewProps) {
                     displayedThreadRef?.environmentId ?? activeThread.environmentId
                   }
                   routeThreadKey={displayedTimelineKey}
-                  displayThreadKey={displayedTimelineKey}
-                  announceTurnStatus={!isProviderSubagent}
+                  displayThreadKey={subThreadDraft ?? displayedTimelineKey}
+                  announceTurnStatus={!isProviderSubagent && subThreadDraft === null}
                   onOpenToolDiff={parentPanel?.openToolDiff ?? onOpenToolDiffStable}
                   // Side chat runs keep no checkpoints to diff, and a fork would promote the side chat.
                   {...(embedded
@@ -3440,7 +3447,9 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenThread={onOpenRelatedThreadStable}
                   parentThreadLink={parentThreadLink}
                   workflowOpening={workflowOpening}
-                  supportsConversationRollback={supportsConversationRollback}
+                  supportsConversationRollback={
+                    supportsConversationRollback && subThreadDraft === null
+                  }
                   threadStartCheckpointReady={threadStartCheckpointReady}
                   availableRevertTurnCounts={availableRevertTurnCounts}
                   onRevertToTurnCount={onRevertTimelineTurnStable}
@@ -3986,10 +3995,12 @@ export default function ChatView(props: ChatViewProps) {
         </ChatRightPanel>
       ) : null}
 
-      <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
+      {subThreadDraft === null ? (
+        <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
+      ) : null}
       {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
-      <ExpandedImageDialogHost threadKey={routeThreadKey} />
+      {subThreadDraft === null ? <ExpandedImageDialogHost threadKey={routeThreadKey} /> : null}
     </div>
   );
   return (

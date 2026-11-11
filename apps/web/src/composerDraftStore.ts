@@ -1,3 +1,9 @@
+import {
+  choiceDraftTarget,
+  composerDraftView,
+  forEachSubThreadDraft,
+  threadOfSubThreadDraft,
+} from "./fork/subThreads/subThreadDraft";
 import { stripInlineContextReferences } from "./lib/composerContextReferences";
 import { composerFileAttachmentMimeType } from "./components/chat/composerAttachmentFiles";
 import { elementContextToPreviewAnnotation } from "./lib/elementContext";
@@ -1433,7 +1439,11 @@ function resolveComposerThreadId(
   if (typeof normalizedTarget !== "string") {
     return normalizedTarget.threadId;
   }
-  return state.draftThreadsByThreadKey[normalizedTarget]?.threadId ?? null;
+  return (
+    state.draftThreadsByThreadKey[normalizedTarget]?.threadId ??
+    threadOfSubThreadDraft(normalizedTarget)?.threadId ??
+    null
+  );
 }
 
 function getComposerDraftState(
@@ -1444,7 +1454,12 @@ function getComposerDraftState(
   if (!threadKey) {
     return null;
   }
-  return state.draftsByThreadKey[threadKey] ?? null;
+  return composerDraftView(
+    threadKey,
+    state.draftsByThreadKey[threadKey] ?? null,
+    (thread) => getComposerDraftState(state, thread),
+    EMPTY_THREAD_DRAFT,
+  );
 }
 
 function draftThreadHasOpenPreview(draftThread: DraftThreadState | undefined): boolean {
@@ -2882,6 +2897,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           });
         },
         clearDraftThread: (threadRef) => {
+          forEachSubThreadDraft(get().draftsByThreadKey, threadRef, get().clearDraftThread);
           const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
           if (threadKey.length === 0) {
             return;
@@ -3014,7 +3030,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           });
         },
         setModelSelection: (threadRef, modelSelection, opts) => {
-          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          const threadKey = resolveComposerDraftKey(get(), choiceDraftTarget(threadRef)) ?? "";
           if (threadKey.length === 0) {
             return;
           }
@@ -3083,7 +3099,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           });
         },
         setProviderModelOptions: (threadRef, provider, nextProviderOptions, options) => {
-          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          const threadKey = resolveComposerDraftKey(get(), choiceDraftTarget(threadRef)) ?? "";
           if (threadKey.length === 0) {
             return;
           }
@@ -3178,7 +3194,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           });
         },
         setRuntimeMode: (threadRef, runtimeMode) => {
-          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          const threadKey = resolveComposerDraftKey(get(), choiceDraftTarget(threadRef)) ?? "";
           if (threadKey.length === 0) {
             return;
           }
@@ -3206,7 +3222,7 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
           });
         },
         setInteractionMode: (threadRef, interactionMode) => {
-          const threadKey = resolveComposerDraftKey(get(), threadRef) ?? "";
+          const threadKey = resolveComposerDraftKey(get(), choiceDraftTarget(threadRef)) ?? "";
           if (threadKey.length === 0) {
             return;
           }

@@ -82,6 +82,10 @@ import {
   WsThreadDashboardMarkSeenRpc,
 } from "./fork/threadDashboard.ts";
 import {
+  WsSubscribeThreadSubThreadsRpc,
+  WsThreadSubThreadsMarkReadRpc,
+} from "./fork/threadSubThreads.ts";
+import {
   AuthAccessStreamError,
   AuthAccessStreamEvent,
   EnvironmentAuthorizationError,
@@ -2262,6 +2266,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsSubscribeDeviceStateRpc,
   WsSubscribeThreadDashboardRpc,
   WsThreadDashboardMarkSeenRpc,
+  WsSubscribeThreadSubThreadsRpc,
+  WsThreadSubThreadsMarkReadRpc,
   WsSubscribeServerConfigRpc,
   WsSubscribeServerLifecycleRpc,
   WsSubscribeAuthAccessRpc,

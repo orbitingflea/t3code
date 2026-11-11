@@ -13,6 +13,7 @@ import { lazy, Suspense } from "react";
 import SideChatPane from "./SideChatPane";
 import { ThreadDashboardPanel } from "../../fork/dashboard/ThreadDashboardPanel";
 import type { CiteAssistantText } from "../../fork/dashboard/dashboardCitation";
+import { SubThreadsPanel } from "../../fork/subThreads/SubThreadsPanel";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
 import type { ShortcutMatchContext } from "../../keybindings";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
@@ -178,6 +179,14 @@ export function RightPanelSurfaceContent(props: {
           threadRef={threadRef}
           cwd={props.files.workspaceRoot}
           onCite={props.onCiteAssistantText}
+        />
+      );
+    case "replies":
+      return (
+        <SubThreadsPanel
+          threadRef={threadRef}
+          visible={visible}
+          parentPanel={props.sideChatParentPanel}
         />
       );
     case "side-chat":

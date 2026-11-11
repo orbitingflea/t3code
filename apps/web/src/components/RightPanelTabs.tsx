@@ -24,7 +24,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
-import { dashboardSurfaceActions } from "~/fork/dashboard/dashboardSurface";
+import { dashboardSurfaceActions, ModeSurfaceIcon } from "~/fork/dashboard/dashboardSurface";
 import {
   closestCenter,
   DndContext,
@@ -44,7 +44,6 @@ import {
   FileDiff,
   Files,
   Globe2,
-  LayoutDashboard,
   MessagesSquare,
   Plus,
   TerminalSquare,
@@ -602,6 +601,8 @@ function surfaceTitle(
       return "Side chat";
     case "dashboard":
       return "Dashboard";
+    case "replies":
+      return "Replies";
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return "Browser";
@@ -693,7 +694,8 @@ function SurfaceIcon({
     case "side-chat":
       return <SideChatTabIcon environmentId={environmentId} threadId={surface.threadId} />;
     case "dashboard":
-      return <LayoutDashboard className="size-3 shrink-0" />;
+    case "replies":
+      return <ModeSurfaceIcon kind={surface.kind} />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />

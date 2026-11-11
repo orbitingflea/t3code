@@ -16,6 +16,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { Atom } from "effect/reactivity";
+import { use } from "react";
 
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
@@ -24,6 +25,7 @@ import { environmentServerConfigsAtom, serverEnvironment } from "../../state/ser
 import { readEnvironmentScope } from "../../state/session";
 import { stackedThreadToast, toastManager } from "../../components/ui/toast";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { SubThreadViewContext } from "../subThreads/subThreadsState";
 import { applyDisplayMode } from "./displayModeTimeline";
 
 export type DisplayModeMenuId = "display-mode" | `display-mode:${string}`;
@@ -44,14 +46,26 @@ export function useThreadDisplayMode(threadRef: ScopedThreadRef | null): Display
 
 /**
  * Returns the rows that the thread's mode draws from `entries`. `repliesChosen` is true when the
- * mode itself picks which replies show, so the timeline must not hide any of them.
+ * mode itself picks which replies show, so the timeline must not hide any of them. Inside a
+ * SubThreadViewContext, the rows are that sub-thread's.
  */
 export function useDisplayModeTimeline(
   threadRef: ScopedThreadRef | null,
   entries: ReadonlyArray<TimelineEntry>,
-): { readonly entries: ReadonlyArray<TimelineEntry>; readonly repliesChosen: boolean } {
+  activeThreadKey: string | null,
+): {
+  readonly entries: ReadonlyArray<TimelineEntry>;
+  readonly repliesChosen: boolean;
+  /** The key that the thread-switch cache keeps these rows under. A sub-thread's view keeps none. */
+  readonly rememberKey: string | null;
+} {
   const mode = useThreadDisplayMode(threadRef);
-  return { entries: applyDisplayMode(mode, entries), repliesChosen: mode.visibleCores !== null };
+  const subThread = use(SubThreadViewContext);
+  return {
+    entries: applyDisplayMode(mode, entries, mode.subThreads ? subThread : null),
+    repliesChosen: mode.visibleCores !== null,
+    rememberKey: subThread === null ? activeThreadKey : null,
+  };
 }
 
 /** Returns the Display mode submenu. Returns nothing when the server cannot store a mode. */
@@ -91,13 +105,18 @@ export function displayModePatch(threadRef: ScopedThreadRef, action: string) {
   };
 }
 
-/** Closes the thread's Dashboard tab when the mode `modeId` names has no Dashboard. */
+/** Closes the thread's Dashboard and Replies tabs when the mode `modeId` names does not have them. */
 export function closeDashboardOutsideMode(threadRef: ScopedThreadRef, modeId: string): void {
-  if (resolveDisplayMode(modeId).dashboard) return;
+  const mode = resolveDisplayMode(modeId);
   const store = useRightPanelStore.getState();
   const panel = selectThreadRightPanelState(store.byThreadKey, threadRef);
-  if (panel.surfaces.some((surface) => surface.kind === "dashboard")) {
-    store.closeSurface(threadRef, "dashboard");
+  for (const [kind, kept] of [
+    ["dashboard", mode.dashboard],
+    ["replies", mode.subThreads],
+  ] as const) {
+    if (!kept && panel.surfaces.some((surface) => surface.kind === kind)) {
+      store.closeSurface(threadRef, kind);
+    }
   }
 }
 

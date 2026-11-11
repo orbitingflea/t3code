@@ -101,6 +101,7 @@ import {
   type TerminalMetadataStreamEvent,
   type PullRequestRef,
   THREAD_DASHBOARD_WS_METHODS,
+  THREAD_SUB_THREADS_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -195,6 +196,7 @@ import { terminalOutputStream, withOutputWindow } from "./terminal/OutputProtoco
 import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import * as ThreadDashboard from "./fork/threadDashboard/ThreadDashboard.ts";
+import * as SubThreads from "./fork/subThreads/SubThreads.ts";
 import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -1456,6 +1458,7 @@ export const layerWsRpc = (
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
       const threadDashboard = yield* ThreadDashboard.ThreadDashboard;
+      const subThreads = yield* SubThreads.SubThreads;
       const deviceHostContext =
         yield* Effect.context<Effect.Services<ReturnType<typeof remoteSshDeviceHosts>>>();
       const orchestrationEngine = yield* Orchestrator.OrchestratorV2;
@@ -3279,6 +3282,8 @@ export const layerWsRpc = (
         [WS_METHODS.subscribeDeviceState]: (_input) => DeviceService.stateStream(deviceService),
         [THREAD_DASHBOARD_WS_METHODS.subscribe]: (input) => threadDashboard.changes(input.threadId),
         [THREAD_DASHBOARD_WS_METHODS.markSeen]: (input) => threadDashboard.markSeen(input),
+        [THREAD_SUB_THREADS_WS_METHODS.subscribe]: (input) => subThreads.changes(input.threadId),
+        [THREAD_SUB_THREADS_WS_METHODS.markRead]: (input) => subThreads.markRead(input),
         [WS_METHODS.previewStopLocalServer]: (input) => portDiscovery.stopServer(input),
         [WS_METHODS.subscribeDiscoveredLocalServers]: (input) =>
           Stream.callback<DiscoveredLocalServerList>((queue) =>

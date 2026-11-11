@@ -109,6 +109,8 @@ import {
   type WorkGroupViewState,
   type TimelineRow,
 } from "./timelineRowContext";
+import { SubThreadReplyButton } from "../../fork/subThreads/SubThreadReplyLine";
+import { useInSubThreadView } from "../../fork/subThreads/subThreadsState";
 import { TimelineRowTimestamp, ActivityShimmerOverlay } from "./TimelineRowParts";
 import {
   WorkGroupSection,
@@ -1152,10 +1154,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
   });
 
+  const inSubThreadView = useInSubThreadView();
   useThreadFindPositionReader({
     threadKey: listIdentityKey,
     navigate: navigateTimeline,
-    timelineViewportElement,
+    timelineViewportElement: inSubThreadView ? null : timelineViewportElement,
     findFoldRunIds,
     timelineEntries,
     latestRun,
@@ -1443,6 +1446,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           row.kind === "assistant-meta"
           ? "group/assistant"
           : null,
+        "group/sub-thread-row",
       )}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
@@ -1483,6 +1487,9 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         <AssistantTimelineRow row={row} />
       ) : null}
       {row.kind === "assistant-meta" ? <AssistantMetaTimelineRow row={row} /> : null}
+      {row.kind === "message" ? (
+        <SubThreadReplyButton rowId={row.id} fromUser={row.message.role === "user"} />
+      ) : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "html-render" ? <HtmlRenderTimelineRow row={row} /> : null}
       {row.kind === "mcp-app" ? <McpAppTimelineRow row={row} /> : null}
