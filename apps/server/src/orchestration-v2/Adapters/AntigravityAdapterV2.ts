@@ -19,6 +19,7 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import { PULL_REQUEST_LINKING_INSTRUCTIONS } from "@t3tools/provider-core/server/runtimeInstructions";
 import {
+  antigravityCliMcpToolCall,
   antigravitySessionDirectories,
   managedAntigravityRuntimeState,
   readAntigravityAccount,
@@ -284,7 +285,8 @@ export function makeAntigravityAcpAdapterFlavor(
         respond: (answers) => makeAntigravityUserInputResponse(request, answers),
       };
     },
-    normalizeToolCall: normalizeAntigravityToolCall,
+    normalizeToolCall: (toolCall) =>
+      antigravityCliMcpToolCall(normalizeAntigravityToolCall(toolCall)),
     extractSubagentUpdate: extractAntigravitySubagentUpdate,
     supportsImagePrompts: true,
     // Only the CLI compacts on /compact; makeAntigravityAdapterV2 withholds it from the managed runtime.
