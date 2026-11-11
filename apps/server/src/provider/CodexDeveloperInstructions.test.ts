@@ -57,18 +57,14 @@ describe("Codex runtime context", () => {
 });
 
 describe("Codex orchestration context", () => {
-  it("routes subagents native first, delegate_task for the rest", () => {
+  it("routes every subagent to delegate_task", () => {
     const orchestration = Object.entries(buildCodexAdditionalContext({ model: "gpt-6.1-sol" }))
       .filter(([key]) => key.startsWith("t3_code_orchestration_"))
       .map(([, entry]) => entry.value)
       .join("\n");
 
-    NodeAssert.ok(orchestration.includes("use your native tool when the child uses your provider"));
-    NodeAssert.ok(orchestration.includes("`run_in_background:false`"));
-    NodeAssert.ok(orchestration.includes("A native type on another provider's model"));
-    NodeAssert.ok(
-      orchestration.includes("Background agent: `delegate_task`, never a background `Agent`."),
-    );
+    NodeAssert.ok(orchestration.includes("Start every child, same provider and model included"));
+    NodeAssert.ok(!orchestration.includes("spawn_agent"));
     NodeAssert.ok(
       orchestration.includes("Every new delegate review or re-check is a new `delegate_task`"),
     );

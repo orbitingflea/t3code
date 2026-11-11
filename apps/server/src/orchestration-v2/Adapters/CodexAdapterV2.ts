@@ -1,6 +1,7 @@
 import { pipe } from "effect/Function";
 import * as DocumentText from "../../provider/DocumentText.ts";
 import { revertCodexThread } from "../../provider/CodexThreadRevert.ts";
+import { DELEGATE_ONLY_PROVIDERS } from "@t3tools/provider-core/server/fork/nativeSubagents";
 import { historyResponseItems } from "@t3tools/provider-core/server/handoffBudget";
 import { makeProviderTextDeltaCoalescer } from "./ProviderTextDeltaCoalescer.ts";
 import {
@@ -1421,6 +1422,7 @@ export class CodexAppServerClientFactory extends Context.Service<
 
 /** MCP startup grace in milliseconds; the 1 s default excludes cold npx/uvx servers from the first model request. */
 export const CODEX_THREAD_CONFIG = {
+  ...DELEGATE_ONLY_PROVIDERS.codex.hide.threadConfig,
   "tools.update_plan.enabled": true,
   mcp_optional_startup_grace_ms: 10_000,
   // Tool calls stop waiting on the detailed reasoning summary. Codex applies it only to its

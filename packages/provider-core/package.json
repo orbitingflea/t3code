@@ -87,6 +87,10 @@
       "types": "./src/server/nativeProtocolLogging.ts",
       "import": "./src/server/nativeProtocolLogging.ts"
     },
+    "./server/fork/nativeSubagents": {
+      "types": "./src/server/fork/nativeSubagents.ts",
+      "import": "./src/server/fork/nativeSubagents.ts"
+    },
     "./server/notification": {
       "types": "./src/server/notification.ts",
       "import": "./src/server/notification.ts"

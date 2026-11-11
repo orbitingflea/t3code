@@ -212,8 +212,9 @@ import {
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import {
   T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH,
-  T3_CODE_ORCHESTRATION_INSTRUCTIONS,
+  t3OrchestrationInstructions,
 } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { DELEGATE_ONLY_PROVIDERS } from "@t3tools/provider-core/server/fork/nativeSubagents";
 import { buildRuntimeInstructions } from "@t3tools/provider-core/server/runtimeInstructions";
 import {
   mcpToolPresentation,
@@ -1200,9 +1201,14 @@ export const layerQueryRunner: Layer.Layer<
           // Jobs the agent starts inherit the thread, so port discovery can attribute their servers.
           const queryOptions = {
             ...sdkOptions,
+            disallowedTools: [
+              ...DELEGATE_ONLY_PROVIDERS.claudeAgent.hide.disallowedTools,
+              ...(sdkOptions.disallowedTools ?? []),
+            ],
             env: {
               ...(sdkOptions.env ?? hostEnvironment),
               ...claudeTerminalToolEnvironment,
+              ...DELEGATE_ONLY_PROVIDERS.claudeAgent.hide.environment,
               [PortScanner.AGENT_THREAD_ENV]: input.threadId,
             },
           };
@@ -1906,7 +1912,7 @@ export function makeClaudeQueryOptions(input: {
         buildRuntimeInstructions({ harness: "Claude Code" }) +
           (input.mcpServers === undefined
             ? ""
-            : T3_CODE_ORCHESTRATION_INSTRUCTIONS +
+            : t3OrchestrationInstructions(CLAUDE_PROVIDER) +
               CLAUDE_BACKGROUND_WAIT_INSTRUCTIONS +
               (deviceInstructions
                 ? `\n${T3_CODE_DEVICE_TOOL_INSTRUCTIONS_WITH_TOOL_SEARCH}\n`

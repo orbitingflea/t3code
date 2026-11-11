@@ -1,5 +1,7 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 
+import { orchestrationSectionsFor } from "./fork/nativeSubagents.ts";
+
 // Codex truncates entries over 4,000 bytes; keep each section self-contained and below that limit.
 export const T3_CODE_ORCHESTRATION_SECTIONS: ReadonlyArray<string> = [
   `## T3 Code orchestration
@@ -27,6 +29,13 @@ export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `
 
 ${T3_CODE_ORCHESTRATION_SECTIONS.join("\n\n")}
 `;
+
+/** The sections for one provider: a delegate-only provider is sent to `delegate_task` for every child. */
+export const t3OrchestrationSections = (provider: string | undefined): ReadonlyArray<string> =>
+  orchestrationSectionsFor(T3_CODE_ORCHESTRATION_SECTIONS, provider);
+
+export const t3OrchestrationInstructions = (provider: string | undefined): string =>
+  `\n\n${t3OrchestrationSections(provider).join("\n\n")}\n`;
 
 export const T3_CODE_BROWSER_TOOL_INSTRUCTIONS = `
 
@@ -77,6 +86,7 @@ export function t3AcpPromptWithInstructions(input: {
   readonly prompt: string;
   readonly state: T3AcpInstructionState;
   readonly previousState?: T3AcpInstructionState;
+  readonly provider?: string;
 }): string {
   // Native slash commands must remain at the start of the prompt.
   if (input.prompt.trimStart().startsWith("/")) return input.prompt;
@@ -95,7 +105,7 @@ export function t3AcpPromptWithInstructions(input: {
       ? [
           T3_CODE_BROWSER_TOOL_INSTRUCTIONS.trim(),
           ...(input.state.hasDeviceTools ? [T3_CODE_DEVICE_TOOL_INSTRUCTIONS] : []),
-          T3_CODE_ORCHESTRATION_INSTRUCTIONS.trim(),
+          t3OrchestrationInstructions(input.provider).trim(),
           T3_CODE_ACP_MCP_FALLBACK_INSTRUCTIONS,
         ]
       : []),

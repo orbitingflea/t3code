@@ -12,6 +12,7 @@ import * as Stream from "effect/Stream";
 
 import * as CodexClient from "./client.ts";
 import * as CodexError from "./errors.ts";
+import { isForkThreadConfigKey } from "./fork/replayThreadConfig.ts";
 
 export const CodexAppServerReplayEntry = Schema.Union([
   Schema.Struct({
@@ -260,7 +261,8 @@ function normalizeThreadRequest(frame: unknown, ignoredConfigKeys: ReadonlySet<s
       ([key]) =>
         key !== "mcp_servers" &&
         !key.startsWith("mcp_servers.") &&
-        key !== "shell_environment_policy.set.T3CODE_THREAD_ID",
+        key !== "shell_environment_policy.set.T3CODE_THREAD_ID" &&
+        !isForkThreadConfigKey(key),
     ),
   );
   for (const key of ignoredConfigKeys) delete owned[key];
