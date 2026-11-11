@@ -15,7 +15,7 @@ import {
 } from "@t3tools/contracts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
-import { T3_CODE_ORCHESTRATION_SECTIONS } from "@t3tools/provider-core/server/orchestrationInstructions";
+import { t3OrchestrationSections } from "@t3tools/provider-core/server/orchestrationInstructions";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import { checkpointWorkspace } from "@t3tools/provider-testing/replayWorkspace";
 import * as CodexClient from "effect-codex-app-server/client";
@@ -631,7 +631,9 @@ it.effect.each(
 
       expect(child.thread.lineage.relationshipToParent).toBe("subagent");
       expect(sidebarRequest.effort).toBe(input.effort);
-      expect(sidebarRequest.t3Instructions).toContain(T3_CODE_ORCHESTRATION_SECTIONS.join("\n\n"));
+      expect(sidebarRequest.t3Instructions).toContain(
+        t3OrchestrationSections(input.driver).join("\n\n"),
+      );
       expect(sidebarRequest.promptCacheTtl).toBeUndefined();
       expect(childRequest.promptCacheTtl).toBe(input.fixture.childPromptCacheTtl);
       expect(childRequest.withoutNoise).toEqual(sidebarRequest.withoutNoise);

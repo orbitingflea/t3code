@@ -1722,6 +1722,8 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           cwd: "/workspace",
           model: "gpt-5.4",
           config: {
+            "agents.enabled": false,
+            "features.multi_agent_v2": false,
             "tools.update_plan.enabled": true,
             mcp_optional_startup_grace_ms: 10_000,
             "features.concurrent_reasoning_summaries": true,

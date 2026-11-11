@@ -48,6 +48,7 @@ import {
 import { projectComposerContextForProvider } from "@t3tools/shared/composerContextReferences";
 import { formatThreadLink } from "@t3tools/shared/threadLinks";
 import { buildCodexAdditionalContext } from "../../apps/server/src/provider/CodexDeveloperInstructions.ts";
+import { isHiddenClaudeTool, withoutCodexSubagentTools } from "./fork/hiddenNativeTools.ts";
 import { makeSideChatContext } from "../../apps/server/src/orchestration-v2/ContextHandoffService.ts";
 import { withInlineContext } from "../../apps/server/src/orchestration-v2/ContextHandoffDelivery.ts";
 import { AttachmentToolkit } from "../../apps/server/src/mcp/toolkits/attachment/tools.ts";
@@ -613,7 +614,9 @@ export const buildBase = (
   if (systemTexts.filter((value) => value.includes(RUNTIME_MARKER)).length !== 1 || !deferredList) {
     throw new Error(`The template needs one ${RUNTIME_MARKER} block and a deferred tool list.`);
   }
-  const nativeDeferred = deferredList.split("\n").filter((name) => name && !isT3Name(name));
+  const nativeDeferred = deferredList
+    .split("\n")
+    .filter((name) => name && !isT3Name(name) && !isHiddenClaudeTool(name));
   const names = [
     ...nativeDeferred,
     ...t3.filter((tool) => !alwaysLoaded.has(tool.name)).map((tool) => tool.name),
@@ -662,7 +665,9 @@ export const buildBase = (
       date: /Today's date is ([\d-]+)/.exec(reminders.join("\n"))?.[1],
     },
     nativeTools: [
-      ...template.tools.filter((tool) => !isT3Name(tool.name)),
+      ...template.tools.filter(
+        (tool) => !isT3Name(tool.name) && !isHiddenClaudeTool(normalizeToolName(tool.name)),
+      ),
       ...t3.filter((tool) => alwaysLoaded.has(tool.name)),
     ],
     /** Tools ToolSearch loads: T3 tools from source, and native tools the template only names. */
@@ -719,7 +724,7 @@ const buildCodexBase = (
     // every case.
     if (item.type !== "message" && item.type !== "additional_tools") return [];
     if (item.role === "assistant") return [];
-    return [JSON.parse(clean(JSON.stringify(item))) as Block];
+    return withoutCodexSubagentTools(JSON.parse(clean(JSON.stringify(item))) as Block);
   });
   const context = buildCodexAdditionalContext(
     { model: options.model, reasoningEffort: effort },

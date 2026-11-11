@@ -7945,6 +7945,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const text = t3AcpPromptWithInstructions({
             prompt: messageText,
             state: instructionState,
+            provider: driver,
             ...(previousInstructionState === undefined || compactionMarker !== undefined
               ? {}
               : { previousState: previousInstructionState }),
