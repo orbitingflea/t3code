@@ -1,4 +1,5 @@
 import * as NodeSqlite from "node:sqlite";
+import * as NodeURL from "node:url";
 
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
 import * as NodeServices from "@effect/platform-node/NodeServices";
@@ -103,33 +104,104 @@ const layerSession = Layer.mergeAll(
 
 type TextRuntime = Effect.Success<ReturnType<AntigravityTextGenerationOptions["makeRuntime"]>>;
 
-const HELPER_SESSION = "047c62f6-607b-44db-bfbe-f83b67e9e8b1";
+const protobufField = (number: number, value: Uint8Array) =>
+  Buffer.concat([
+    Buffer.from([
+      (number << 3) | 2,
+      ...(value.length < 128 ? [value.length] : [(value.length & 0x7f) | 0x80, value.length >> 7]),
+    ]),
+    value,
+  ]);
+const fileUri = (folder: string) => Buffer.from(NodeURL.pathToFileURL(folder).href);
 
-/** Runs one title helper on the CLI runtime and reports whether its fake agent started. */
+/**
+ * One session as `agy acp` stores it: notes, an annotation, and a log whose metadata names the
+ * workspace in field 1 of field 1. `alsoNamed` is a folder that an unrelated field names.
+ */
+const writeCliSession = Effect.fn("writeCliSession")(function* (
+  { fileSystem, path }: { readonly fileSystem: FileSystem.FileSystem; readonly path: Path.Path },
+  appDirectory: string,
+  sessionId: string,
+  workspace: string,
+  alsoNamed?: string,
+) {
+  const base = path.join(appDirectory, "conversations", sessionId);
+  for (const directory of ["conversations", "annotations", path.join("brain", sessionId)]) {
+    yield* fileSystem.makeDirectory(path.join(appDirectory, directory), { recursive: true });
+  }
+  yield* fileSystem.remove(`${base}.db`, { force: true });
+  const database = new NodeSqlite.DatabaseSync(`${base}.db`);
+  try {
+    database.exec("CREATE TABLE trajectory_metadata_blob (id TEXT PRIMARY KEY, data BLOB)");
+    database
+      .prepare("INSERT INTO trajectory_metadata_blob VALUES ('main', ?)")
+      .run(
+        Buffer.concat([
+          protobufField(
+            1,
+            Buffer.concat([protobufField(1, fileUri(workspace)), protobufField(3, Buffer.of())]),
+          ),
+          protobufField(6, Buffer.from(sessionId)),
+          ...(alsoNamed === undefined
+            ? []
+            : [protobufField(9, protobufField(1, fileUri(alsoNamed)))]),
+        ]),
+      );
+  } finally {
+    database.close();
+  }
+  const files = [
+    `${base}.db`,
+    `${base}.db-wal`,
+    `${base}.db-shm`,
+    path.join(appDirectory, "annotations", `${sessionId}.pbtxt`),
+    path.join(appDirectory, "brain", sessionId, "notes.md"),
+  ];
+  for (const file of files.slice(1)) yield* fileSystem.writeFileString(file, "session data");
+  return files;
+});
+
+const HELPER_SESSION = "047c62f6-607b-44db-bfbe-f83b67e9e8b1";
+const USER_SESSION = "9b2e4c51-7a0d-4f3e-8c66-2d1f5a7e9b30";
+
+/** Runs one title helper on the CLI runtime; its fake agent stores two sessions as it starts. */
 const cliHelperTurn = Effect.fn("cliHelperTurn")(function* (
   userHome: string,
   reportedSession: string,
 ) {
+  const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
+  const appDirectory = path.join(userHome, ".gemini", "antigravity-cli");
   let sessionUpdate: Parameters<TextRuntime["handleSessionUpdate"]>[0] = () => Effect.void;
-  let started = false;
+  let helperFiles: ReadonlyArray<string> = [];
+  let userFiles: ReadonlyArray<string> = [];
   const handled = () => Effect.void;
+  const services = { fileSystem, path };
   const options = {
     profileDirectory: path.join(userHome, "profile-unused"),
     runtimeState: cliRuntimeState(path, userHome),
     withProcess: ((_stop, task) => task) as AntigravityTextGenerationOptions["withProcess"],
-    makeRuntime: () =>
+    makeRuntime: (cwd: string) =>
       Effect.succeed({
         start: () =>
-          Effect.sync(() => {
-            started = true;
+          Effect.gen(function* () {
+            helperFiles = yield* writeCliSession(services, appDirectory, HELPER_SESSION, cwd);
+            // Another session of the user's: its folder's name starts with the helper's, and
+            // an unrelated field of its log names the helper's folder.
+            userFiles = yield* writeCliSession(
+              services,
+              appDirectory,
+              USER_SESSION,
+              `${cwd}-mine`,
+              cwd,
+            );
             return {
               sessionId: reportedSession,
               initializeResult: { protocolVersion: 1 },
               sessionSetupResult: { sessionId: reportedSession },
               modelConfigId: "model",
             };
-          }),
+          }).pipe(Effect.orDie),
         setMode: () => Effect.succeed({}),
         getConfigOptions: Effect.succeed([]),
         getEvents: () => Stream.empty,
@@ -171,7 +243,15 @@ const cliHelperTurn = Effect.fn("cliHelperTurn")(function* (
       },
     })
     .pipe(Effect.result);
-  return { result: result._tag, started };
+  const left = (files: ReadonlyArray<string>) =>
+    Effect.filter(files, (file) => fileSystem.exists(file));
+  return {
+    result: result._tag,
+    helperFiles,
+    helperLeft: yield* left(helperFiles),
+    userFiles,
+    userLeft: yield* left(userFiles),
+  };
 });
 
 describe("Antigravity CLI runtime", () => {
@@ -411,6 +491,25 @@ describe("Antigravity CLI runtime", () => {
     }).pipe(Effect.provide(layerSession), Effect.scoped),
   );
 
+  it.effect("removes the CLI session a helper turn created and no other session", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const userHome = yield* fileSystem.makeTempDirectoryScoped();
+
+      const own = yield* cliHelperTurn(userHome, HELPER_SESSION);
+      assert.equal(own.result, "Success");
+      assert.deepEqual(own.helperLeft, [], "the helper's own session");
+      assert.deepEqual(own.userLeft, own.userFiles, "the user's session beside it");
+
+      const foreign = yield* cliHelperTurn(userHome, USER_SESSION);
+      assert.deepEqual(
+        foreign.userLeft,
+        foreign.userFiles,
+        "a session whose workspace is another folder",
+      );
+    }).pipe(Effect.scoped, Effect.provide(layer)),
+  );
+
   it.effect("starts no helper turn beside hooks in the CLI's own config folder", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -424,7 +523,7 @@ describe("Antigravity CLI runtime", () => {
       );
       const hooked = yield* cliHelperTurn(userHome, HELPER_SESSION);
       assert.equal(hooked.result, "Failure");
-      assert.isFalse(hooked.started, "no agent started");
+      assert.deepEqual(hooked.helperFiles, [], "no agent started");
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 
