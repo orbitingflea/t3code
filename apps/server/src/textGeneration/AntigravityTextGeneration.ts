@@ -12,9 +12,9 @@ import * as Stream from "effect/Stream";
 import { type AcpError, AcpRequestError } from "effect-acp/errors";
 
 import { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAcpSupport.ts";
-import { removeAntigravitySessionFiles } from "../provider/acp/AntigravitySessionFiles.ts";
 import {
   antigravityRuntimeStateOf,
+  removeAntigravityRuntimeSessionFiles,
   type AntigravityRuntimeState,
 } from "../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import {
@@ -156,8 +156,8 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
         const cwd = yield* fs.makeTempDirectoryScoped({ prefix: "t3-antigravity-text-" });
         let sessionId: string | undefined;
         yield* Effect.addFinalizer(() =>
-          removeAntigravitySessionFiles({
-            profileDirectory: options.profileDirectory,
+          removeAntigravityRuntimeSessionFiles({
+            runtimeState: antigravityRuntimeStateOf(options),
             sessionId,
             cwd,
           }).pipe(

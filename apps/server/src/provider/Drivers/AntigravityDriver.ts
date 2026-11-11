@@ -33,6 +33,7 @@ import {
 import {
   antigravityRuntimeState,
   managedAntigravityRuntimeState,
+  removeAntigravityRuntimeSessionFiles,
 } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { makeAntigravityAuth, type AntigravityAuth } from "../AntigravityAuth.ts";
 import * as AntigravityInstallation from "../AntigravityInstallation.ts";
@@ -56,10 +57,7 @@ import {
 } from "../acp/AntigravityAcpSupport.ts";
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import type { ServerProviderDraft } from "@t3tools/provider-core/server/snapshotProbe";
-import {
-  removeAntigravitySessionFiles,
-  retireAntigravityRuntimeTempDirs,
-} from "../acp/AntigravitySessionFiles.ts";
+import { retireAntigravityRuntimeTempDirs } from "../acp/AntigravitySessionFiles.ts";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as ProviderContinuationRequests from "@t3tools/provider-core/server/ProviderContinuationRequests";
 import { makeAntigravityAdapterV2 } from "../../orchestration-v2/Adapters/AntigravityAdapterV2.ts";
@@ -326,11 +324,7 @@ export const AntigravityDriver: ProviderDriver<
         );
       let sessionId: string | undefined;
       yield* Effect.addFinalizer(() =>
-        removeAntigravitySessionFiles({
-          profileDirectory,
-          sessionId,
-          cwd,
-        }).pipe(
+        removeAntigravityRuntimeSessionFiles({ runtimeState, sessionId, cwd }).pipe(
           Effect.provideService(FileSystem.FileSystem, fileSystem),
           Effect.provideService(Path.Path, path),
         ),
