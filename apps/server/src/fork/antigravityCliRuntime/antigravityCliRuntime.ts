@@ -1,13 +1,17 @@
 import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Clock from "effect/Clock";
 import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
-import type * as FileSystem from "effect/FileSystem";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
-import type * as Path from "effect/Path";
+import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
 import type * as EffectAcpSchema from "effect-acp/compat";
+
+import { removeAntigravitySessionFiles } from "../../provider/acp/AntigravitySessionFiles.ts";
 
 /**
  * Where a runtime keeps its sessions and its login. The managed runtime uses the profile T3
@@ -182,3 +186,98 @@ export const orAntigravityCliAccess =
   (cli: { readonly access: AntigravityAccess } | undefined) =>
   <E, R>(refresh: Effect.Effect<AntigravityAccess, E, R>): Effect.Effect<AntigravityAccess, E, R> =>
     cli === undefined ? refresh : Effect.succeed(cli.access);
+
+const isNativeSessionId = Schema.is(Schema.String.check(Schema.isUUID(4)));
+
+/** The length-delimited fields of one protobuf message, or none when the bytes are not one. */
+function protobufFields(message: Uint8Array) {
+  const fields: Array<{ readonly number: number; readonly bytes: Uint8Array }> = [];
+  let offset = 0;
+  const varint = () => {
+    let value = 0;
+    for (let scale = 1; scale < 2 ** 70; scale *= 128) {
+      const byte = message[offset++];
+      if (byte === undefined) return undefined;
+      value += (byte & 0x7f) * scale;
+      if (byte < 0x80) return value;
+    }
+    return undefined;
+  };
+  while (offset < message.length) {
+    const tag = varint();
+    if (tag === undefined) return [];
+    const wireType = tag % 8;
+    if (wireType === 1) offset += 8;
+    else if (wireType === 5) offset += 4;
+    else if (wireType === 0 || wireType === 2) {
+      const value = varint();
+      if (value === undefined) return [];
+      if (wireType === 0) continue;
+      fields.push({ number: Math.floor(tag / 8), bytes: message.subarray(offset, offset + value) });
+      offset += value;
+    } else return [];
+  }
+  return offset === message.length ? fields : [];
+}
+
+/**
+ * The CLI's session log names its workspace as a `file://` URI in field 1 of field 1 of its
+ * metadata. The log is read only as a regular file that no link stands in for.
+ */
+const cliSessionOpenedIn = Effect.fn("cliSessionOpenedIn")(function* (
+  database: string,
+  cwd: string,
+) {
+  const fs = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const folder = yield* fs.realPath(path.dirname(database));
+  if ((yield* fs.realPath(database)) !== path.join(folder, path.basename(database))) return false;
+  if ((yield* fs.stat(database)).type !== "File") return false;
+  const uri = (yield* path.toFileUrl(cwd)).href;
+  const rows = yield* Effect.gen(function* () {
+    const sql = yield* SqlClient.SqlClient;
+    return yield* sql<{
+      readonly data: unknown;
+    }>`SELECT data FROM trajectory_metadata_blob WHERE id = 'main'`;
+  }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: database, readonly: true })));
+  const metadata = rows[0]?.data;
+  if (!(metadata instanceof Uint8Array)) return false;
+  const workspaces = protobufFields(metadata)
+    .filter((field) => field.number === 1)
+    .flatMap((workspace) => protobufFields(workspace.bytes))
+    .filter((field) => field.number === 1)
+    .map((field) => new TextDecoder().decode(field.bytes));
+  return workspaces.length === 1 && workspaces[0] === uri;
+});
+
+/**
+ * Call after the process closes. The CLI keeps its sessions among the user's own, so only a
+ * session whose log names the caller's unique temporary cwd is removed.
+ */
+export const removeAntigravityRuntimeSessionFiles = Effect.fn(
+  "removeAntigravityRuntimeSessionFiles",
+)(
+  function* (input: {
+    readonly runtimeState: Effect.Effect<AntigravityRuntimeState>;
+    readonly sessionId: string | undefined;
+    readonly cwd: string;
+  }) {
+    const state = yield* input.runtimeState;
+    const { sessionId, cwd } = input;
+    if (state.runtime === "managed") {
+      return yield* removeAntigravitySessionFiles({ profileDirectory: state.root, sessionId, cwd });
+    }
+    if (sessionId === undefined || !isNativeSessionId(sessionId)) return;
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const appDirectory = path.join(state.root, state.appFolder);
+    const base = path.join(appDirectory, "conversations", sessionId);
+    if (!(yield* cliSessionOpenedIn(`${base}.db`, cwd))) return;
+    for (const suffix of [".db", ".db-wal", ".db-shm", ".db-journal"]) {
+      yield* fs.remove(`${base}${suffix}`, { force: true });
+    }
+    yield* fs.remove(path.join(appDirectory, "annotations", `${sessionId}.pbtxt`), { force: true });
+    yield* fs.remove(path.join(appDirectory, "brain", sessionId), { recursive: true, force: true });
+  },
+  Effect.catch(() => Effect.logWarning("Could not remove temporary Antigravity session files.")),
+);
