@@ -168,7 +168,6 @@ const claudeLikeAdapter = (agent: "claude" | "codex"): AgentAdapter => ({
             stringOr(raw.tool_use_id, ""),
             base.cwd,
           ),
-          toolResponse: raw.tool_response,
         });
       case "Stop":
         return one({

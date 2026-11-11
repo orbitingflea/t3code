@@ -132,7 +132,6 @@ export interface Occurrence {
   readonly source?: string;
   readonly prompt?: string;
   readonly tool?: ToolCall;
-  readonly toolResponse?: unknown;
   readonly lastAssistantMessage?: string;
   readonly stopHookActive?: boolean;
 }
@@ -169,7 +168,8 @@ export const hookStdin = (occurrence: Occurrence): JsonObject => {
     payload.file_paths = occurrence.tool.filePaths;
     payload.tool_use_id = occurrence.tool.toolUseId;
   }
-  if (occurrence.event === "PostTool") payload.tool_response = occurrence.toolResponse ?? null;
+  // agy gives a hook no tool result, so the unified fields have none on any agent; `native` keeps it.
+  if (occurrence.event === "PostTool") delete payload.tool_response;
   if (occurrence.event === "Stop") {
     payload.last_assistant_message = occurrence.lastAssistantMessage ?? "";
     payload.stop_hook_active = occurrence.stopHookActive ?? false;

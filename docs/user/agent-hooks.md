@@ -92,7 +92,7 @@ The hooks of one event run at the same time. Their answers are merged in file or
 
 ## What a hook script reads
 
-The script gets one JSON object on stdin. It has every field the agent itself sent, plus these fields, which mean the same on all three agents:
+The script gets one JSON object on stdin. It has every field the agent itself sent, except the tool's result on `PostTool`, plus these fields, which mean the same on all three agents:
 
 | Field                    | Events                    | Meaning                                                                                               |
 | ------------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -109,12 +109,11 @@ The script gets one JSON object on stdin. It has every field the agent itself se
 | `tool_input`             | PreTool, PostTool         | The agent's arguments. A shell call always has `command`.                                             |
 | `file_paths`             | PreTool, PostTool         | Absolute paths of the files the call names. For a Codex patch, every file in the patch.               |
 | `tool_use_id`            | PreTool, PostTool         | The id of the call.                                                                                   |
-| `tool_response`          | PostTool                  | The tool's result. `null` on Antigravity, which does not give it.                                     |
 | `last_assistant_message` | Stop                      | The model's last reply.                                                                               |
 | `stop_hook_active`       | Stop                      | `true` when a Stop hook already made the agent go on in this turn. Use it to avoid a loop.            |
 | `native`                 | all                       | The agent's own payload, unchanged.                                                                   |
 
-A hook that should work on every agent tests `tool_class`, `tool_input.command` and `file_paths`, not tool names. A script written for Claude Code's `PreToolUse`, `PostToolUse`, `Stop` or `SessionStart` reads the same field names here.
+A hook that should work on every agent tests `tool_class`, `tool_input.command` and `file_paths`, not tool names. A script written for Claude Code's `PreToolUse`, `PostToolUse`, `Stop` or `SessionStart` reads the same field names here, with one exception: `PostTool` has no `tool_response` field, because Antigravity does not give the tool's result to a hook. On Claude Code and Codex the result is at `native.tool_response`.
 
 ## What a hook script answers
 
