@@ -1,4 +1,5 @@
 import type { ThreadTitleMessage } from "@t3tools/provider-core/server/threadTitleContext";
+import { subThreadSummaryCases } from "./fork/subThreadSummaries.ts";
 
 export const threadTitleEvaluationCases = [
   {
@@ -106,11 +107,13 @@ export const threadTitleEvaluationCases = [
     ],
     rubric: "Keep title generation as the subject. Do not focus on filing the PR.",
   },
+  ...subThreadSummaryCases,
 ] satisfies ReadonlyArray<{
   id: string;
   source: string;
   request: string;
   previousTitle: string;
+  instructions?: string;
   messages: ReadonlyArray<ThreadTitleMessage>;
   rubric: string;
 }>;

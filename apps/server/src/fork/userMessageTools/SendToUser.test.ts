@@ -546,7 +546,7 @@ describe("replace_send_to_user", () => {
       history = [typed("u1", "Fix the build."), sent("s1", "On it.")];
       const error = refusalText(yield* replace("Fix the build.", "On it.", normalThread));
       expect(error.split("\n")[0]).toBe(
-        "Refused: replace_send_to_user works only in threads set to Messages only or Messages + Dashboard. Use send_to_user.",
+        "Refused: replace_send_to_user works only in a thread whose display mode allows one message from you per message of the user. This thread's mode does not. Use send_to_user.",
       );
       const dashboard = yield* replace("Fix the build.", "On it.", dashboardThread);
       expect(dashboard.structuredContent).toEqual(SHOWN);

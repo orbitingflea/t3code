@@ -7,12 +7,19 @@ import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCi
 import {
   displayEventFromTurnItem,
   foldCores,
+  freshFirstPointer,
+  messagePointer,
   recapLine,
   recapText,
   REPLACE_SEND_TO_USER_TOOL_NAME,
   resolveDisplayMode,
   SEND_TO_USER_MAX_BYTES,
   SEND_TO_USER_TOOL_NAME,
+  SUB_THREAD_LISTED_COUNT,
+  SUB_THREAD_WINDOW_CORES,
+  subThreadCores,
+  subThreadRecap,
+  type VisibleCore,
   WRAPPED_CORE_COUNT,
 } from "@t3tools/shared/displayModes";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
@@ -28,6 +35,7 @@ import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
 import * as McpToolAccess from "../../mcp/McpToolAccess.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import { DisplayModeWrap } from "../displayModeWrap/DisplayModeWrap.ts";
+import * as SubThreads from "../subThreads/SubThreads.ts";
 
 // The description goes before the checks: one set after a custom check is left out of the JSON schema.
 const MessageText = Schema.String.annotate({
@@ -64,10 +72,12 @@ const MatchInput = (description: string) =>
 /** How long an accepted send counts while its call is not yet in the history, for calls not named. */
 const UNNAMED_SEND_HOLD_MS = 10_000;
 const MIN_PERCENT = Math.round(TEXT_MATCH_MIN_RATIO * 100);
-const SHOWN = {
-  ok: true as const,
-  message: "Shown to the user. If you are done, end your turn with no text.",
-};
+const DONE = "If you are done, end your turn with no text.";
+const SHOWN = { ok: true as const, message: `Shown to the user. ${DONE}` };
+
+// An agent that fills every optional field sends null, an empty string or false for "none".
+const Pointer = (description: string) =>
+  Schema.optional(Schema.NullOr(Schema.String.annotate({ description })));
 
 const dependencies = [
   McpInvocationContext.McpInvocationContext,
@@ -78,9 +88,33 @@ const dependencies = [
 // The tools change only what the caller's thread shows, so read-only sandboxes and plan mode may use them.
 const SendToUserTool = Tool.make(SEND_TO_USER_TOOL_NAME, {
   description:
-    "Show the user a message in this thread. In a thread set to Messages only, this is the only output the user sees.",
-  parameters: Schema.Struct({ text: MessageText }),
-  success: Schema.Struct({ ok: Schema.Literal(true), message: Schema.String }),
+    "Show the user a message in this thread. In a thread set to Messages only, this is the only output the user sees. In a thread set to Chat + Replies, also pass reply_to with user_message, or new_sub_thread.",
+  parameters: Schema.Struct({
+    text: MessageText,
+    reply_to: Pointer(
+      "Chat + Replies only. The id of the user's message that this text answers, as the <t3-replies-mode> block before that message gave it.",
+    ),
+    user_message: Schema.optional(
+      Schema.NullOr(
+        MatchInput(
+          `Needed with reply_to. The words of the user's message that you answer, or their first ${MATCH_INPUT_TOLD_BYTES} bytes of UTF-8. They must be at least ${MIN_PERCENT}% like that message.`,
+        ),
+      ),
+    ),
+    new_sub_thread: Schema.optional(
+      Schema.NullOr(
+        Schema.Boolean.annotate({
+          description:
+            "Chat + Replies only. True for a message that answers no message from the user. It shows in the main list.",
+        }),
+      ),
+    ),
+  }),
+  success: Schema.Struct({
+    ok: Schema.Literal(true),
+    message: Schema.String,
+    messageId: Schema.optional(Schema.String),
+  }),
   failure: OrchestratorMcpFailure,
   dependencies,
 })
@@ -91,8 +125,14 @@ const SendToUserTool = Tool.make(SEND_TO_USER_TOOL_NAME, {
   .annotate(Tool.OpenWorld, false);
 
 const ReplaceSendToUserTool = Tool.make(REPLACE_SEND_TO_USER_TOOL_NAME, {
-  description: `In threads set to Messages only or Messages + Dashboard, the user gets one message from you per message of theirs. This replaces that message in place. Pass the user's last message and your current message as the recap shows them (their words only), each at least ${MIN_PERCENT}% alike, and the whole new text.`,
+  description: `In threads set to Messages only, Messages + Dashboard or Chat + Replies, the user gets one message from you per message of theirs. This replaces that message in place. Pass the user's last message and your current message as the recap shows them (their words only), each at least ${MIN_PERCENT}% alike, and the whole new text. In Chat + Replies, also pass reply_to or sub_thread.`,
   parameters: Schema.Struct({
+    reply_to: Pointer(
+      "Chat + Replies only. The id of the user's message whose answer you replace. user_message is then that message.",
+    ),
+    sub_thread: Pointer(
+      "Chat + Replies only. The id of a message that you sent with new_sub_thread, as that send returned it, to replace that message while the user has not replied under it. user_message is then an empty string.",
+    ),
     user_message: MatchInput(
       `The user's last message, at most ${MATCH_INPUT_TOLD_BYTES} bytes of UTF-8 after JSON escaping. An empty string if they have typed none.`,
     ),
@@ -116,6 +156,23 @@ export const SendToUserToolkit = Toolkit.make(SendToUserTool, ReplaceSendToUserT
 const isSendCall = (item: OrchestrationV2TurnItem) =>
   item.type === "dynamic_tool" && resolveT3McpToolId(item.toolName) === SEND_TO_USER_TOOL_NAME;
 
+/** The items stored before the calling tool use, when the provider names it; else all of them. */
+function itemsBefore(shown: ReadonlyArray<OrchestrationV2TurnItem>, ownItem: string | undefined) {
+  const ownAt =
+    ownItem === undefined
+      ? -1
+      : shown.findIndex((item) => item.nativeItemRef?.nativeId === ownItem);
+  return ownAt < 0 ? shown : shown.slice(0, ownAt);
+}
+
+const coresOf = (items: ReadonlyArray<OrchestrationV2TurnItem>) =>
+  foldCores(
+    items.flatMap((item) => {
+      const event = displayEventFromTurnItem(item);
+      return event === null ? [] : [event];
+    }),
+  );
+
 /**
  * What the thread shows since the user's last typed message. `ownItem` is the native id of the
  * calling tool use when the provider names it; only then do sends still running count, and only
@@ -123,16 +180,8 @@ const isSendCall = (item: OrchestrationV2TurnItem) =>
  * message typed after the call started does not change the answer.
  */
 function readTurn(shown: ReadonlyArray<OrchestrationV2TurnItem>, ownItem: string | undefined) {
-  const ownAt =
-    ownItem === undefined
-      ? -1
-      : shown.findIndex((item) => item.nativeItemRef?.nativeId === ownItem);
-  const items = ownAt < 0 ? shown : shown.slice(0, ownAt);
-  const events = items.flatMap((item) => {
-    const event = displayEventFromTurnItem(item);
-    return event === null ? [] : [event];
-  });
-  const cores = foldCores(events);
+  const items = itemsBefore(shown, ownItem);
+  const cores = coresOf(items);
   const typedAt = cores.findLastIndex((core) => core.from === "user");
   const since = items.slice(
     items.findLastIndex((item) => displayEventFromTurnItem(item)?.type === "user") + 1,
@@ -185,12 +234,87 @@ function providerForm(text: string): string {
 
 const percent = (similarity: number) => Math.floor(similarity * 100);
 
+/** How alike `given` is to the user's message `typed`, in the recap's form or the form the agent got. */
+const userSimilarity = (given: string, typed: string) =>
+  Math.max(
+    textSimilarity(quoted(given), recapText(typed)),
+    textSimilarity(quoted(given), providerForm(typed)),
+  );
+
+const userMismatch = (similarity: number, what: string, typed: string) =>
+  `user_message is ${percent(similarity)}% like ${what}; ${typed === "" ? "expected an empty string" : `needs ${MIN_PERCENT}%`}.`;
+
+/** One line of a list of messages that the agent can name: the id, then the start of the text. */
+const listedLine = (core: VisibleCore) => {
+  const line = recapText(core.text).split("\n", 1)[0] ?? "";
+  return `"${core.shortId}": ${line.length > 160 ? `${line.slice(0, 160)}…` : line}`;
+};
+
+/** The user's messages that the agent may still answer: the latest of its sub-thread, with no answer. */
+function unansweredLines(cores: ReadonlyArray<VisibleCore>): ReadonlyArray<string> {
+  const open = cores.filter(
+    (core, index) =>
+      core.from === "user" &&
+      // `/compact` runs with no turn of the agent, so no answer is owed to it.
+      core.text.trim().toLowerCase() !== "/compact" &&
+      // After the message: an earlier message may have the same short id, with an answer of its own.
+      !cores.slice(index + 1).some((answer) => answer.replyTo === core.shortId) &&
+      !cores.slice(index + 1).some((later) => later.from === "user" && later.first === core.first),
+  );
+  return open.length === 0
+    ? []
+    : [
+        "Messages from the user with no answer yet, by id:",
+        ...open.slice(-SUB_THREAD_LISTED_COUNT).map(listedLine),
+      ];
+}
+
+/** The agent's first messages that it may still replace: those with no reply from the user. */
+function replaceableLines(cores: ReadonlyArray<VisibleCore>): ReadonlyArray<string> {
+  const open = cores.filter(
+    (core) =>
+      core.from === "agent" &&
+      !core.reply &&
+      !cores.some((reply) => reply.from === "user" && reply.first === core.id),
+  );
+  return open.length === 0
+    ? []
+    : [
+        "Your messages that the user has not replied under, by id:",
+        ...open.slice(-SUB_THREAD_LISTED_COUNT).map(listedLine),
+      ];
+}
+
+const subThreadRefusal = (
+  code: OrchestratorMcpFailure["code"],
+  reasons: ReadonlyArray<string>,
+  thread: ReadonlyArray<VisibleCore>,
+  more: ReadonlyArray<string>,
+) =>
+  new OrchestratorMcpFailure({
+    code,
+    message: [
+      `Refused: ${reasons.join(" ")}`,
+      ...(thread.length === 0
+        ? []
+        : ["That message's sub-thread shows:", ...subThreadRecap(thread).map(recapLine)]),
+      ...more,
+    ].join("\n"),
+  });
+
+const CHECK_SUB_THREAD = "Check that this is the sub-thread you mean to reply in.";
+const inputField = (item: OrchestrationV2TurnItem, field: string): unknown =>
+  item.type === "dynamic_tool" && typeof item.input === "object" && item.input !== null
+    ? Reflect.get(item.input, field)
+    : undefined;
+
 const orchestrationError = (error: { readonly message: string }) =>
   new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
 
 export const layerHandlers = McpToolAccess.toLayer(
   SendToUserToolkit,
-  Effect.sync(() => {
+  Effect.gen(function* () {
+    const subThreads = yield* SubThreads.orIdle;
     // Both tools decide on the thread's history, so calls of one thread take turns.
     const locks = new Map<ThreadId, Semaphore.Semaphore>();
     const lockFor = (threadId: ThreadId) => {
@@ -225,22 +349,291 @@ export const layerHandlers = McpToolAccess.toLayer(
     // A call that does not name itself cannot tell a send still running from its own, so two such
     // sends in one response would both pass. The send it accepted counts for a few seconds instead,
     // while the provider has not yet stored it, and only until the user types again.
+    /** The ids given to first messages that may not be in the history yet, each with its hold's end. */
+    const givenIds = new Map<string, number>();
     const unnamedSends = new Map<
-      ThreadId,
+      string,
       { readonly typed: string | null; readonly until: number }
     >();
+    /** The hold under `key`. Holds that ran out leave the map here, so it stays small. */
+    const liveHold = (key: string, now: number) => {
+      for (const [held, { until }] of unnamedSends) if (until <= now) unnamedSends.delete(held);
+      return unnamedSends.get(key);
+    };
+
+    const readThreadCores = Effect.fn("SendToUser.readThreadCores")(function* (threadId: ThreadId) {
+      const client = yield* Effect.serviceOption(McpSchema.McpServerClient);
+      const named = Option.getOrUndefined(client)?.requestMetadata?.["claudecode/toolUseId"];
+      const toolUseId = typeof named === "string" ? named : undefined;
+      const shown = yield* (yield* DisplayModeWrap)
+        .latestShownItems(threadId, toolUseId, SUB_THREAD_WINDOW_CORES)
+        .pipe(Effect.mapError(orchestrationError));
+      const items = itemsBefore(shown, toolUseId);
+      // `cores` is what the agent saw when it made the call. `coresNow` has what the user typed since.
+      return {
+        items,
+        cores: coresOf(items),
+        coresNow: coresOf(shown),
+        named: toolUseId !== undefined,
+      };
+    });
+
+    const subThreadChanged = (
+      threadId: ThreadId,
+      thread: ReadonlyArray<VisibleCore>,
+      first: string,
+    ) => subThreads.changed({ threadId, firstId: first, thread });
+
+    const sendInSubThread = Effect.fn("SendToUser.sendInSubThread")(function* (
+      threadId: ThreadId,
+      input: {
+        readonly text: string;
+        readonly reply_to?: string | null | undefined;
+        readonly user_message?: string | null | undefined;
+        readonly new_sub_thread?: boolean | null | undefined;
+      },
+    ) {
+      const { items, cores, named } = yield* readThreadCores(threadId);
+      const replyTo = messagePointer(input.reply_to);
+      if ((replyTo !== undefined) === (input.new_sub_thread === true)) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [
+            "this thread is set to Chat + Replies. To answer a message from the user, pass reply_to with its id and user_message with its words. For a message that answers none, pass new_sub_thread true and no reply_to.",
+          ],
+          [],
+          unansweredLines(cores),
+        );
+      }
+      if (replyTo === undefined) {
+        // Two first messages sent together get two ids: the first id is not in the history yet.
+        const now = yield* Clock.currentTimeMillis;
+        for (const [id, until] of givenIds) if (until <= now) givenIds.delete(id);
+        const id = freshFirstPointer(
+          new Set([
+            ...cores.map((core) => core.shortId),
+            ...[...givenIds.keys()].flatMap((given) =>
+              given.startsWith(`${threadId}\n`) ? [given.slice(threadId.length + 1)] : [],
+            ),
+          ]),
+          input.text,
+        );
+        givenIds.set(`${threadId}\n${id}`, now + UNNAMED_SEND_HOLD_MS);
+        return {
+          ok: true as const,
+          message: `Shown to the user as a new message with the id "${id}". ${DONE}`,
+          // The stored call keeps the id, and every later fold reads it from there.
+          messageId: id,
+        };
+      }
+      const target = cores.findLast((core) => core.from === "user" && core.shortId === replyTo);
+      if (target === undefined || target.first === null) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [`no message from the user has the id "${replyTo}".`],
+          [],
+          unansweredLines(cores),
+        );
+      }
+      const thread = subThreadCores(cores, target.first);
+      const similarity = userSimilarity(input.user_message ?? "", target.text);
+      if (similarity < TEXT_MATCH_MIN_RATIO) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [userMismatch(similarity, `message "${replyTo}"`, target.text)],
+          thread,
+          [CHECK_SUB_THREAD],
+        );
+      }
+      const latest = thread.findLast((core) => core.from === "user");
+      if (latest !== target) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [
+            `the user sent a later message, "${latest?.shortId}", in this sub-thread. Answer that one.`,
+          ],
+          thread,
+          [],
+        );
+      }
+      const now = yield* Clock.currentTimeMillis;
+      const holdKey = `${threadId}\n${replyTo}`;
+      const held = liveHold(holdKey, now);
+      // After the message: an earlier message may have the same short id, with an answer of its own.
+      const targetAt = items.findIndex(
+        (item) => item.type === "user_message" && item.messageId === target.id,
+      );
+      const answers = items
+        .slice(targetAt + 1)
+        .filter(
+          (item) =>
+            isSendCall(item) &&
+            messagePointer(inputField(item, "reply_to")) === replyTo &&
+            (named
+              ? displayEventFromTurnItem(item)?.type !== "other"
+              : displayEventFromTurnItem(item)?.type === "sent"),
+        ).length;
+      if (answers > 0 || (!named && held !== undefined && now < held.until)) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [
+            `you already answered message "${replyTo}". To change your answer, call replace_send_to_user with reply_to "${replyTo}".`,
+          ],
+          thread,
+          [],
+        );
+      }
+      if (!named)
+        unnamedSends.set(holdKey, { typed: target.id, until: now + UNNAMED_SEND_HOLD_MS });
+      yield* subThreadChanged(
+        threadId,
+        [...thread, { id: "", from: "agent", text: input.text, first: target.first, reply: true }],
+        target.first,
+      );
+      return {
+        ok: true as const,
+        message: `Shown to the user as your answer to "${replyTo}". ${DONE}`,
+      };
+    });
+
+    const replaceInSubThread = Effect.fn("SendToUser.replaceInSubThread")(function* (
+      threadId: ThreadId,
+      input: {
+        readonly reply_to?: string | null | undefined;
+        readonly sub_thread?: string | null | undefined;
+        readonly user_message: string;
+        readonly old_text: string;
+        readonly new_text: string;
+      },
+    ) {
+      const { cores, coresNow } = yield* readThreadCores(threadId);
+      const replyTo = messagePointer(input.reply_to);
+      const subThread = messagePointer(input.sub_thread);
+      if ((replyTo === undefined) === (subThread === undefined)) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [
+            "this thread is set to Chat + Replies. Pass reply_to to replace your answer to that message from the user, or sub_thread to replace a message that you sent with new_sub_thread, and not both.",
+          ],
+          [],
+          [...unansweredLines(cores), ...replaceableLines(cores)],
+        );
+      }
+      if (replyTo !== undefined) {
+        const target = cores.findLast((core) => core.from === "user" && core.shortId === replyTo);
+        if (target === undefined || target.first === null) {
+          return yield* subThreadRefusal(
+            "invalid_request",
+            [`no message from the user has the id "${replyTo}".`],
+            [],
+            unansweredLines(cores),
+          );
+        }
+        const thread = subThreadCores(cores, target.first);
+        const answer = thread
+          .slice(thread.indexOf(target) + 1)
+          .findLast((core) => core.replyTo === replyTo);
+        if (answer === undefined) {
+          return yield* subThreadRefusal(
+            "invalid_request",
+            [
+              `you have not answered message "${replyTo}", so there is nothing to replace. Use send_to_user.`,
+            ],
+            thread,
+            [],
+          );
+        }
+        // As for a first message: once the user has replied to an answer, it stays as they read it.
+        // That holds for a reply typed while this call ran, which only `coresNow` has.
+        const threadNow = subThreadCores(coresNow, target.first);
+        const later = threadNow
+          .slice(threadNow.findIndex((core) => core.id === answer.id) + 1)
+          .findLast((core) => core.from === "user");
+        if (later !== undefined) {
+          return yield* subThreadRefusal(
+            "invalid_request",
+            [
+              `the user has replied after your answer to message "${replyTo}", so it stays as it is. Answer their latest reply with send_to_user and reply_to "${later.shortId}".`,
+            ],
+            thread,
+            [],
+          );
+        }
+        const similarity = userSimilarity(input.user_message, target.text);
+        const oldSimilarity = textSimilarity(quoted(input.old_text), recapText(answer.text));
+        const mismatches = [
+          ...(similarity >= TEXT_MATCH_MIN_RATIO
+            ? []
+            : [userMismatch(similarity, `message "${replyTo}"`, target.text)]),
+          ...(oldSimilarity >= TEXT_MATCH_MIN_RATIO
+            ? []
+            : [
+                `old_text is ${percent(oldSimilarity)}% like your answer to it; needs ${MIN_PERCENT}%.`,
+              ]),
+        ];
+        if (mismatches.length > 0) {
+          return yield* subThreadRefusal("invalid_request", mismatches, thread, [
+            "Your current answer, as old_text:",
+            recapText(answer.text),
+            CHECK_SUB_THREAD,
+          ]);
+        }
+        yield* subThreadChanged(
+          threadId,
+          thread.map((core) => (core === answer ? { ...core, text: input.new_text } : core)),
+          target.first,
+        );
+        return SHOWN;
+      }
+      const first = cores.findLast(
+        (core) => core.from === "agent" && !core.reply && core.shortId === subThread,
+      );
+      if (first === undefined) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [`none of your messages sent with new_sub_thread has the id "${subThread}".`],
+          [],
+          replaceableLines(cores),
+        );
+      }
+      const thread = subThreadCores(cores, first.id);
+      const reply = subThreadCores(coresNow, first.id).findLast((core) => core.from === "user");
+      if (reply !== undefined) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [
+            `the user has replied under this message, so it stays as it is. Answer their latest reply with send_to_user and reply_to "${reply.shortId}".`,
+          ],
+          thread,
+          [],
+        );
+      }
+      const oldSimilarity = textSimilarity(quoted(input.old_text), recapText(first.text));
+      if (oldSimilarity < TEXT_MATCH_MIN_RATIO) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [`old_text is ${percent(oldSimilarity)}% like that message; needs ${MIN_PERCENT}%.`],
+          [],
+          ["Your message, as old_text:", recapText(first.text)],
+        );
+      }
+      return SHOWN;
+    });
 
     return {
-      [SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller(({ text }) =>
+      [SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller((input) =>
         Effect.gen(function* () {
+          const { text } = input;
           yield* checkMessageSize(text);
           const { threadId, mode } = yield* callerThread;
+          if (mode.subThreads)
+            return yield* sendInSubThread(threadId, input).pipe(lockFor(threadId).withPermits(1));
           if (!mode.oneSendPerMessage) return SHOWN;
           return yield* Effect.gen(function* () {
             const turn = yield* readThreadTurn(threadId);
             const now = yield* Clock.currentTimeMillis;
             const typed = turn.typed?.id ?? null;
-            const held = unnamedSends.get(threadId);
+            const held = liveHold(threadId, now);
             const heldSend = !turn.named && held?.typed === typed && now < held.until;
             if (turn.sends > 0 || heldSend) {
               return yield* refusal(
@@ -257,53 +650,64 @@ export const layerHandlers = McpToolAccess.toLayer(
           }).pipe(lockFor(threadId).withPermits(1));
         }),
       ),
-      [REPLACE_SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller(
-        ({ user_message, old_text, new_text }) =>
-          Effect.gen(function* () {
-            yield* checkMessageSize(new_text);
-            const { threadId, mode } = yield* callerThread;
-            return yield* Effect.gen(function* () {
-              const turn = yield* readThreadTurn(threadId);
-              if (!mode.oneSendPerMessage) {
-                return yield* refusal(
-                  "capability_denied",
-                  [
-                    "replace_send_to_user works only in threads set to Messages only or Messages + Dashboard. Use send_to_user.",
-                  ],
-                  turn,
-                );
-              }
-              if (turn.current === undefined) {
-                return yield* refusal(
-                  "invalid_request",
-                  [
-                    "you have sent no message since the user's last one, so there is nothing to replace. Use send_to_user.",
-                  ],
-                  turn,
-                );
-              }
-              const typed = turn.typed?.text ?? "";
-              const userSimilarity = Math.max(
-                textSimilarity(quoted(user_message), recapText(typed)),
-                textSimilarity(quoted(user_message), providerForm(typed)),
+      [REPLACE_SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller((input) =>
+        Effect.gen(function* () {
+          const { user_message, old_text, new_text } = input;
+          yield* checkMessageSize(new_text);
+          const { threadId, mode } = yield* callerThread;
+          if (mode.subThreads)
+            return yield* replaceInSubThread(threadId, input).pipe(
+              lockFor(threadId).withPermits(1),
+            );
+          return yield* Effect.gen(function* () {
+            const turn = yield* readThreadTurn(threadId);
+            if (
+              messagePointer(input.reply_to) !== undefined ||
+              messagePointer(input.sub_thread) !== undefined
+            ) {
+              return yield* refusal(
+                "capability_denied",
+                [
+                  "this thread is not set to Chat + Replies, so it has no sub-threads. Call replace_send_to_user without reply_to and sub_thread.",
+                ],
+                turn,
               );
-              const oldSimilarity = textSimilarity(quoted(old_text), recapText(turn.current.text));
-              const mismatches = [
-                ...(userSimilarity >= TEXT_MATCH_MIN_RATIO
-                  ? []
-                  : [
-                      `user_message is ${percent(userSimilarity)}% like the user's last message; ${typed === "" ? "expected an empty string" : `needs ${MIN_PERCENT}%`}.`,
-                    ]),
-                ...(oldSimilarity >= TEXT_MATCH_MIN_RATIO
-                  ? []
-                  : [
-                      `old_text is ${percent(oldSimilarity)}% like your current message; needs ${MIN_PERCENT}%.`,
-                    ]),
-              ];
-              if (mismatches.length > 0) return yield* refusal("invalid_request", mismatches, turn);
-              return SHOWN;
-            }).pipe(lockFor(threadId).withPermits(1));
-          }),
+            }
+            if (!mode.oneSendPerMessage) {
+              return yield* refusal(
+                "capability_denied",
+                [
+                  "replace_send_to_user works only in a thread whose display mode allows one message from you per message of the user. This thread's mode does not. Use send_to_user.",
+                ],
+                turn,
+              );
+            }
+            if (turn.current === undefined) {
+              return yield* refusal(
+                "invalid_request",
+                [
+                  "you have sent no message since the user's last one, so there is nothing to replace. Use send_to_user.",
+                ],
+                turn,
+              );
+            }
+            const typed = turn.typed?.text ?? "";
+            const similarity = userSimilarity(user_message, typed);
+            const oldSimilarity = textSimilarity(quoted(old_text), recapText(turn.current.text));
+            const mismatches = [
+              ...(similarity >= TEXT_MATCH_MIN_RATIO
+                ? []
+                : [userMismatch(similarity, "the user's last message", typed)]),
+              ...(oldSimilarity >= TEXT_MATCH_MIN_RATIO
+                ? []
+                : [
+                    `old_text is ${percent(oldSimilarity)}% like your current message; needs ${MIN_PERCENT}%.`,
+                  ]),
+            ];
+            if (mismatches.length > 0) return yield* refusal("invalid_request", mismatches, turn);
+            return SHOWN;
+          }).pipe(lockFor(threadId).withPermits(1));
+        }),
       ),
     };
   }),

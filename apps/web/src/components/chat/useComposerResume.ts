@@ -10,9 +10,11 @@ import {
   squashAtomCommandFailure,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
-import { useState } from "react";
+import { use, useState } from "react";
 import { newMessageId } from "~/lib/utils";
 import type { ComposerHandleRef } from "../../composerHandleContext";
+import { replyContextField, subThreadDraftId } from "../../fork/subThreads/subThreadReply";
+import { SubThreadViewContext } from "../../fork/subThreads/subThreadsState";
 import { DEFAULT_INTERACTION_MODE } from "../../types";
 import { threadEnvironment } from "../../state/threads";
 import { useOrchestrationCommand } from "../../state/use-orchestration-command";
@@ -81,7 +83,10 @@ export function useComposerResume(input: ComposerResumeInput) {
     () => new Set(),
   );
   const isResuming = resumingThreadKeys.has(routeThreadKey);
-  const { sendInFlight: sendInFlightRef } = draftSendState(routeThreadKey);
+  const subThread = use(SubThreadViewContext);
+  const { sendInFlight: sendInFlightRef } = draftSendState(
+    subThreadDraftId(routeThreadKey, subThread) ?? routeThreadKey,
+  );
 
   const onResume = async () => {
     if (
@@ -130,6 +135,7 @@ export function useComposerResume(input: ComposerResumeInput) {
             role: "user",
             text: "Continue where you left off.",
             attachments: [],
+            ...replyContextField(subThread),
           },
           runtimeMode,
           interactionMode: DEFAULT_INTERACTION_MODE,

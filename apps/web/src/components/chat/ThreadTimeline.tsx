@@ -10,7 +10,9 @@ import {
   timelineHasEphemeralPreviewUrls,
 } from "../ChatView.logic";
 import { MessagesTimeline } from "./MessagesTimeline";
+import { ThreadFindTimelineContext } from "./ThreadFindProvider";
 import { useDisplayModeTimeline } from "../../fork/displayMode/useThreadDisplayMode";
+import { useSubThreadReveal } from "../../fork/subThreads/useSubThreadReveal";
 
 /**
  * The timeline with the streamed text. ChatView reads the thread through its quiet
@@ -41,28 +43,33 @@ export function ThreadTimeline({
     ...entriesInput,
     visibleTurnItems,
   });
-  const { entries, repliesChosen } = useDisplayModeTimeline(
+  const { entries, repliesChosen, rememberKey } = useDisplayModeTimeline(
     draftEntries === null ? threadDetailRef : null,
     draftEntries ?? serverEntries,
+    activeThreadKey,
   );
+  const shown = useSubThreadReveal(threadDetailRef, serverEntries, timelineProps.citationRequest);
   const displayedEntries = resolveThreadSwitchTimeline({
     loading: entries.length === 0 && syncing,
-    activeThreadKey,
+    activeThreadKey: rememberKey,
     nextEntries: entries,
-    rememberedForActive: peekRememberedThreadTimeline<typeof entries>(activeThreadKey),
+    rememberedForActive: peekRememberedThreadTimeline<typeof entries>(rememberKey),
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- stores the committed ready timeline in the module-level cache used during thread switches
   useLayoutEffect(() => {
     if (detailLoading || entries.length === 0 || timelineHasEphemeralPreviewUrls(entries)) {
       return;
     }
-    rememberReadyThreadTimeline({ threadKey: activeThreadKey, entries });
-  }, [activeThreadKey, detailLoading, entries]);
+    rememberReadyThreadTimeline({ threadKey: rememberKey, entries });
+  }, [rememberKey, detailLoading, entries]);
   return (
-    <MessagesTimeline
-      {...timelineProps}
-      timelineEntries={displayedEntries}
-      repliesChosen={repliesChosen}
-    />
+    <ThreadFindTimelineContext value={shown.find}>
+      <MessagesTimeline
+        {...timelineProps}
+        citationRequest={shown.citationRequest}
+        timelineEntries={displayedEntries}
+        repliesChosen={repliesChosen}
+      />
+    </ThreadFindTimelineContext>
   );
 }

@@ -28,6 +28,7 @@ import {
   EnvironmentAuthorizationError,
   RpcScopeAuthorization,
   THREAD_DASHBOARD_WS_METHODS,
+  THREAD_SUB_THREADS_WS_METHODS,
   WS_METHODS,
   WsRpcGroup,
 } from "@t3tools/contracts";
@@ -215,6 +216,8 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.subscribeDeviceState]: AuthOrchestrationReadScope,
   [THREAD_DASHBOARD_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
   [THREAD_DASHBOARD_WS_METHODS.markSeen]: AuthOrchestrationOperateScope,
+  [THREAD_SUB_THREADS_WS_METHODS.subscribe]: AuthOrchestrationReadScope,
+  [THREAD_SUB_THREADS_WS_METHODS.markRead]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeServerConfig]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeServerLifecycle]: AuthOrchestrationReadScope,
   [WS_METHODS.subscribeAuthAccess]: AuthAccessReadScope,

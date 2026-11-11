@@ -26,6 +26,7 @@ import {
   isVideoAttachment,
 } from "../../types";
 import ChatMarkdown from "../ChatMarkdown";
+import { SubThreadReplyLine } from "../../fork/subThreads/SubThreadReplyLine";
 import {
   CalendarClockIcon,
   ChevronDownIcon,
@@ -326,6 +327,7 @@ function AutomationMessageRow({ row }: { row: Extract<TimelineRow, { kind: "mess
         ) : null}
       </div>
       <UserMessageProjectedStatus row={row} />
+      <SubThreadReplyLine rowId={row.id} fromUser bare={expanded ? undefined : "always"} />
       {expanded ? (
         <div className="flex w-full max-w-[80%] items-center justify-end pe-1 text-xs tabular-nums opacity-0 transition-opacity duration-200 pointer-coarse:opacity-100 focus-within:opacity-100 group-hover:opacity-100">
           <div className="flex shrink-0 items-center gap-2">
@@ -1028,6 +1030,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
         ) : null}
       </div>
       <UserMessageProjectedStatus row={row} />
+      <SubThreadReplyLine rowId={row.id} fromUser bare={floatActions ? "wide" : undefined} />
       {!folded || expanded ? (
         <div
           className={cn(

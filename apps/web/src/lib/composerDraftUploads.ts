@@ -2,6 +2,7 @@ import type { ScopedProjectRef, ScopedThreadRef } from "@t3tools/contracts";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 
 import { type DraftId, useComposerDraftStore } from "../composerDraftStore";
+import { releaseSubThreadDraftUploads } from "../fork/subThreads/subThreadReply";
 import { releaseDraftAttachments } from "./attachmentUploadQueue";
 
 export function releaseComposerDraftUploads(target: ScopedThreadRef | DraftId): void {
@@ -9,6 +10,7 @@ export function releaseComposerDraftUploads(target: ScopedThreadRef | DraftId): 
   if (draft) {
     releaseDraftAttachments([...draft.images, ...draft.files]);
   }
+  releaseSubThreadDraftUploads(target);
 }
 
 export function releaseProjectDraftUploads(
@@ -30,5 +32,6 @@ export function releaseProjectDraftUploads(
     if (draft) {
       releaseDraftAttachments([...draft.images, ...draft.files]);
     }
+    releaseSubThreadDraftUploads(threadRef);
   }
 }

@@ -246,6 +246,7 @@ import {
   resolveProviderSkillsForCwd,
   resolveProviderSlashCommandsForCwd,
 } from "@t3tools/client-runtime/providerSkills";
+import { useInSubThreadView } from "../../fork/subThreads/subThreadsState";
 import { isWhiteboardBuild } from "../../fork/whiteboard/build";
 import { useWhiteboardInsertRef } from "../../fork/whiteboard/useWhiteboardInsertRef";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
@@ -624,9 +625,12 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     activePendingProgress?.activeQuestion?.allowCustomAnswer !== false &&
     !activePendingIsResponding;
   const questionRequest = pendingUserInputs[0];
+  const inSubThreadView = useInSubThreadView();
   // Publish eligibility before async captures can observe a question the UI has already closed.
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the open question's attachment draft in the module tracker before async captures read it
   useLayoutEffect(() => {
+    // The thread has one open question draft, and the main box registers it.
+    if (inSubThreadView) return;
     if (!questionAttachmentTarget || !questionRequest || !questionTakesSnapShots) return;
     return trackOpenQuestionAttachmentDraft(routeThreadRef, {
       draftId: questionAttachmentTarget,
@@ -642,6 +646,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   }, [
     activeThreadId,
     environmentId,
+    inSubThreadView,
     questionAttachmentTarget,
     questionRequest,
     questionTakesSnapShots,

@@ -43,7 +43,13 @@ import {
   scopeThreadRef,
 } from "@t3tools/client-runtime/environment";
 import { createModelSelection } from "@t3tools/shared/model";
-import { type SetStateAction, useLayoutEffect, useRef } from "react";
+import { type SetStateAction, use, useLayoutEffect, useRef } from "react";
+import {
+  addsContext,
+  subThreadDraftId,
+  withSubThreadRecord,
+} from "../../fork/subThreads/subThreadReply";
+import { SubThreadViewContext } from "../../fork/subThreads/subThreadsState";
 import { flushSync } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import {
@@ -326,6 +332,7 @@ export function useComposerSend(input: ComposerSendInput) {
     persistThreadSettingsForNextTurn,
   } = input;
   const linkedEnvironments = useLinkedEnvironments(environmentId);
+  const subThread = use(SubThreadViewContext);
   const handleNewThread = useNewThreadHandler();
   const navigate = useNavigate();
   const clientSettingsHydrated = useClientSettingsHydrated();
@@ -350,7 +357,9 @@ export function useComposerSend(input: ComposerSendInput) {
     resetLocalDispatch,
     setThreadError,
   });
-  const { sendInFlight: sendInFlightRef } = draftSendState(routeThreadKey);
+  const { sendInFlight: sendInFlightRef } = draftSendState(
+    subThreadDraftId(routeThreadKey, subThread) ?? routeThreadKey,
+  );
   const composerSendGenerationRef = useRef(0);
   const environmentUnavailableSendToastSlotRef = useRef(0);
   // A send awaits uploads before it declines, so it reads the approvals pending by then.
@@ -766,7 +775,7 @@ export function useComposerSend(input: ComposerSendInput) {
     // Records bind attachments by the id each side knows: the local id for the optimistic
     // row, the upload id (or local id on the data-URL path) on the wire; the server
     // rebinds them to the persisted id.
-    const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
+    const buildComposerMessageContext = (attachmentIds: ReadonlyArray<string>) =>
       buildMessageContext({
         terminalContexts: composerTerminalContextsSnapshot,
         reviewComments: composerReviewCommentsSnapshot,
@@ -778,6 +787,12 @@ export function useComposerSend(input: ComposerSendInput) {
           attachmentId: attachmentIds[index] ?? attachment.id,
         })),
       });
+    const buildOutgoingMessageContext = (attachmentIds: ReadonlyArray<string>) =>
+      withSubThreadRecord(
+        subThread,
+        messageTextForSend,
+        buildComposerMessageContext(attachmentIds),
+      );
     const outgoingMessageContext = buildOutgoingMessageContext(
       composerAttachmentsSnapshot.map((attachment) => attachment.id),
     );
@@ -960,7 +975,7 @@ export function useComposerSend(input: ComposerSendInput) {
         respondingRequestIdsRef.current.includes(approval.requestId),
       );
       if (approvalFeedbackTarget !== undefined) {
-        if (composerAttachmentsSnapshot.length > 0 || outgoingMessageContext !== undefined) {
+        if (composerAttachmentsSnapshot.length > 0 || addsContext(outgoingMessageContext)) {
           setThreadError(
             threadIdForSend,
             "Send approval feedback without attachments or added context.",

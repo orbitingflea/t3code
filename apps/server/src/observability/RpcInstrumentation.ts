@@ -1,6 +1,7 @@
 import {
   ORCHESTRATION_V2_WS_METHODS,
   THREAD_DASHBOARD_WS_METHODS,
+  THREAD_SUB_THREADS_WS_METHODS,
   WS_METHODS,
   type WsRpcGroup,
 } from "@t3tools/contracts";
@@ -233,6 +234,8 @@ const RPC_AGGREGATES = {
   [WS_METHODS.subscribeDeviceState]: "device",
   [THREAD_DASHBOARD_WS_METHODS.subscribe]: "orchestration",
   [THREAD_DASHBOARD_WS_METHODS.markSeen]: "orchestration",
+  [THREAD_SUB_THREADS_WS_METHODS.subscribe]: "orchestration",
+  [THREAD_SUB_THREADS_WS_METHODS.markRead]: "orchestration",
   [WS_METHODS.subscribeServerConfig]: "server",
   [WS_METHODS.subscribeServerLifecycle]: "server",
   [WS_METHODS.subscribeAuthAccess]: "auth",

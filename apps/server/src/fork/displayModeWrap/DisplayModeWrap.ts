@@ -14,7 +14,11 @@ import {
   type MessageOrigin,
   NORMAL_DISPLAY_MODE,
   resolveDisplayMode,
+  foldCores,
   SEND_TO_USER_PAYLOAD_LIKE,
+  SUB_THREAD_WINDOW_CORES,
+  subThreadCores,
+  subThreadOfRecords,
   WRAPPED_CORE_COUNT,
 } from "@t3tools/shared/displayModes";
 import { createOrchestrationV2TurnItemVisibility } from "@t3tools/shared/orchestrationV2Timeline";
@@ -30,6 +34,7 @@ import type * as SqlError from "effect/sql/SqlError";
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import * as SubThreads from "../subThreads/SubThreads.ts";
 import { createToldTable } from "./DisplayModeCompactionNote.ts";
 
 /** The text that the agent gets for a message, and the step to run once the provider accepts it. */
@@ -76,19 +81,21 @@ export interface DisplayModeWrapShape {
       readonly id: MessageId;
       readonly text: string;
       readonly attachments?: ReadonlyArray<unknown>;
+      /** A reply's record names the first message of its sub-thread. */
+      readonly context?: { readonly records: ReadonlyArray<unknown> } | undefined;
     };
     readonly text: string;
     readonly context?: NoteContext;
   }) => Effect.Effect<WrappedUserText>;
   /**
-   * The user messages and send_to_user and replace_send_to_user calls that the thread's screen
-   * shows, oldest first, in any state. It reads back from the thread's end past the user's last
-   * typed message, and past at least WRAPPED_CORE_COUNT messages. With `ownNativeId`, both are
-   * counted only from the item with that native id back, so the caller can read what came before it.
+   * The user messages and send calls that the screen shows, oldest first, in any state. Reads back
+   * past the user's last typed message and at least `cores` messages (default WRAPPED_CORE_COUNT),
+   * counted from the item with `ownNativeId` back when given.
    */
   readonly latestShownItems: (
     threadId: ThreadId,
     ownNativeId?: string,
+    cores?: number,
   ) => Effect.Effect<
     ReadonlyArray<OrchestrationV2TurnItem>,
     SqlError.SqlError | Schema.SchemaError | ProjectionStore.ProjectionStoreV2Error
@@ -176,6 +183,7 @@ export const layer: Layer.Layer<
     const projections = yield* ProjectionStore.ProjectionStoreV2;
     const serverSettings = yield* ServerSettings.ServerSettingsService;
     const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
+    const subThreads = yield* SubThreads.orIdle;
 
     yield* createToldTable;
 
@@ -188,7 +196,7 @@ export const layer: Layer.Layer<
       Effect.forkScoped,
     );
 
-    // Reads newest first from before `before`, or from the end, until WRAPPED_CORE_COUNT messages
+    // Reads newest first from before `before`, or from the end, until `coreCount` messages
     // (not rewrites) and, without `before`, a typed message, counted from `ownNativeId` back when
     // given. Visibility gets no items: they only decide interrupt results, which never enter the
     // agent's transcript.
@@ -196,7 +204,9 @@ export const layer: Layer.Layer<
       threadId: ThreadId,
       before: MessageId | null,
       ownNativeId?: string,
+      coreCount: number = WRAPPED_CORE_COUNT,
     ) {
+      const pageRows = Math.max(PAGE_ROWS, Math.min(coreCount, 64));
       let start = { ordinal: Number.MAX_SAFE_INTEGER, itemId: "" };
       if (before !== null) {
         const anchors = yield* sql<{ readonly turn_item_id: string; readonly ordinal: number }>`
@@ -261,7 +271,7 @@ export const layer: Layer.Layer<
               AND item.ordinal <= ${ordinal} AND (item.ordinal < ${ordinal} OR item.turn_item_id < ${itemId})
               AND ${shownOnly}
             ORDER BY item.ordinal DESC, item.turn_item_id DESC
-            LIMIT ${PAGE_ROWS}
+            LIMIT ${pageRows}
           `;
           for (const row of rows) {
             const item = yield* decodeTurnItem(row.payload_json);
@@ -272,10 +282,10 @@ export const layer: Layer.Layer<
             const event = displayEventFromTurnItem(item);
             if (event?.type === "user") passedTyped = true;
             if (event?.type === "user" || event?.type === "sent") cores++;
-            if (passedTyped && cores >= WRAPPED_CORE_COUNT) return found.reverse();
+            if (passedTyped && cores >= coreCount) return found.reverse();
           }
           const last = rows.at(-1);
-          if (last === undefined || rows.length < PAGE_ROWS) break;
+          if (last === undefined || rows.length < pageRows) break;
           ordinal = last.ordinal;
           itemId = last.turn_item_id;
         }
@@ -426,16 +436,37 @@ export const layer: Layer.Layer<
           return note === null
             ? unchanged
             : { ...unchanged, commandNote: { text: note, delivered: recordTold(threadId, mode) } };
+        const under = mode.subThreads ? subThreadOfRecords(message.context?.records) : undefined;
+        const events =
+          mode.wrap === null || (mode.subThreads && under === undefined)
+            ? []
+            : (yield* shownItems(
+                threadId,
+                message.id,
+                undefined,
+                mode.subThreads ? SUB_THREAD_WINDOW_CORES : WRAPPED_CORE_COUNT,
+              )).flatMap((item) => {
+                const event = displayEventFromTurnItem(item);
+                return event === null ? [] : [event];
+              });
         const wrapped =
-          mode.wrap === null
-            ? text
-            : mode.wrap(
-                (yield* shownItems(threadId, message.id)).flatMap((item) => {
-                  const event = displayEventFromTurnItem(item);
-                  return event === null ? [] : [event];
-                }),
-                text,
-              );
+          mode.wrap === null ? text : mode.wrap(events, text, { id: message.id, under });
+        if (under !== undefined) {
+          yield* subThreads.changed({
+            threadId,
+            firstId: under,
+            thread: [
+              ...subThreadCores(foldCores(events), under),
+              {
+                id: message.id,
+                from: "user" as const,
+                text: message.text,
+                first: under,
+                reply: true,
+              },
+            ],
+          });
+        }
         return note === null
           ? { text: wrapped, accepted: Effect.void }
           : { text: `${note}\n${wrapped}`, accepted: recordTold(threadId, mode) };
@@ -452,7 +483,7 @@ export const layer: Layer.Layer<
 
     const latestShownItems: DisplayModeWrapShape["latestShownItems"] = Effect.fn(
       "DisplayModeWrap.latestShownItems",
-    )((threadId, ownNativeId) => shownItems(threadId, null, ownNativeId));
+    )((threadId, ownNativeId, cores) => shownItems(threadId, null, ownNativeId, cores));
 
     return DisplayModeWrap.of({
       wrapUserText,

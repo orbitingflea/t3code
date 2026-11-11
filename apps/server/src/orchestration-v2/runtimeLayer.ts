@@ -59,6 +59,7 @@ import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as ThreadDashboard from "../fork/threadDashboard/ThreadDashboard.ts";
+import * as SubThreads from "../fork/subThreads/SubThreads.ts";
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,
@@ -401,5 +402,6 @@ export const layerProduction = Layer.mergeAll(
   Layer.provide(Scheduler.layer),
   Layer.provideMerge(DisplayModeWrap.layer),
   Layer.provideMerge(ThreadDashboard.layer),
+  Layer.provideMerge(SubThreads.layer),
   Layer.provideMerge(layerEventInfrastructure),
 );

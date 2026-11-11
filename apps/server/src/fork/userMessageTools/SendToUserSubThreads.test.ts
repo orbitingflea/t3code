@@ -1,0 +1,576 @@
+import { expect, it } from "@effect/vitest";
+import {
+  ComposerContextId,
+  EnvironmentId,
+  MessageId,
+  type OrchestrationV2TurnItem,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  ThreadId,
+  TurnItemId,
+} from "@t3tools/contracts";
+import { recapLine, shortId, SUB_THREAD_RECORD_KIND } from "@t3tools/shared/displayModes";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { McpSchema, McpServer } from "effect/ai";
+
+import * as McpHttpServer from "../../mcp/McpHttpServer.ts";
+import * as McpInvocationContext from "../../mcp/McpInvocationContext.ts";
+import * as ServerSettings from "../../serverSettings.ts";
+import { DisplayModeWrap } from "../displayModeWrap/DisplayModeWrap.ts";
+import * as SubThreads from "../subThreads/SubThreads.ts";
+import * as SendToUser from "./SendToUser.ts";
+
+const repliesThread = ThreadId.make("sub-threads:chat-replies");
+const messagesThread = ThreadId.make("sub-threads:messages-only");
+
+const scopeFor = (threadId: ThreadId): McpInvocationContext.McpInvocationScope => ({
+  environmentId: EnvironmentId.make("sub-threads-environment"),
+  requestNamespace: "sub-threads-session",
+  thread: {
+    threadId,
+    providerSessionId: "sub-threads-session",
+    providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+  },
+  client: undefined,
+  issuedAt: 0,
+  capabilities: new Set(),
+});
+const client = McpSchema.McpServerClient.of({
+  clientId: 1,
+  protocolVersion: "2025-06-18",
+  clientCapabilities: {},
+  clientInfo: { name: "sub-threads", version: "1" },
+  initializePayload: {
+    protocolVersion: "2025-06-18",
+    capabilities: {},
+    clientInfo: { name: "sub-threads", version: "1" },
+  },
+  getClient: Effect.die("unused"),
+});
+
+const time = DateTime.makeUnsafe("2026-11-11T00:00:00.000Z");
+let ordinal = 0;
+const base = (id: string) => ({
+  id: TurnItemId.make(id),
+  threadId: repliesThread,
+  runId: null,
+  nodeId: null,
+  providerThreadId: null,
+  providerTurnId: null,
+  nativeItemRef: {
+    driver: ProviderDriverKind.make("claudeAgent"),
+    nativeId: `toolu_${id}`,
+    strength: "strong" as const,
+  },
+  parentItemId: null,
+  ordinal: ordinal++,
+  status: "completed" as const,
+  title: null,
+  startedAt: time,
+  completedAt: time,
+  updatedAt: time,
+});
+/** A message that the user typed: in the main list, or under the first message `under`. */
+const typed = (id: string, text: string, under?: string) =>
+  ({
+    ...base(id),
+    type: "user_message",
+    messageId: MessageId.make(id),
+    text,
+    attachments: [],
+    inputIntent: "turn_start",
+    createdBy: "user",
+    creationSource: "web",
+    ...(under === undefined
+      ? {}
+      : {
+          context: {
+            version: 1 as const,
+            records: [
+              {
+                version: 1 as const,
+                contextId: ComposerContextId.make(`reply-${id}`),
+                kind: SUB_THREAD_RECORD_KIND,
+                label: "",
+                payload: { first: under },
+              },
+            ],
+          },
+        }),
+  }) as OrchestrationV2TurnItem;
+const sent = (id: string, input: Record<string, unknown>) =>
+  ({
+    ...base(id),
+    type: "dynamic_tool",
+    toolName: "mcp__t3-code__send_to_user",
+    input,
+  }) satisfies OrchestrationV2TurnItem;
+const answer = (id: string, text: string, to: string) =>
+  sent(id, { text, reply_to: shortId(to), user_message: "" });
+const news = (id: string, text: string) => sent(id, { text, new_sub_thread: true });
+
+let history: ReadonlyArray<OrchestrationV2TurnItem> = [];
+let changes: Array<{ readonly firstId: string; readonly lines: ReadonlyArray<string> }> = [];
+const setup = (items: ReadonlyArray<OrchestrationV2TurnItem>) => {
+  history = items;
+  changes = [];
+};
+
+const layer = McpHttpServer.toolkitRegistration(
+  SendToUser.SendToUserToolkit,
+  SendToUser.layerHandlers,
+).pipe(
+  Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+  Layer.provide(
+    ServerSettings.layerTest({
+      threadDisplayModes: { [repliesThread]: "chat-replies", [messagesThread]: "messages-only" },
+    }),
+  ),
+  Layer.provide(
+    Layer.mock(DisplayModeWrap)({
+      latestShownItems: () => Effect.succeed(history),
+      forgetNotesAfterCompaction: () => (ingest) => ingest,
+    }),
+  ),
+  Layer.provide(
+    Layer.mock(SubThreads.SubThreads)({
+      changed: ({ firstId, thread }) =>
+        Effect.sync(() => void changes.push({ firstId, lines: thread.map(recapLine) })),
+    }),
+  ),
+);
+
+/** Calls a tool. With `ownItem`, the provider names the call, as Claude does: its item is in the history. */
+const call = (
+  name: "send_to_user" | "replace_send_to_user",
+  args: Record<string, unknown>,
+  threadId: ThreadId = repliesThread,
+  ownItem?: string,
+) =>
+  McpServer.McpServer.pipe(
+    Effect.flatMap((server) => server.callTool({ name, arguments: args })),
+    Effect.provideService(McpInvocationContext.McpInvocationContext, scopeFor(threadId)),
+    Effect.provideService(
+      McpSchema.McpServerClient,
+      ownItem === undefined
+        ? client
+        : McpSchema.McpServerClient.of({
+            ...client,
+            requestMetadata: { "claudecode/toolUseId": `toolu_${ownItem}` },
+          }),
+    ),
+  );
+
+const refusalLines = (result: McpSchema.CallToolResult) => {
+  expect(result.isError).toBe(true);
+  const block = result.content[0];
+  return (block?.type === "text" ? block.text : "").split("\n");
+};
+const DONE = "If you are done, end your turn with no text.";
+const shown = (message: string) => ({ ok: true, message: `${message} ${DONE}` });
+
+// Two sub-threads: the user's question with one answer and a follow-up, and the agent's news with a reply.
+const twoSubThreads = () => [
+  typed("q1", "Is the build green?"),
+  news("n1", "The deploy is done."),
+  answer("a1", "Yes, all checks pass.", "q1"),
+  typed("why", "Which build was deployed?", "n1"),
+  typed("q2", "And the lint job?", "q1"),
+];
+
+it.effect("refuses a send that names neither a message to answer nor a new sub-thread", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    for (const args of [
+      { text: "Lint passes too." },
+      { text: "Lint passes too.", reply_to: "", new_sub_thread: false },
+      { text: "Lint passes too.", reply_to: shortId("q2"), new_sub_thread: true },
+    ]) {
+      expect(refusalLines(yield* call("send_to_user", args))).toEqual([
+        "Refused: this thread is set to Chat + Replies. To answer a message from the user, pass reply_to with its id and user_message with its words. For a message that answers none, pass new_sub_thread true and no reply_to.",
+        "Messages from the user with no answer yet, by id:",
+        `"${shortId("why")}": Which build was deployed?`,
+        `"${shortId("q2")}": And the lint job?`,
+      ]);
+    }
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("shows a new message and returns the id that names it", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const result = yield* call("send_to_user", {
+      text: "CI is red on main.",
+      new_sub_thread: true,
+    });
+    expect(result.structuredContent).toEqual({
+      ...shown(
+        `Shown to the user as a new message with the id "${shortId("CI is red on main.")}".`,
+      ),
+      messageId: shortId("CI is red on main."),
+    });
+    expect(changes).toEqual([]);
+    // A second send with the same words, before the first is in the history, gets its own id.
+    const together = yield* call("send_to_user", {
+      text: "CI is red on main.",
+      new_sub_thread: true,
+    });
+    expect(together.structuredContent).toMatchObject({
+      messageId: shortId("CI is red on main.\n1"),
+    });
+    // The same words as an earlier first message get an id of their own, kept in the result.
+    const again = yield* call("send_to_user", {
+      text: "The deploy is done.",
+      new_sub_thread: true,
+    });
+    const id = shortId("The deploy is done.\n1");
+    expect(again.structuredContent).toEqual({
+      ...shown(`Shown to the user as a new message with the id "${id}".`),
+      messageId: id,
+    });
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("shows an answer to the latest user message of each sub-thread, in any order", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const first = yield* call("send_to_user", {
+      text: "Build 20261111.",
+      reply_to: shortId("why"),
+      user_message: "Which build was deployed?",
+    });
+    expect(first.structuredContent).toEqual(
+      shown(`Shown to the user as your answer to "${shortId("why")}".`),
+    );
+    const second = yield* call("send_to_user", {
+      text: "Lint passes too.",
+      reply_to: shortId("q2"),
+      user_message: "[user] And the lint job?",
+    });
+    expect(second.structuredContent).toEqual(
+      shown(`Shown to the user as your answer to "${shortId("q2")}".`),
+    );
+    expect(changes).toEqual([
+      {
+        firstId: "n1",
+        lines: [
+          "[you] The deploy is done.",
+          "[user] Which build was deployed?",
+          "[you] Build 20261111.",
+        ],
+      },
+      {
+        firstId: "q1",
+        lines: [
+          "[user] Is the build green?",
+          "[you] Yes, all checks pass.",
+          "[user] And the lint job?",
+          "[you] Lint passes too.",
+        ],
+      },
+    ]);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses an id that no user message has", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const lines = refusalLines(
+      yield* call("send_to_user", { text: "Hm.", reply_to: "ffffff", user_message: "?" }),
+    );
+    expect(lines.slice(0, 2)).toEqual([
+      'Refused: no message from the user has the id "ffffff".',
+      "Messages from the user with no answer yet, by id:",
+    ]);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses words unlike the named message, with its sub-thread to check", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const result = yield* call("send_to_user", {
+      text: "Lint passes too.",
+      reply_to: shortId("why"),
+      user_message: "And the lint job?",
+    });
+    expect(refusalLines(result)).toEqual([
+      expect.stringMatching(
+        new RegExp(
+          `^Refused: user_message is \\d+% like message "${shortId("why")}"; needs 70%\\.$`,
+        ),
+      ),
+      "That message's sub-thread shows:",
+      "[you] The deploy is done.",
+      "[user] Which build was deployed?",
+      "Check that this is the sub-thread you mean to reply in.",
+    ]);
+    expect(changes).toEqual([]);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses an answer to a message that the user followed up in the same sub-thread", () =>
+  Effect.gen(function* () {
+    setup([typed("q1", "Is the build green?"), typed("q2", "And the lint job?", "q1")]);
+    const lines = refusalLines(
+      yield* call("send_to_user", {
+        text: "Yes.",
+        reply_to: shortId("q1"),
+        user_message: "Is the build green?",
+      }),
+    );
+    expect(lines).toEqual([
+      `Refused: the user sent a later message, "${shortId("q2")}", in this sub-thread. Answer that one.`,
+      "That message's sub-thread shows:",
+      "[user] Is the build green?",
+      "[user] And the lint job?",
+    ]);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses a second answer to one message, and points to the replace tool", () =>
+  Effect.gen(function* () {
+    // The stored answer named the message with space around the id, which the tool accepts.
+    setup([
+      ...twoSubThreads(),
+      sent("a2", { text: "Lint passes too.", reply_to: ` ${shortId("q2")}\n`, user_message: "" }),
+    ]);
+    const lines = refusalLines(
+      yield* call("send_to_user", {
+        text: "Also: types pass.",
+        reply_to: shortId("q2"),
+        user_message: "And the lint job?",
+      }),
+    );
+    expect(lines[0]).toBe(
+      `Refused: you already answered message "${shortId("q2")}". To change your answer, call replace_send_to_user with reply_to "${shortId("q2")}".`,
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("holds an accepted answer against a second one that arrives before it is stored", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const args = {
+      text: "Lint passes too.",
+      reply_to: shortId("q2"),
+      user_message: "And the lint job?",
+    };
+    expect((yield* call("send_to_user", args)).isError).not.toBe(true);
+    expect(refusalLines(yield* call("send_to_user", args))[0]).toContain("you already answered");
+    const other = yield* call("send_to_user", {
+      text: "Build 20261111.",
+      reply_to: shortId("why"),
+      user_message: "Which build was deployed?",
+    });
+    expect(other.isError).not.toBe(true);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("replaces the answer to the named message only", () =>
+  Effect.gen(function* () {
+    setup([...twoSubThreads(), answer("a2", "Lint passes too.", "q2")]);
+    const replaced = yield* call("replace_send_to_user", {
+      reply_to: shortId("q2"),
+      user_message: "And the lint job?",
+      old_text: "Lint passes too.",
+      new_text: "Lint and types pass.",
+    });
+    expect(replaced.structuredContent).toEqual(shown("Shown to the user."));
+    expect(changes.at(-1)).toEqual({
+      firstId: "q1",
+      lines: [
+        "[user] Is the build green?",
+        "[you] Yes, all checks pass.",
+        "[user] And the lint job?",
+        "[you] Lint and types pass.",
+      ],
+    });
+    const unlike = refusalLines(
+      yield* call("replace_send_to_user", {
+        reply_to: shortId("q2"),
+        user_message: "And the lint job?",
+        old_text: "Yes, all checks pass.",
+        new_text: "Lint and types pass.",
+      }),
+    );
+    expect(unlike[0]).toMatch(/^Refused: old_text is \d+% like your answer to it; needs 70%\.$/);
+    expect(unlike.slice(-3)).toEqual([
+      "Your current answer, as old_text:",
+      "Lint passes too.",
+      "Check that this is the sub-thread you mean to reply in.",
+    ]);
+    const stale = refusalLines(
+      yield* call("replace_send_to_user", {
+        reply_to: shortId("q1"),
+        user_message: "Is the build green?",
+        old_text: "Yes, all checks pass.",
+        new_text: "Yes.",
+      }),
+    );
+    expect(stale[0]).toBe(
+      `Refused: the user has replied after your answer to message "${shortId("q1")}", so it stays as it is. Answer their latest reply with send_to_user and reply_to "${shortId("q2")}".`,
+    );
+    const none = refusalLines(
+      yield* call("replace_send_to_user", {
+        reply_to: shortId("why"),
+        user_message: "Which build was deployed?",
+        old_text: "Build 20261111.",
+        new_text: "Build 20261112.",
+      }),
+    );
+    expect(none[0]).toBe(
+      `Refused: you have not answered message "${shortId("why")}", so there is nothing to replace. Use send_to_user.`,
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect(
+  "replaces the agent's own first message only while the user has not replied under it",
+  () =>
+    Effect.gen(function* () {
+      setup([
+        typed("q1", "Is the build green?"),
+        news("n1", "The deploy is done."),
+        news("n2", "CI is red."),
+      ]);
+      const replaced = yield* call("replace_send_to_user", {
+        sub_thread: shortId("The deploy is done."),
+        user_message: "",
+        old_text: "The deploy is done.",
+        new_text: "The deploy is done and checked.",
+      });
+      expect(replaced.structuredContent).toEqual(shown("Shown to the user."));
+      const unknown = refusalLines(
+        yield* call("replace_send_to_user", {
+          sub_thread: "ffffff",
+          user_message: "",
+          old_text: "The deploy is done.",
+          new_text: "x",
+        }),
+      );
+      expect(unknown).toEqual([
+        'Refused: none of your messages sent with new_sub_thread has the id "ffffff".',
+        "Your messages that the user has not replied under, by id:",
+        `"${shortId("The deploy is done.")}": The deploy is done.`,
+        `"${shortId("CI is red.")}": CI is red.`,
+      ]);
+      setup([news("n1", "The deploy is done."), typed("why", "Which build?", "n1")]);
+      const replied = refusalLines(
+        yield* call("replace_send_to_user", {
+          sub_thread: shortId("The deploy is done."),
+          user_message: "",
+          old_text: "The deploy is done.",
+          new_text: "x",
+        }),
+      );
+      expect(replied[0]).toBe(
+        `Refused: the user has replied under this message, so it stays as it is. Answer their latest reply with send_to_user and reply_to "${shortId("why")}".`,
+      );
+    }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses a replace that names both or neither", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const lines = refusalLines(
+      yield* call("replace_send_to_user", { user_message: "", old_text: "a", new_text: "b" }),
+    );
+    expect(lines[0]).toBe(
+      "Refused: this thread is set to Chat + Replies. Pass reply_to to replace your answer to that message from the user, or sub_thread to replace a message that you sent with new_sub_thread, and not both.",
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("keeps sub-thread pointers out of a thread with no sub-threads", () =>
+  Effect.gen(function* () {
+    setup([typed("u1", "Fix the build."), sent("s1", { text: "On it." })]);
+    const ignored = yield* call(
+      "send_to_user",
+      { text: "Done.", reply_to: shortId("u1"), user_message: "Fix the build." },
+      messagesThread,
+    );
+    expect(refusalLines(ignored)[0]).toContain("you already sent the user a message");
+    const refused = refusalLines(
+      yield* call(
+        "replace_send_to_user",
+        {
+          reply_to: shortId("u1"),
+          user_message: "Fix the build.",
+          old_text: "On it.",
+          new_text: "Done.",
+        },
+        messagesThread,
+      ),
+    );
+    expect(refused[0]).toBe(
+      "Refused: this thread is not set to Chat + Replies, so it has no sub-threads. Call replace_send_to_user without reply_to and sub_thread.",
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("gives two user messages with one short id an answer each", () =>
+  Effect.gen(function* () {
+    // Both ids hash to "003d88".
+    const [early, late] = ["message-11914", "message-20610"] as const;
+    expect(shortId(early)).toBe(shortId(late));
+    setup([typed(early, "First?"), answer("a1", "One.", early), typed(late, "Second?")]);
+    const args = { text: "Two.", reply_to: shortId(late), user_message: "Second?" };
+    expect((yield* call("send_to_user", args)).isError).not.toBe(true);
+    setup([...history, answer("a2", "Two.", late)]);
+    expect(refusalLines(yield* call("send_to_user", args))[0]).toContain("you already answered");
+    const replaced = yield* call("replace_send_to_user", {
+      reply_to: shortId(late),
+      user_message: "Second?",
+      old_text: "Two.",
+      new_text: "Two, in short.",
+    });
+    expect(replaced.isError).not.toBe(true);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("judges a named call by the history before it, and a replace also by replies since", () =>
+  Effect.gen(function* () {
+    const running = (id: string, tool: string, input: Record<string, unknown>) =>
+      ({ ...sent(id, input), toolName: `mcp__t3-code__${tool}`, status: "running" }) as const;
+    // The user replied while the call ran: the send answers the message that the agent saw.
+    const sendArgs = { text: "Yes.", reply_to: shortId("q1"), user_message: "Is the build green?" };
+    setup([
+      typed("q1", "Is the build green?"),
+      running("s1", "send_to_user", sendArgs),
+      typed("q2", "And the lint job?", "q1"),
+    ]);
+    expect((yield* call("send_to_user", sendArgs, repliesThread, "s1")).isError).not.toBe(true);
+    // A replace is refused: the user's reply was written to the answer as it was.
+    const replaceArgs = {
+      reply_to: shortId("q1"),
+      user_message: "Is the build green?",
+      old_text: "Yes.",
+      new_text: "No.",
+    };
+    setup([
+      typed("q1", "Is the build green?"),
+      answer("a1", "Yes.", "q1"),
+      running("r1", "replace_send_to_user", replaceArgs),
+      typed("q2", "And the lint job?", "q1"),
+    ]);
+    expect(
+      refusalLines(yield* call("replace_send_to_user", replaceArgs, repliesThread, "r1"))[0],
+    ).toContain("the user has replied after your answer");
+    const firstArgs = {
+      sub_thread: shortId("The deploy is done."),
+      user_message: "",
+      old_text: "The deploy is done.",
+      new_text: "Done.",
+    };
+    setup([
+      news("n1", "The deploy is done."),
+      running("r2", "replace_send_to_user", firstArgs),
+      typed("why", "Which build was deployed?", "n1"),
+    ]);
+    expect(
+      refusalLines(yield* call("replace_send_to_user", firstArgs, repliesThread, "r2"))[0],
+    ).toContain("the user has replied under this message");
+  }).pipe(Effect.provide(layer)),
+);

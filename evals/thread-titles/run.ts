@@ -97,6 +97,7 @@ await Effect.runPromise(
           message,
           previousTitle: values.initial ? undefined : fixture.previousTitle,
           attachments,
+          instructions: "instructions" in fixture ? fixture.instructions : undefined,
           linkedContext,
           modelSelection: { instanceId: ProviderInstanceId.make("codex"), model },
         });

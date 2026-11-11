@@ -13,11 +13,14 @@ import { serializeAssistantCitation } from "../../assistantCitations.ts";
 import { applyServerSettingsPatch } from "../../serverSettings.ts";
 
 import {
+  CHAT_REPLIES_DISPLAY_MODE,
   type DisplayEvent,
   displayEventFromTurnItem,
   displayModeShowsText,
+  foldCores,
   foldSentTexts,
   isReplaceSendCall,
+  freshFirstPointer,
   isWebTypedMessage,
   MESSAGES_DASHBOARD_DISPLAY_MODE,
   MESSAGES_ONLY_DISPLAY_MODE,
@@ -25,6 +28,9 @@ import {
   recapText,
   resolveDisplayMode,
   sentMessageText,
+  shortId,
+  SUB_THREAD_RECORD_KIND,
+  subThreadCores,
 } from "./displayModes.ts";
 
 const decodeServerSettings = Schema.decodeSync(ServerSettings);
@@ -35,7 +41,7 @@ const rewrite = (text: string): DisplayEvent => ({ type: "rewrite", id: `rewrite
 const other: DisplayEvent = { type: "other" };
 
 const wrap = (events: ReadonlyArray<DisplayEvent>, text: string) =>
-  MESSAGES_ONLY_DISPLAY_MODE.wrap!(events, text);
+  MESSAGES_ONLY_DISPLAY_MODE.wrap!(events, text, { id: "typed" });
 
 const wrapped = (lines: ReadonlyArray<string>, text: string) =>
   [
@@ -248,7 +254,7 @@ describe("visibleCores", () => {
   it("keeps the user's messages and sent messages in order", () => {
     expect(
       MESSAGES_ONLY_DISPLAY_MODE.visibleCores!([user("A"), other, sent("B"), other, user("C")]),
-    ).toEqual([
+    ).toMatchObject([
       { id: "user:A", from: "user", text: "A" },
       { id: "sent:B", from: "agent", text: "B" },
       { id: "user:C", from: "user", text: "C" },
@@ -266,7 +272,7 @@ describe("visibleCores", () => {
         rewrite("C2"),
         rewrite("C3"),
       ]),
-    ).toEqual([
+    ).toMatchObject([
       { id: "sent:A", from: "agent", text: "A" },
       { id: "user:B", from: "user", text: "B" },
       { id: "sent:C", from: "agent", text: "C3" },
@@ -275,7 +281,7 @@ describe("visibleCores", () => {
   });
 
   it("shows nothing for a rewrite with no send before it", () => {
-    expect(MESSAGES_ONLY_DISPLAY_MODE.visibleCores!([rewrite("X"), user("A")])).toEqual([
+    expect(MESSAGES_ONLY_DISPLAY_MODE.visibleCores!([rewrite("X"), user("A")])).toMatchObject([
       { id: "user:A", from: "user", text: "A" },
     ]);
   });
@@ -400,10 +406,10 @@ describe("Messages only wrap", () => {
 
   it("wraps the same way in Messages + Dashboard", () => {
     const events = [user("A"), sent("B"), other];
-    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!(events, "C")).toBe(
+    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!(events, "C", { id: "typed" })).toBe(
       wrapped(["[user] A", "[you] B"], "C"),
     );
-    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!([], "C")).toBe("C");
+    expect(MESSAGES_DASHBOARD_DISPLAY_MODE.wrap!([], "C", { id: "typed" })).toBe("C");
   });
 
   it("uses a tag that user-view's <x-mode> pattern strips", () => {
@@ -411,6 +417,190 @@ describe("Messages only wrap", () => {
     // user-view is an outside tool that shows a transcript as the user saw it.
     // It removes the blocks that match this pattern, and then it trims the whitespace around them.
     expect(text.replace(/<([a-z][a-z0-9_-]*-mode)>[\s\S]*?<\/\1>/g, "").trim()).toBe("C");
+  });
+});
+
+describe("sub-threads", () => {
+  const replyUnder = (text: string, under: string): DisplayEvent => ({
+    type: "user",
+    id: `user:${text}`,
+    text,
+    under,
+  });
+  const answer = (text: string, to: string): DisplayEvent => ({
+    type: "sent",
+    id: `sent:${text}`,
+    text,
+    replyTo: shortId(`user:${to}`),
+  });
+  // Two sub-threads, their messages mixed in time: one that the user started and one that the agent did.
+  const events: ReadonlyArray<DisplayEvent> = [
+    user("Q1"),
+    sent("News"),
+    answer("A1", "Q1"),
+    replyUnder("Why?", "sent:News"),
+    other,
+    replyUnder("Q2", "user:Q1"),
+    answer("Because", "Why?"),
+    answer("A2", "Q2"),
+  ];
+
+  it("puts each reply in the sub-thread of the message it answers, and keeps it out of the main list", () => {
+    const cores = foldCores(events);
+    expect(cores.filter((core) => !core.reply).map((core) => core.text)).toEqual(["Q1", "News"]);
+    expect(subThreadCores(cores, "user:Q1").map((core) => core.text)).toEqual([
+      "Q1",
+      "A1",
+      "Q2",
+      "A2",
+    ]);
+    expect(subThreadCores(cores, "sent:News").map((core) => core.text)).toEqual([
+      "News",
+      "Why?",
+      "Because",
+    ]);
+  });
+
+  it("gives an answer no sub-thread when the message it answers is not among the events", () => {
+    expect(foldCores([answer("A1", "Q1")])).toMatchObject([{ reply: true, first: null }]);
+  });
+
+  it("rewrites the answer or the first message that the call names, not the latest send", () => {
+    const cores = foldCores([
+      ...events,
+      { type: "rewrite", id: "r1", text: "A1 fixed", replyTo: shortId("user:Q1") },
+      { type: "rewrite", id: "r2", text: "News fixed", subThread: shortId("News") },
+    ]);
+    expect(cores.map((core) => core.text)).toEqual([
+      "Q1",
+      "News fixed",
+      "A1 fixed",
+      "Why?",
+      "Q2",
+      "Because",
+      "A2",
+    ]);
+  });
+
+  it("names the agent's first message by the text it was sent with, also after a rewrite", () => {
+    const cores = foldCores([
+      sent("News"),
+      { type: "rewrite", id: "r1", text: "News 2", subThread: shortId("News") },
+      { type: "rewrite", id: "r2", text: "News 3", subThread: shortId("News") },
+    ]);
+    expect(cores).toMatchObject([{ text: "News 3", shortId: shortId("News") }]);
+  });
+
+  it("names a first message by the id that its send returned, and else by its text", () => {
+    // Two first messages with the same words: each send returned an id of its own.
+    const cores = foldCores([
+      { type: "sent", id: "s1", text: "News", pointer: "aaaaaa" },
+      { type: "sent", id: "s2", text: "News", pointer: "bbbbbb" },
+      sent("Old news"),
+      { type: "rewrite", id: "r1", text: "First news, fixed", subThread: "aaaaaa" },
+    ]);
+    expect(cores).toMatchObject([
+      { text: "First news, fixed", shortId: "aaaaaa" },
+      { text: "News", shortId: "bbbbbb" },
+      { text: "Old news", shortId: shortId("Old news") },
+    ]);
+  });
+
+  it("gives a new first message an id that no shown message has", () => {
+    const taken = new Set(foldCores([sent("News"), user("Q1")]).map((core) => core.shortId));
+    expect(freshFirstPointer(taken, "Other news")).toBe(shortId("Other news"));
+    const fresh = freshFirstPointer(taken, "News");
+    expect(taken).not.toContain(fresh);
+    expect(freshFirstPointer(new Set([...taken, fresh]), "News")).not.toBe(fresh);
+  });
+
+  it("tells the agent the id of a new message, with no recap", () => {
+    expect(CHAT_REPLIES_DISPLAY_MODE.wrap!(events, "Q3", { id: "user:Q3" })).toBe(
+      [
+        "<t3-replies-mode>",
+        `Message "${shortId("user:Q3")}" from the user, a new message in the main list.`,
+        `To answer, call send_to_user with reply_to "${shortId("user:Q3")}" and the user's words below as user_message.`,
+        "</t3-replies-mode>",
+        "Q3",
+      ].join("\n"),
+    );
+  });
+
+  it("recaps only the reply's own sub-thread: its first message, then its latest 3 others", () => {
+    const longer = [...events, replyUnder("Q3", "user:Q1"), answer("A3", "Q3")];
+    expect(CHAT_REPLIES_DISPLAY_MODE.wrap!(longer, "Q4", { id: "user:Q4", under: "user:Q1" })).toBe(
+      [
+        "<t3-replies-mode>",
+        `Message "${shortId("user:Q4")}" from the user, a reply in the sub-thread that showed:`,
+        "[user] Q1",
+        "[you] A2",
+        "[user] Q3",
+        "[you] A3",
+        `To answer, call send_to_user with reply_to "${shortId("user:Q4")}" and the user's words below as user_message.`,
+        "</t3-replies-mode>",
+        "Q4",
+      ].join("\n"),
+    );
+  });
+
+  it("uses a tag that user-view's <x-mode> pattern strips", () => {
+    const text = CHAT_REPLIES_DISPLAY_MODE.wrap!([], "C", { id: "typed" });
+    expect(text.replace(/<([a-z][a-z0-9_-]*-mode)>[\s\S]*?<\/\1>/g, "").trim()).toBe("C");
+  });
+
+  it("reads a reply's first message from its context record, and a call's pointers from its input", () => {
+    expect(
+      displayEventFromTurnItem(
+        item({
+          type: "user_message",
+          messageId: "m2",
+          createdBy: "user",
+          creationSource: "web",
+          text: "Why?",
+          context: {
+            version: 1,
+            records: [
+              {
+                version: 1,
+                contextId: "reply",
+                kind: SUB_THREAD_RECORD_KIND,
+                label: "",
+                payload: { first: "item-news" },
+              },
+            ],
+          },
+        }),
+      ),
+    ).toEqual({ type: "user", id: "m2", text: "Why?", under: "item-news" });
+    expect(
+      displayEventFromTurnItem(
+        item({
+          type: "dynamic_tool",
+          toolName: "mcp__t3-code__send_to_user",
+          // The tools accept an id with space around it, so the fold reads it the same way.
+          input: { text: "Because", reply_to: " abc123\n", user_message: "Why?" },
+        }),
+      ),
+    ).toEqual({ type: "sent", id: "item-1", text: "Because", replyTo: "abc123" });
+    expect(
+      displayEventFromTurnItem(
+        item({
+          type: "dynamic_tool",
+          toolName: "mcp__t3-code__send_to_user",
+          input: { text: "News", new_sub_thread: true },
+          output: { structuredContent: { ok: true, message: "Shown.", messageId: "def456" } },
+        }),
+      ),
+    ).toEqual({ type: "sent", id: "item-1", text: "News", pointer: "def456" });
+    expect(
+      displayEventFromTurnItem(
+        item({
+          type: "dynamic_tool",
+          toolName: "mcp__t3-code__replace_send_to_user",
+          input: { user_message: "", old_text: "News", new_text: "News 2", sub_thread: "def456 " },
+        }),
+      ),
+    ).toEqual({ type: "rewrite", id: "item-1", text: "News 2", subThread: "def456" });
   });
 });
 
@@ -427,24 +617,25 @@ describe("resolveDisplayMode", () => {
     expect(resolveDisplayMode("retired-experiment")).toBe(NORMAL_DISPLAY_MODE);
     expect(resolveDisplayMode("messages-only")).toBe(MESSAGES_ONLY_DISPLAY_MODE);
     expect(resolveDisplayMode("messages-dashboard")).toBe(MESSAGES_DASHBOARD_DISPLAY_MODE);
+    expect(resolveDisplayMode("chat-replies")).toBe(CHAT_REPLIES_DISPLAY_MODE);
   });
 
   it("gives only Messages + Dashboard a Dashboard", () => {
     expect(
-      ["normal", "messages-only", "messages-dashboard"].map(
+      ["normal", "messages-only", "messages-dashboard", "chat-replies"].map(
         (id) => resolveDisplayMode(id).dashboard,
       ),
-    ).toEqual([false, false, true]);
+    ).toEqual([false, false, true, false]);
   });
 });
 
 describe("oneSendPerMessage", () => {
   it("limits the agent to one send per typed message only where the user sees only messages", () => {
     expect(
-      ["normal", "messages-only", "messages-dashboard"].map(
+      ["normal", "messages-only", "messages-dashboard", "chat-replies"].map(
         (id) => resolveDisplayMode(id).oneSendPerMessage,
       ),
-    ).toEqual([false, true, true]);
+    ).toEqual([false, true, true, true]);
   });
 });
 
@@ -517,12 +708,12 @@ describe("displayModeShowsText", () => {
   });
 });
 
-const replace = (id: string, newText: string, status = "completed") =>
+const replace = (id: string, newText: string, status = "completed", pointer = {}) =>
   item({
     id,
     type: "dynamic_tool",
     toolName: "mcp__t3-code__replace_send_to_user",
-    input: { user_message: "", old_text: "", new_text: newText },
+    input: { user_message: "", old_text: "", new_text: newText, ...pointer },
     status,
   });
 
@@ -578,6 +769,25 @@ describe("foldSentTexts", () => {
       new Map([
         ["s1", "Next"],
         ["r2", "New fix"],
+      ]),
+    );
+  });
+
+  it("keeps a rewrite that names a send before the items, also after a send among them", () => {
+    const named = (id: string, text: string, pointer: Record<string, string>) =>
+      replace(id, text, "completed", pointer);
+    const items = [
+      send("s1", "Next"),
+      named("r1", "Old answer, fixed", { reply_to: "aaaaaa" }),
+      named("r2", "Old answer, fixed again", { reply_to: "aaaaaa" }),
+      named("r3", "Old first message, fixed", { sub_thread: "bbbbbb" }),
+    ];
+    expect(foldSentTexts(items)).toEqual(new Map([["s1", "Next"]]));
+    expect(foldSentTexts(items, { unmatchedRewrite: true })).toEqual(
+      new Map([
+        ["s1", "Next"],
+        ["r2", "Old answer, fixed again"],
+        ["r3", "Old first message, fixed"],
       ]),
     );
   });

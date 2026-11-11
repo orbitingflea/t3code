@@ -2,8 +2,7 @@ import { findThreadSearchOccurrences } from "@t3tools/shared/threadSearch";
 import { useEffect, useEffectEvent, useRef } from "react";
 import { THREAD_FIND_BLOCK_TAGS } from "@t3tools/shared/threadFindText";
 
-const THREAD_FIND_HIGHLIGHT_NAME = "t3-thread-find";
-const THREAD_FIND_ACTIVE_HIGHLIGHT_NAME = "t3-thread-find-active";
+import { useFindHighlightNames } from "../../fork/subThreads/useSubThreadReveal";
 
 const THREAD_FIND_TEXT_SELECTOR = "[data-thread-find-text]";
 const THREAD_FIND_IGNORE_SELECTOR = "[data-thread-find-ignore]";
@@ -116,6 +115,7 @@ export function useThreadFindHighlights(input: {
   readonly onActiveRange: (range: Range | null) => void;
 }): void {
   const { container, query, activeRowId, activeOccurrence, onActiveRange } = input;
+  const names = useFindHighlightNames();
 
   const rangesRef = useRef<readonly ThreadFindRange[]>([]);
   const paintRef = useRef<ReturnType<typeof makeThreadFindHighlightPainter> | null>(null);
@@ -129,8 +129,8 @@ export function useThreadFindHighlights(input: {
       return;
     }
     const clearHighlights = () => {
-      CSS.highlights.delete(THREAD_FIND_HIGHLIGHT_NAME);
-      CSS.highlights.delete(THREAD_FIND_ACTIVE_HIGHLIGHT_NAME);
+      CSS.highlights.delete(names.all);
+      CSS.highlights.delete(names.active);
     };
     rangesRef.current = [];
     if (!container || query.length === 0) {
@@ -140,7 +140,7 @@ export function useThreadFindHighlights(input: {
     }
 
     const cache = new Map<Element, readonly ThreadFindRange[]>();
-    const paint = makeThreadFindHighlightPainter(container);
+    const paint = makeThreadFindHighlightPainter(container, names);
     paintRef.current = paint;
     const repaint = () => {
       const rows = new Set(container.querySelectorAll("[data-timeline-row-id]"));
@@ -205,7 +205,7 @@ export function useThreadFindHighlights(input: {
       rangesRef.current = [];
       clearHighlights();
     };
-  }, [container, query]);
+  }, [container, query, names]);
 
   // onActiveRange is read at paint time: its identity follows the caller's
   // layout inputs, and repainting the active highlight for those is wasted work.
@@ -219,14 +219,17 @@ export function useThreadFindHighlights(input: {
   }, [activeOccurrence, activeRowId]);
 }
 
-function makeThreadFindHighlightPainter(container: HTMLElement) {
+function makeThreadFindHighlightPainter(
+  container: HTMLElement,
+  names: ReturnType<typeof useFindHighlightNames>,
+) {
   let previousRanges: readonly ThreadFindRange[] | null = null;
   const rangesByRow = new Map<string, Range[]>();
   const inactive = new Highlight();
   const active = new Highlight();
   let previousActive: Range | null = null;
-  CSS.highlights.set(THREAD_FIND_HIGHLIGHT_NAME, inactive);
-  CSS.highlights.set(THREAD_FIND_ACTIVE_HIGHLIGHT_NAME, active);
+  CSS.highlights.set(names.all, inactive);
+  CSS.highlights.set(names.active, active);
   return (
     ranges: readonly ThreadFindRange[],
     selection: Pick<

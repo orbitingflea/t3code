@@ -20,6 +20,13 @@ export const SEND_TO_USER_MAX_BYTES = 1_000;
 export const DASHBOARD_SET_TOOL_NAME = "dashboard_set";
 export const DASHBOARD_GET_TOOL_NAME = "dashboard_get";
 
+/** The kind of the context record that a user's reply carries: `{ first }`, the id of its sub-thread's first message. */
+export const SUB_THREAD_RECORD_KIND = "fork-reply";
+/** How many of the thread's latest messages the server reads to place a message in its sub-thread. */
+export const SUB_THREAD_WINDOW_CORES = 120;
+/** How many unanswered or unreplied messages a refusal lists. */
+export const SUB_THREAD_LISTED_COUNT = 5;
+
 const WRAPPED_CORE_MAX_BYTES = 2_000;
 /** How many of the latest shown messages a wrapped message lists. */
 export const WRAPPED_CORE_COUNT = 3;
@@ -30,10 +37,36 @@ export const WRAPPED_CORE_COUNT = 3;
  * agree on what the user saw.
  */
 export type DisplayEvent =
-  | { readonly type: "user"; readonly id: string; readonly text: string }
-  | { readonly type: "sent"; readonly id: string; readonly text: string }
-  /** A completed `replace_send_to_user` call. The latest `sent` before it now reads `text`. */
-  | { readonly type: "rewrite"; readonly id: string; readonly text: string }
+  /** `under` is the id of the first message that the user replied under. Without it, the message is a first message. */
+  | {
+      readonly type: "user";
+      readonly id: string;
+      readonly text: string;
+      readonly under?: string | undefined;
+    }
+  /**
+   * `replyTo` is the short id of the user message that the send answers. Without it, the send is a
+   * first message, and `pointer` is the short id that the send returned for it, when it returned one.
+   */
+  | {
+      readonly type: "sent";
+      readonly id: string;
+      readonly text: string;
+      readonly replyTo?: string | undefined;
+      readonly pointer?: string | undefined;
+    }
+  /**
+   * A completed `replace_send_to_user` call. With `replyTo`, the latest answer to that user message
+   * now reads `text`. With `subThread`, the agent's first message with that short id does. With
+   * neither, the latest `sent` before it does.
+   */
+  | {
+      readonly type: "rewrite";
+      readonly id: string;
+      readonly text: string;
+      readonly replyTo?: string | undefined;
+      readonly subThread?: string | undefined;
+    }
   /**
    * Anything else that entered the agent's transcript, such as its plain text, reasoning, tool work,
    * and messages the user did not type.
@@ -45,6 +78,31 @@ export interface VisibleCore {
   readonly id: string;
   readonly from: "user" | "agent";
   readonly text: string;
+  /**
+   * The id of the first message of the core's sub-thread: its own id for a first message, and null
+   * for an agent's reply to a user message that is not among the events.
+   */
+  readonly first: string | null;
+  /** Whether the core is a reply. A reply shows in its sub-thread, not in the main list. */
+  readonly reply: boolean;
+  /**
+   * The id that the agent names the core by: for a user message, a hash of its id; for the agent's
+   * first message, the id that its send returned, which the stored call keeps, or a hash of the
+   * text it was sent with when the send returned none. An agent's reply has none.
+   */
+  readonly shortId?: string | undefined;
+  /** For an agent's reply, the short id of the user message that it answers. */
+  readonly replyTo?: string | undefined;
+}
+
+/** Six hex digits of the FNV-1a hash of `text`. The agent names a message by this. */
+export function shortId(text: string): string {
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++) {
+    hash ^= text.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(16).padStart(8, "0").slice(0, 6);
 }
 
 export interface DisplayMode {
@@ -60,11 +118,14 @@ export interface DisplayMode {
   /** Null keeps the whole timeline. */
   readonly visibleCores: ((events: ReadonlyArray<DisplayEvent>) => VisibleCore[]) | null;
   /**
-   * Returns the text that the agent gets for a user's message after `events`. Null sends it unchanged.
-   * `events` may leave out events, as long as it keeps their order, the latest
+   * Returns the text that the agent gets for the user's `message` after `events`. Null sends it
+   * unchanged. `events` may leave out events, as long as it keeps their order, the latest
    * WRAPPED_CORE_COUNT `user` and `sent` events, and every `rewrite` after the first of those.
+   * A mode with sub-threads counts those in the message's sub-thread, and needs its first message.
    */
-  readonly wrap: ((events: ReadonlyArray<DisplayEvent>, text: string) => string) | null;
+  readonly wrap:
+    | ((events: ReadonlyArray<DisplayEvent>, text: string, message: WrappedMessage) => string)
+    | null;
   /** Whether the thread has a Dashboard that the user sees and the agent writes. */
   readonly dashboard: boolean;
   /**
@@ -72,33 +133,125 @@ export interface DisplayMode {
    * it rewrites that message with `replace_send_to_user`.
    */
   readonly oneSendPerMessage: boolean;
+  /**
+   * Whether each first message has a sub-thread of replies. The main list then shows the cores that
+   * are not replies, and the agent answers a user message by its short id.
+   */
+  readonly subThreads: boolean;
+}
+
+/** The user's message that a mode wraps: its id, and the first message that it replies under. */
+export interface WrappedMessage {
+  readonly id: string;
+  readonly under?: string | undefined;
 }
 
 /**
- * The messages that `events` show, in order. Each `user` and `sent` event adds one; a `rewrite`
- * sets the text of the latest `sent` before it and adds none. A rewrite with no `sent` before it,
- * such as one whose send is on a history page not loaded yet, shows nothing.
+ * A short id for a first message that the agent sends with `text`: one that is not in `taken`,
+ * the ids of the shown messages and of the sends not stored yet. The send returns it and its
+ * stored call keeps it, so it stays the message's id for good.
  */
-export function foldCores(events: Iterable<DisplayEvent>): VisibleCore[] {
+export function freshFirstPointer(taken: ReadonlySet<string | undefined>, text: string): string {
+  let id = shortId(text);
+  for (let attempt = 1; taken.has(id); attempt++) id = shortId(`${text}\n${attempt}`);
+  return id;
+}
+
+/**
+ * A message id as the agent passed it to a tool: with no space around it, and undefined for an
+ * empty one, which an agent may send for "none". The tools and the fold read every id through this.
+ */
+export const messagePointer = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
+
+/**
+ * The messages that `events` show, in order. Each `user` and `sent` event adds one; a `rewrite`
+ * sets the text of the `sent` it names, or of the latest `sent` before it, and adds none. A rewrite
+ * whose send is not among the events, such as one on a history page not loaded yet, shows nothing
+ * and goes to `onUnmatched`.
+ */
+export function foldCores(
+  events: Iterable<DisplayEvent>,
+  onUnmatched?: (rewrite: Extract<DisplayEvent, { readonly type: "rewrite" }>) => void,
+): VisibleCore[] {
   const cores: VisibleCore[] = [];
   let latestSent: number | undefined;
+  const userByShortId = new Map<string, number>();
+  const answerByReplyTo = new Map<string, number>();
+  const agentFirstByShortId = new Map<string, number>();
   for (const event of events) {
     switch (event.type) {
-      case "user":
-        cores.push({ id: event.id, from: "user", text: event.text });
+      case "user": {
+        const id = shortId(event.id);
+        userByShortId.set(
+          id,
+          cores.push({
+            id: event.id,
+            from: "user",
+            text: event.text,
+            first: event.under ?? event.id,
+            reply: event.under !== undefined,
+            shortId: id,
+          }) - 1,
+        );
         break;
+      }
       case "sent":
-        latestSent = cores.push({ id: event.id, from: "agent", text: event.text }) - 1;
+        if (event.replyTo === undefined) {
+          const id = event.pointer ?? shortId(event.text);
+          latestSent =
+            cores.push({
+              id: event.id,
+              from: "agent",
+              text: event.text,
+              first: event.id,
+              reply: false,
+              shortId: id,
+            }) - 1;
+          agentFirstByShortId.set(id, latestSent);
+        } else {
+          const answered = userByShortId.get(event.replyTo);
+          latestSent =
+            cores.push({
+              id: event.id,
+              from: "agent",
+              text: event.text,
+              first: answered === undefined ? null : cores[answered]!.first,
+              reply: true,
+              replyTo: event.replyTo,
+            }) - 1;
+          answerByReplyTo.set(event.replyTo, latestSent);
+        }
         break;
-      case "rewrite":
-        if (latestSent !== undefined)
-          cores[latestSent] = { ...cores[latestSent]!, text: event.text };
+      case "rewrite": {
+        const target =
+          event.replyTo !== undefined
+            ? answerByReplyTo.get(event.replyTo)
+            : event.subThread !== undefined
+              ? agentFirstByShortId.get(event.subThread)
+              : latestSent;
+        if (target !== undefined) cores[target] = { ...cores[target]!, text: event.text };
+        else onUnmatched?.(event);
         break;
+      }
       case "other":
         break;
     }
   }
   return cores;
+}
+
+/** The cores of the sub-thread whose first message has the id `first`, in order. */
+export const subThreadCores = (
+  cores: ReadonlyArray<VisibleCore>,
+  first: string,
+): ReadonlyArray<VisibleCore> => cores.filter((core) => core.first === first);
+
+/** The first message of a sub-thread and its latest WRAPPED_CORE_COUNT other messages, as a recap shows them. */
+export function subThreadRecap(thread: ReadonlyArray<VisibleCore>): ReadonlyArray<VisibleCore> {
+  const first = thread.find((core) => !core.reply);
+  const replies = thread.filter((core) => core !== first).slice(-WRAPPED_CORE_COUNT);
+  return first === undefined ? replies : [first, ...replies];
 }
 
 function truncateUtf8(text: string, maxBytes: number): string {
@@ -134,6 +287,7 @@ export const NORMAL_DISPLAY_MODE: DisplayMode = {
   wrap: null,
   dashboard: false,
   oneSendPerMessage: false,
+  subThreads: false,
 };
 
 function messagesOnlyWrap(events: ReadonlyArray<DisplayEvent>, text: string): string {
@@ -161,6 +315,7 @@ export const MESSAGES_ONLY_DISPLAY_MODE: DisplayMode = {
   wrap: messagesOnlyWrap,
   dashboard: false,
   oneSendPerMessage: true,
+  subThreads: false,
 };
 
 export const MESSAGES_DASHBOARD_DISPLAY_MODE: DisplayMode = {
@@ -174,12 +329,53 @@ export const MESSAGES_DASHBOARD_DISPLAY_MODE: DisplayMode = {
   wrap: messagesOnlyWrap,
   dashboard: true,
   oneSendPerMessage: true,
+  subThreads: false,
+};
+
+function chatRepliesWrap(
+  events: ReadonlyArray<DisplayEvent>,
+  text: string,
+  message: WrappedMessage,
+): string {
+  const id = shortId(message.id);
+  const shown =
+    message.under === undefined
+      ? []
+      : subThreadRecap(subThreadCores(foldCores(events), message.under));
+  return [
+    "<t3-replies-mode>",
+    message.under === undefined
+      ? `Message "${id}" from the user, a new message in the main list.`
+      : shown.length === 0
+        ? `Message "${id}" from the user, a reply in a sub-thread.`
+        : `Message "${id}" from the user, a reply in the sub-thread that showed:`,
+    ...shown.map(recapLine),
+    `To answer, call send_to_user with reply_to "${id}" and the user's words below as user_message.`,
+    "</t3-replies-mode>",
+    text,
+  ].join("\n");
+}
+
+const CHAT_REPLIES_RULES =
+  "They see only their own messages and your send_to_user messages. The main list shows first messages; a reply shows in the sub-thread under its first message. Each message from the user comes with a short id. To answer one, call send_to_user with reply_to set to its id and user_message set to its words; you may answer each message once, and only the user's latest message in a sub-thread. To change an answer, call replace_send_to_user with the same reply_to. To say something that answers no message, call send_to_user with new_sub_thread true; to change that message before the user replies under it, call replace_send_to_user with sub_thread set to the id that the send returned.";
+
+export const CHAT_REPLIES_DISPLAY_MODE: DisplayMode = {
+  id: "chat-replies",
+  label: "Chat + Replies",
+  notice: `<t3-display-mode>The user switched this thread to Chat + Replies. ${CHAT_REPLIES_RULES}</t3-display-mode>`,
+  stateNotice: `<t3-display-mode>This thread is in Chat + Replies. ${CHAT_REPLIES_RULES}</t3-display-mode>`,
+  visibleCores: foldCores,
+  wrap: chatRepliesWrap,
+  dashboard: false,
+  oneSendPerMessage: true,
+  subThreads: true,
 };
 
 export const DISPLAY_MODES: ReadonlyArray<DisplayMode> = [
   NORMAL_DISPLAY_MODE,
   MESSAGES_ONLY_DISPLAY_MODE,
   MESSAGES_DASHBOARD_DISPLAY_MODE,
+  CHAT_REPLIES_DISPLAY_MODE,
 ];
 
 /** An unknown or removed mode id shows the thread as Normal. */
@@ -235,6 +431,8 @@ const MESSAGE_TOOLS: Readonly<
   [REPLACE_SEND_TO_USER_TOOL_NAME]: { type: "rewrite", field: "new_text" },
 };
 
+const pointerField = (input: object, field: string) => messagePointer(Reflect.get(input, field));
+
 /** A call that ended without reaching the user is `other`. A call that still runs shows nothing yet. */
 function messageToolEvent(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }>,
@@ -246,9 +444,34 @@ function messageToolEvent(
   if (refused || ENDED_UNSENT_STATUSES.has(item.status)) return { type: "other" };
   if (item.status !== "completed") return null;
   const input = item.input;
-  const text =
-    typeof input === "object" && input !== null ? Reflect.get(input, tool.field) : undefined;
-  return typeof text === "string" ? { type: tool.type, id: item.id, text } : null;
+  if (typeof input !== "object" || input === null) return null;
+  const text: unknown = Reflect.get(input, tool.field);
+  if (typeof text !== "string") return null;
+  const replyTo = pointerField(input, "reply_to");
+  return tool.type === "sent"
+    ? {
+        type: "sent",
+        id: item.id,
+        text,
+        replyTo,
+        pointer: messagePointer(compactDynamicToolOutput(item.output)?.messageId),
+      }
+    : { type: "rewrite", id: item.id, text, replyTo, subThread: pointerField(input, "sub_thread") };
+}
+
+/** The first message that a user's message replies under, from its context records. */
+export function subThreadOfRecords(
+  records: ReadonlyArray<unknown> | undefined,
+): string | undefined {
+  for (const record of records ?? []) {
+    if (typeof record !== "object" || record === null) continue;
+    if (Reflect.get(record, "kind") !== SUB_THREAD_RECORD_KIND) continue;
+    const payload: unknown = Reflect.get(record, "payload");
+    const first: unknown =
+      typeof payload === "object" && payload !== null ? Reflect.get(payload, "first") : undefined;
+    if (typeof first === "string" && first !== "") return first;
+  }
+  return undefined;
 }
 
 /**
@@ -262,6 +485,7 @@ export function displayEventFromMessage(
     readonly text: string;
     readonly createdBy?: MessageOrigin["createdBy"] | undefined;
     readonly creationSource?: MessageOrigin["creationSource"] | undefined;
+    readonly context?: { readonly records: ReadonlyArray<unknown> } | undefined;
   },
 ): DisplayEvent | null {
   if (message.role !== "user") return message.text.trim() === "" ? null : { type: "other" };
@@ -270,7 +494,12 @@ export function displayEventFromMessage(
     createdBy: message.createdBy ?? "user",
     creationSource: message.creationSource ?? "web",
   })
-    ? { type: "user", id: message.id, text: message.text }
+    ? {
+        type: "user",
+        id: message.id,
+        text: message.text,
+        under: subThreadOfRecords(message.context?.records),
+      }
     : { type: "other" };
 }
 
@@ -312,9 +541,9 @@ export function sentMessageText(item: OrchestrationV2TurnItem): string | null {
 
 /**
  * Each completed send in `items`, by item id, with the text that the latest rewrite gave it. Only
- * tool calls decide that, so it reads no message text. With `unmatchedRewrite`, the latest rewrite
- * before the first send, whose send lies before `items`, such as a handoff's delta, is kept by its
- * own id.
+ * tool calls decide that, so it reads no message text. With `unmatchedRewrite`, a rewrite whose
+ * send lies before `items`, such as a handoff's delta, is kept by its own id: the latest one for
+ * each send that the rewrites name.
  */
 export function foldSentTexts(
   items: Iterable<OrchestrationV2TurnItem>,
@@ -324,16 +553,13 @@ export function foldSentTexts(
     .filter((item) => item.type === "dynamic_tool")
     .map(displayEventFromTurnItem)
     .filter((event) => event !== null);
+  const unmatched = new Map<string, { readonly id: string; readonly text: string }>();
   const texts = new Map(
-    foldCores(events).flatMap((core): [string, string][] =>
-      core.from === "agent" ? [[core.id, core.text]] : [],
-    ),
+    foldCores(events, (rewrite) =>
+      unmatched.set(`${rewrite.replyTo ?? ""}\n${rewrite.subThread ?? ""}`, rewrite),
+    ).flatMap((core): [string, string][] => (core.from === "agent" ? [[core.id, core.text]] : [])),
   );
-  const firstSent = events.findIndex((event) => event.type === "sent");
-  const unmatched = (firstSent < 0 ? events : events.slice(0, firstSent)).findLast(
-    (event) => event.type === "rewrite",
-  );
-  if (options.unmatchedRewrite && unmatched !== undefined) texts.set(unmatched.id, unmatched.text);
+  if (options.unmatchedRewrite) for (const { id, text } of unmatched.values()) texts.set(id, text);
   return texts;
 }
 
