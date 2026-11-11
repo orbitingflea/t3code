@@ -125,6 +125,28 @@ const makeHome = (prefix = "agent-hooks-home-") => {
   };
 };
 
+const takeCodexContextLimitOut = (sandbox: ReturnType<typeof makeHome>) => {
+  const file: {
+    hooks: Record<
+      string,
+      Array<{ hooks: Array<{ command: string; additionalContextLimit?: number }> }>
+    >;
+  } = sandbox.readJson(sandbox.files.codexHooks);
+  let config = sandbox.read(sandbox.files.codexConfig);
+  for (const [nativeEvent, groups] of Object.entries(file.hooks)) {
+    for (const group of groups) {
+      for (const handler of group.hooks) {
+        if (!handler.command.startsWith(sandbox.homes.runner)) continue;
+        const withLimit = codexTrustHash(nativeEvent, group, handler);
+        delete handler.additionalContextLimit;
+        config = config.replace(withLimit, codexTrustHash(nativeEvent, group, handler));
+      }
+    }
+  }
+  NodeFS.writeFileSync(sandbox.files.codexHooks, json(file));
+  NodeFS.writeFileSync(sandbox.files.codexConfig, config);
+};
+
 const commands = (value: unknown): ReadonlyArray<string> => {
   if (Array.isArray(value)) return value.flatMap(commands);
   if (typeof value !== "object" || value === null) return [];
@@ -170,6 +192,22 @@ describe("install", () => {
       "/opt/guards/size.py",
       `${runner} run codex PreToolUse`,
     ]);
+    const codexHandler = (nativeEvent: string) => codex.hooks[nativeEvent].at(-1).hooks[0];
+    for (const nativeEvent of ["SessionStart", "UserPromptSubmit", "PostToolUse"]) {
+      expect(codexHandler(nativeEvent)).toEqual({
+        type: "command",
+        command: `${runner} run codex ${nativeEvent}`,
+        timeout: 600,
+        additionalContextLimit: 0,
+      });
+    }
+    for (const nativeEvent of ["PreToolUse", "Stop"]) {
+      expect(codexHandler(nativeEvent)).toEqual({
+        type: "command",
+        command: `${runner} run codex ${nativeEvent}`,
+        timeout: 600,
+      });
+    }
 
     const agy = sandbox.readJson(sandbox.files.agy);
     expect(agy.my_rules).toEqual(JSON.parse(AGY_HOOKS_TEXT).my_rules);
@@ -237,25 +275,116 @@ describe("install", () => {
     [
       "SessionStart",
       "startup|clear|compact",
+      undefined,
       "098059d359294bb2cf58053316011961468c0566af58be82d175d96d8dfd418f",
     ],
     [
       "UserPromptSubmit",
       undefined,
+      undefined,
       "b169e4d7d6d8d4894739832b4d6f93ae9ffb32c53edbc742c7b3b159707050ce",
     ],
-    ["PreToolUse", undefined, "5fc89eb1c9a78441a7b4704fab56a3bc7dec3cd7ac1a370ebbbb0996ee6ed50c"],
-    ["PostToolUse", undefined, "1efa8d64a72244ff294019d66573103c014795a95412caea57ca02a22eac3ec7"],
-    ["Stop", undefined, "33fbe23232a6a6e56792bc62fce969b2b51a44197c7166359dc335eb87528a9d"],
-  ] as const)("computes the trust hash Codex computes for %s", (nativeEvent, matcher, hash) => {
-    const handler = {
-      type: "command",
-      command: `/home/user/.agents/bin/agent-hooks run codex ${nativeEvent}`,
-      timeout: 600,
-    };
-    const group = { ...(matcher === undefined ? {} : { matcher }), hooks: [handler] };
+    [
+      "PreToolUse",
+      undefined,
+      undefined,
+      "5fc89eb1c9a78441a7b4704fab56a3bc7dec3cd7ac1a370ebbbb0996ee6ed50c",
+    ],
+    [
+      "PostToolUse",
+      undefined,
+      undefined,
+      "1efa8d64a72244ff294019d66573103c014795a95412caea57ca02a22eac3ec7",
+    ],
+    [
+      "Stop",
+      undefined,
+      undefined,
+      "33fbe23232a6a6e56792bc62fce969b2b51a44197c7166359dc335eb87528a9d",
+    ],
+    [
+      "SessionStart",
+      "startup|clear|compact",
+      0,
+      "dec78bf5bc91429b64de46c94b6d6bbc5cc1118bbbd5a1f8fd349508f76f77b1",
+    ],
+    [
+      "UserPromptSubmit",
+      undefined,
+      0,
+      "4b20a514f7623f14b1769aa3a5e373a2cdd31a0b9efa0d9a11b2024926403bfb",
+    ],
+    [
+      "PostToolUse",
+      undefined,
+      0,
+      "9f68d3c3f79c3f83b3291396e34e5cb87bca0428e0a733d0a8293489fb39ef1c",
+    ],
+  ] as const)(
+    "computes the trust hash Codex computes for %s with matcher %s and context limit %s",
+    (nativeEvent, matcher, additionalContextLimit, hash) => {
+      const handler = {
+        type: "command",
+        command: `/home/user/.agents/bin/agent-hooks run codex ${nativeEvent}`,
+        timeout: 600,
+        ...(additionalContextLimit === undefined ? {} : { additionalContextLimit }),
+      };
+      const group = { ...(matcher === undefined ? {} : { matcher }), hooks: [handler] };
 
-    expect(codexTrustHash(nativeEvent, group, handler)).toBe(`sha256:${hash}`);
+      expect(codexTrustHash(nativeEvent, group, handler)).toBe(`sha256:${hash}`);
+    },
+  );
+
+  it("replaces Codex entries that set no context limit, and their trust", () => {
+    const sandbox = makeHome();
+    sandbox.install();
+    takeCodexContextLimitOut(sandbox);
+    const old = sandbox.readJson(sandbox.files.codexHooks);
+    const addedLater = { hooks: [foreignHandler("/opt/guards/added_later.py")] };
+    old.hooks.UserPromptSubmit.push(addedLater);
+    NodeFS.writeFileSync(sandbox.files.codexHooks, json(old));
+    NodeFS.appendFileSync(
+      sandbox.files.codexConfig,
+      `\n${sandbox.stateKey("user_prompt_submit:1:0")}\ntrusted_hash = "sha256:dddd"\nenabled = true\n`,
+    );
+    const oldConfig = sandbox.read(sandbox.files.codexConfig);
+    const trustTables = (config: string) => config.match(/^\[hooks\.state\./gm)?.length;
+    const oldHash = (nativeEvent: string) =>
+      codexTrustHash(nativeEvent, old.hooks[nativeEvent][0], old.hooks[nativeEvent][0].hooks[0]);
+    expect(oldConfig).toContain(oldHash("SessionStart"));
+
+    sandbox.install();
+
+    const codex = sandbox.readJson(sandbox.files.codexHooks);
+    const ours = (nativeEvent: string) => ({
+      type: "command",
+      command: `${sandbox.homes.runner} run codex ${nativeEvent}`,
+      timeout: 600,
+      additionalContextLimit: 0,
+    });
+    expect(codex.hooks.SessionStart).toEqual([
+      { matcher: "startup|clear|compact", hooks: [ours("SessionStart")] },
+    ]);
+    expect(codex.hooks.UserPromptSubmit).toEqual([
+      addedLater,
+      { hooks: [ours("UserPromptSubmit")] },
+    ]);
+    const config = sandbox.read(sandbox.files.codexConfig);
+    expect(config).toContain(
+      `${sandbox.stateKey("user_prompt_submit:0:0")}\ntrusted_hash = "sha256:dddd"`,
+    );
+    expect(config).toContain(
+      `${sandbox.stateKey("user_prompt_submit:1:0")}\ntrusted_hash = "${codexTrustHash(
+        "UserPromptSubmit",
+        codex.hooks.UserPromptSubmit[1],
+        ours("UserPromptSubmit"),
+      )}"`,
+    );
+    for (const nativeEvent of ["SessionStart", "UserPromptSubmit", "PostToolUse"]) {
+      expect(config).not.toContain(oldHash(nativeEvent));
+    }
+    expect(trustTables(config)).toBe(trustTables(oldConfig));
+    expect(planInstall(sandbox.homes, runnerFiles).changes).toEqual([]);
   });
 
   it("uses one config folder per agent and names a variable that points an agent at another", async () => {
@@ -710,6 +839,23 @@ describe("doctor", () => {
       { level: "ok", text: "the runner and the agent hook entries are installed" },
       { level: "ok", text: `0 hook(s) in ${sandbox.home}/.agents/hooks/hooks.json` },
       { level: "ok", text: `no project hook file at or above ${sandbox.home}` },
+    ]);
+  });
+
+  it("reports Codex entries that set no context limit as not installed", () => {
+    const sandbox = makeHome();
+    sandbox.install();
+    takeCodexContextLimitOut(sandbox);
+
+    expect(levels(sandbox).filter((finding) => finding.level === "warn")).toEqual([
+      {
+        level: "warn",
+        text: `not installed: ${sandbox.files.codexHooks} (add the Codex hook entries); run "agent-hooks install"`,
+      },
+      {
+        level: "warn",
+        text: `not installed: ${sandbox.files.codexConfig} (trust the Codex hook entries); run "agent-hooks install"`,
+      },
     ]);
   });
 
