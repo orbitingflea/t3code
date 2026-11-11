@@ -81,6 +81,15 @@ The CLI's tool-permission setting decides whether it asks before a tool call. Wh
 it asks, T3 Code answers by the thread's [permission mode](./permission-modes.md).
 When the CLI is set to always proceed, tools run without asking in every mode.
 
+Send `/compact` to have the CLI compact the thread's context.
+
+**Usage > Limits** reads with the access the CLI last saved. T3 Code cannot renew
+that access, so once it expires the page says so until the CLI runs its next turn.
+
+T3 Code does not use the CLI for titles, commit messages, or other generated text
+while `~/.gemini/config` holds hooks or MCP servers, because they would run in
+those helper sessions too. Select another model for generated text.
+
 ## Models and threads
 
 The model list comes from your Antigravity account, including Claude and GPT models
@@ -101,8 +110,9 @@ T3 Code keeps conversation history and file diffs, but Antigravity cannot rewind
 its conversation. Reverting a thread or editing and resubmitting an earlier turn
 is unavailable. Continue with a follow-up message or start a new thread.
 
-Manual context compaction is unavailable through Antigravity's ACP runtime, even
-though its CLI has `/compact`. Send `/clear` when you need a fresh context.
+Manual context compaction is unavailable through the managed runtime. Send `/clear`
+when you need a fresh context, or [use the Antigravity CLI](#use-the-antigravity-cli),
+which has `/compact`.
 
 ### Skills and attachments
 

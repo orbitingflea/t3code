@@ -14,6 +14,10 @@ import { type AcpError, AcpRequestError } from "effect-acp/errors";
 import { applyAntigravityAcpModelSelection } from "../provider/acp/AntigravityAcpSupport.ts";
 import { removeAntigravitySessionFiles } from "../provider/acp/AntigravitySessionFiles.ts";
 import {
+  antigravityRuntimeStateOf,
+  type AntigravityRuntimeState,
+} from "../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
+import {
   ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE,
   isAntigravitySignInRequiredError,
 } from "../provider/antigravityAuthSupport.ts";
@@ -54,6 +58,8 @@ type AntigravityTextRuntime = Pick<
 
 export interface AntigravityTextGenerationOptions {
   readonly profileDirectory: string;
+  /** Where the running runtime keeps its state; the managed profile when absent. */
+  readonly runtimeState?: Effect.Effect<AntigravityRuntimeState>;
   readonly defaultModel?: Effect.Effect<string | undefined>;
   readonly makeRuntime: (
     cwd: string,
@@ -127,7 +133,8 @@ export const makeAntigravityTextGeneration = Effect.fn("makeAntigravityTextGener
     return true;
   });
 
-  const available = isAntigravityTextGenerationAvailable(options.profileDirectory).pipe(
+  const available = antigravityRuntimeStateOf(options).pipe(
+    Effect.flatMap((state) => isAntigravityTextGenerationAvailable(state.root)),
     Effect.provideService(FileSystem.FileSystem, fs),
     Effect.provideService(Path.Path, path),
   );

@@ -1,3 +1,5 @@
+import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
+import * as Clock from "effect/Clock";
 import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as Hex from "effect/encoding/Hex";
@@ -45,11 +47,37 @@ export function antigravityRuntimeState(
     : managedAntigravityRuntimeState(input.profileDirectory);
 }
 
+/** The state a caller was given, or the managed profile's when it was given none. */
+export const antigravityRuntimeStateOf = (options: {
+  readonly profileDirectory: string;
+  readonly runtimeState?: Effect.Effect<AntigravityRuntimeState> | undefined;
+}) =>
+  options.runtimeState ?? Effect.succeed(managedAntigravityRuntimeState(options.profileDirectory));
+
+export const antigravityTokenPath = (state: AntigravityRuntimeState, path: Path.Path) =>
+  path.join(state.root, state.appFolder, state.tokenFile);
+
 /** The CLI runs shell commands in an additional directory instead of the session's cwd. */
 export const antigravitySessionDirectories = (
   state: AntigravityRuntimeState,
   attachmentsDir: string,
 ): ReadonlyArray<string> => (state.runtime === "cli" ? [] : [attachmentsDir]);
+
+/**
+ * `agy acp` runs a `/compact` prompt as its own command. The managed runtime reads it as chat,
+ * so its sessions offer no compaction. The runtime is read as each session opens.
+ */
+export const withAntigravityCliCompaction =
+  <Session extends { readonly compactThread?: unknown }, Input, E, R>(
+    openSession: (input: Input) => Effect.Effect<Session, E, R>,
+    options: Parameters<typeof antigravityRuntimeStateOf>[0],
+  ) =>
+  (input: Input): Effect.Effect<Session, E, R> =>
+    Effect.zipWith(openSession(input), antigravityRuntimeStateOf(options), (session, state) => {
+      if (state.runtime === "cli") return session;
+      const { compactThread: _, ...managed } = session;
+      return managed as Session;
+    });
 
 const RefreshToken = Schema.Struct({ refresh_token: Schema.NonEmptyString });
 const decodeRefreshToken = Schema.decodeUnknownOption(
@@ -68,7 +96,7 @@ export const readAntigravityAccount = Effect.fn("AntigravityAdapterV2.readAccoun
   const state = yield* runtimeState;
   const login = Option.flatMap(
     yield* services.fileSystem
-      .readFileString(services.path.join(state.root, state.appFolder, state.tokenFile))
+      .readFileString(antigravityTokenPath(state, services.path))
       .pipe(Effect.option),
     decodeRefreshToken,
   );
@@ -100,3 +128,57 @@ const advertisesSystemPromptAppend = Schema.is(
 export const antigravityAdvertisesSystemPromptAppend = (
   initializeResult: EffectAcpSchema.InitializeResponse,
 ) => advertisesSystemPromptAppend(initializeResult.agentCapabilities?._meta);
+
+const CliLogin = Schema.Struct({
+  token: Schema.Struct({
+    access_token: Schema.NonEmptyString,
+    refresh_token: Schema.NonEmptyString,
+    expiry: Schema.NonEmptyString,
+  }),
+});
+const decodeCliLogin = Schema.decodeEffect(Schema.fromJsonString(CliLogin));
+
+interface AntigravityAccess {
+  readonly access_token: string;
+  readonly expires_in: number;
+}
+
+/**
+ * Undefined for the managed runtime. The CLI's login holds no OAuth client, so T3 cannot
+ * refresh it. The access token the CLI last saved stands in for a refresh until it expires.
+ */
+export const readAntigravityCliUsageLogin = Effect.fn("readAntigravityCliUsageLogin")(function* (
+  state: AntigravityRuntimeState,
+  text: string,
+  checkedAt: string,
+) {
+  if (state.runtime !== "cli") return undefined;
+  const { token } = yield* decodeCliLogin(text);
+  const expiresIn = (Date.parse(token.expiry) - (yield* Clock.currentTimeMillis)) / 1000;
+  const login: {
+    readonly client_id: string;
+    readonly client_secret: string;
+    readonly refresh_token: string;
+    readonly project_id?: string;
+  } = { client_id: "", client_secret: "", refresh_token: token.refresh_token };
+  const access: AntigravityAccess = { access_token: token.access_token, expires_in: expiresIn };
+  return {
+    token: login,
+    access,
+    unavailable:
+      expiresIn > 60
+        ? undefined
+        : makeUnavailableUsageLimits({
+            checkedAt,
+            reason: "unsupported",
+            message:
+              "The Antigravity CLI's access has expired, and only the CLI can renew it. Limits show again after its next turn.",
+          }),
+  };
+});
+
+/** A CLI login's saved access replaces the refresh request, which is then never sent. */
+export const orAntigravityCliAccess =
+  (cli: { readonly access: AntigravityAccess } | undefined) =>
+  <E, R>(refresh: Effect.Effect<AntigravityAccess, E, R>): Effect.Effect<AntigravityAccess, E, R> =>
+    cli === undefined ? refresh : Effect.succeed(cli.access);
