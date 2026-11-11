@@ -19,6 +19,7 @@ import { makeAntigravityAcpRuntime } from "../../provider/acp/AntigravityAcpSupp
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import * as IdAllocator from "@t3tools/provider-core/server/IdAllocator";
 import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
+import { extractMcpToolCallIdentity } from "@t3tools/provider-acp/server/runtimeModel";
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as TestProviderHost from "@t3tools/provider-testing/TestProviderHost";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
@@ -361,6 +362,41 @@ describe("Antigravity CLI runtime", () => {
       assert.notDeepEqual(second, first, "another login");
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
+
+  it("knows a T3 MCP call by the tool name that the CLI sends", () => {
+    const { normalizeToolCall } = makeAntigravityAcpAdapterFlavor(baseOptions);
+    const identity = (call: { name: string; kind: string; title: string }) =>
+      extractMcpToolCallIdentity(
+        normalizeToolCall!({
+          toolCallId: "call_f8fac04b828143dc92990822",
+          kind: call.kind,
+          title: call.title,
+          status: "completed",
+          data: { ...call, rawInput: { text: "Paris", toolSummary: "Answer capital of France" } },
+        }),
+      );
+
+    for (const tool of ["send_to_user", "replace_send_to_user", "dashboard_get", "dashboard_set"]) {
+      const name = `mcp_t3-code_${tool}`;
+      assert.deepEqual(
+        identity({ name, kind: "other", title: `Run ${name}` }),
+        { server: "t3-code", tool },
+        tool,
+      );
+    }
+    assert.isUndefined(
+      identity({ name: "run_command", kind: "execute", title: "Run mcp_t3-code_send_to_user" }),
+      "a shell command whose text is the title of a send",
+    );
+    assert.isUndefined(
+      identity({
+        name: "mcp_notes_send_to_user",
+        kind: "other",
+        title: "Run mcp_notes_send_to_user",
+      }),
+      "another MCP server's tool of the same name",
+    );
+  });
 
   it("sends session instructions as a system prompt append when the agent advertises it", () => {
     const initialize = (append: boolean): EffectAcpSchema.InitializeResponse => ({
