@@ -24,6 +24,7 @@ import {
 } from "../antigravityAuthSupport.ts";
 import * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import packageJson from "../../../package.json" with { type: "json" };
+import { antigravityAdvertisesSystemPromptAppend } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { normalizeAntigravitySessionUpdate } from "./AntigravityProtocol.ts";
 
 export interface AntigravityAcpRuntimeInput extends Omit<
@@ -94,7 +95,9 @@ const OPEN_MODEL_ACCESS_RELEASE = [1, 5, 1] as const;
  */
 export const antigravityAppendsSystemPrompt = (
   initializeResult: EffectAcpSchema.InitializeResponse,
-) => isQualifiedAntigravityRelease(initializeResult.agentInfo?.version);
+) =>
+  isQualifiedAntigravityRelease(initializeResult.agentInfo?.version) ||
+  antigravityAdvertisesSystemPromptAppend(initializeResult);
 
 export function antigravitySessionMeta(
   initializeResult: EffectAcpSchema.InitializeResponse,

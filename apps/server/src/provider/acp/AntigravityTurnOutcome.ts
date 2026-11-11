@@ -11,6 +11,10 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
+import {
+  antigravityCliApiError,
+  type AntigravityRuntimeState,
+} from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { antigravityManagedPath, antigravityProfileRoot } from "./AntigravityProfilePaths.ts";
 
 // CORTEX_STEP_TYPE_ERROR_MESSAGE in the native trajectory.
@@ -114,7 +118,7 @@ function turnFailure(
   // The agent maps only the SDK's QUOTA_EXHAUSTED stop reason to `refusal`.
   if (errorText === undefined && stopReason !== "refusal") return undefined;
   const text = errorText ?? "";
-  const apiError = API_ERROR.exec(text);
+  const apiError = API_ERROR.exec(text) ?? antigravityCliApiError(text);
   if (stopReason === "refusal" || QUOTA_EXHAUSTED.test(text)) {
     return makeProviderFailure({
       class: "usage_limit",
@@ -141,8 +145,6 @@ function turnFailure(
   });
 }
 
-const conversationSegments = ["antigravity-acp", "conversations"];
-
 /**
  * Antigravity reports an upstream API failure as a chat message and `end_turn`. Its
  * session log ends that turn with an error step, so the check reads only steps the
@@ -150,16 +152,17 @@ const conversationSegments = ["antigravity-acp", "conversations"];
  * that evidence a typed `refusal` still fails the turn.
  */
 export const watchAntigravityPromptOutcome = Effect.fn("AntigravityTurnOutcome.watch")(function* (
-  profileDirectory: string,
+  state: Pick<AntigravityRuntimeState, "root" | "appFolder">,
   sessionId: string,
 ) {
+  const conversationSegments = [state.appFolder, "conversations"];
   const typedOnly = (result: EffectAcpSchema.PromptResponse) =>
     DateTime.now.pipe(Effect.map((now) => turnFailure(result.stopReason, undefined, now)));
   if (!NATIVE_SESSION_ID.test(sessionId)) return typedOnly;
   const segments = [...conversationSegments, `${sessionId}.db`];
   const before = yield* Effect.tryPromise({
     try: async () => {
-      const root = await antigravityProfileRoot(profileDirectory);
+      const root = await antigravityProfileRoot(state.root);
       if (root === undefined) return undefined;
       if ((await antigravityManagedPath(root, conversationSegments, "directory")) === undefined) {
         return undefined;
