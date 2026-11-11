@@ -174,7 +174,7 @@ const claudeLikeCases = (agent: "claude" | "codex") => {
       received: null,
     },
     {
-      name: `${agent}: PostTool feedback is sent as context, also when the hook blocks`,
+      name: `${agent}: PostTool gets no tool result, and its feedback is sent as context also when the hook blocks`,
       nativeEvent: "PostToolUse",
       payload: payloads.postToolUseEdit,
       stubs: [{ events: ["PostTool"], tools: ["edit"], exit: 2, stderr: "file too long" }],
@@ -185,7 +185,7 @@ const claudeLikeCases = (agent: "claude" | "codex") => {
         tool_class: "edit",
         tool_name: editTool,
         file_paths: ["/work/project/notes.txt"],
-        tool_response: payloads.postToolUseEdit.tool_response,
+        native: { tool_response: payloads.postToolUseEdit.tool_response },
       },
     },
     {
@@ -224,8 +224,10 @@ describe("Claude and Codex translation", () => {
       if (received === null) {
         expect(got).toBeUndefined();
       } else {
-        expect(got).toMatchObject({ ...received, agent, native: payload });
-        expect(got).toMatchObject(payload);
+        const { tool_response: _toolResult, ...passedThrough }: Record<string, unknown> = payload;
+        expect(got).toMatchObject({ ...received, ...passedThrough, agent });
+        expect(got?.native).toEqual(payload);
+        expect(got).not.toHaveProperty("tool_response");
       }
       expect(sandbox.errors()).toEqual([]);
     },
@@ -464,8 +466,9 @@ describe("agy translation and state", () => {
       tool_name: "write_file",
       tool_input: { file_path: "/work/project/notes.txt", Path: "/work/project/notes.txt" },
       file_paths: ["/work/project/notes.txt"],
-      tool_response: null,
+      native: { hookEventName: "PostToolUse", toolCall: { name: "write_file" } },
     });
+    expect(conversation.payloads()[0]).not.toHaveProperty("tool_response");
   });
 
   it("gives Stop the last reply and whether a Stop hook already continued the turn", async () => {
