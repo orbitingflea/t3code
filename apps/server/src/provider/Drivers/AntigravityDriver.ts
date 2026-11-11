@@ -185,6 +185,12 @@ export const AntigravityDriver: ProviderDriver<
       );
       yield* Effect.forkScoped(removeRetired);
     }
+    const runtimeState = installation.resolve(settings.binaryPath, processEnvironment).pipe(
+      Effect.map((executable) =>
+        antigravityRuntimeState(executable, { profileDirectory, userHome, path }),
+      ),
+      Effect.orElseSucceed(() => managedAntigravityRuntimeState(profileDirectory)),
+    );
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER,
       instanceId,
@@ -431,6 +437,7 @@ export const AntigravityDriver: ProviderDriver<
     const usage = yield* makeAntigravityUsageProbe({
       profileDirectory,
       authMethod: auth.authMethod,
+      runtimeState,
     }).pipe(
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
@@ -443,7 +450,8 @@ export const AntigravityDriver: ProviderDriver<
       probeUsage: usage.probe,
       clearUsage: usage.clear,
       auth: { type: auth.authMethod, label: antigravityAuthLabel(auth.authMethod) },
-      supportsTextGeneration: isAntigravityTextGenerationAvailable(profileDirectory).pipe(
+      supportsTextGeneration: runtimeState.pipe(
+        Effect.flatMap((state) => isAntigravityTextGenerationAvailable(state.root)),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
         Effect.orElseSucceed(() => false),
@@ -467,12 +475,7 @@ export const AntigravityDriver: ProviderDriver<
       withProcess: authFlow.withProcess,
       defaultModel,
       profileDirectory,
-      runtimeState: installation.resolve(settings.binaryPath, processEnvironment).pipe(
-        Effect.map((executable) =>
-          antigravityRuntimeState(executable, { profileDirectory, userHome, path }),
-        ),
-        Effect.orElseSucceed(() => managedAntigravityRuntimeState(profileDirectory)),
-      ),
+      runtimeState,
       onSessionStarted: provider.onSessionStarted,
       onSessionEvent: (event) => {
         if (event._tag === "ConfigOptionsUpdated") {
@@ -492,6 +495,7 @@ export const AntigravityDriver: ProviderDriver<
     });
     const textGeneration = yield* makeAntigravityTextGeneration({
       profileDirectory,
+      runtimeState,
       defaultModel,
       withProcess: authFlow.withProcess,
       makeRuntime: (cwd) =>

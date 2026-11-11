@@ -22,6 +22,7 @@ import {
   antigravitySessionDirectories,
   managedAntigravityRuntimeState,
   readAntigravityAccount,
+  withAntigravityCliCompaction,
   type AntigravityRuntimeState,
 } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import type { AntigravityAuth } from "../../provider/AntigravityAuth.ts";
@@ -286,8 +287,8 @@ export function makeAntigravityAcpAdapterFlavor(
     normalizeToolCall: normalizeAntigravityToolCall,
     extractSubagentUpdate: extractAntigravitySubagentUpdate,
     supportsImagePrompts: true,
-    // ACP 1.3.0 treats /compact as ordinary model input.
-    supportsCompaction: false,
+    // Only the CLI compacts on /compact; makeAntigravityAdapterV2 withholds it from the managed runtime.
+    supportsCompaction: true,
     requiresSignIn: isAntigravitySignInRequiredError,
     // Antigravity can leave a prompt open without updates; long tools and approvals pause this.
     promptInactivityTimeout: "15 minutes",
@@ -315,7 +316,7 @@ export const makeAntigravityAdapterV2 = Effect.fn("makeAntigravityAdapterV2")(fu
     path: yield* Path.Path,
     host: yield* ProviderHost.ProviderHost,
   };
-  return yield* makeAcpAdapterV2({
+  const adapter = yield* makeAcpAdapterV2({
     instanceId: options.instanceId,
     flavor: makeAntigravityAcpAdapterFlavor({ ...options, ...services }),
     selfInvocation: options.selfInvocation,
@@ -324,4 +325,5 @@ export const makeAntigravityAdapterV2 = Effect.fn("makeAntigravityAdapterV2")(fu
       ? {}
       : { continuationRequests: options.continuationRequests }),
   });
+  return { ...adapter, openSession: withAntigravityCliCompaction(adapter.openSession, options) };
 });

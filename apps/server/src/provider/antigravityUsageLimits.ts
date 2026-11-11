@@ -14,6 +14,13 @@ import {
   makeUnavailableUsageLimits,
   makeUsageLimits,
 } from "@t3tools/provider-core/server/usageLimits";
+import {
+  antigravityRuntimeStateOf,
+  antigravityTokenPath,
+  orAntigravityCliAccess,
+  readAntigravityCliUsageLogin,
+  type AntigravityRuntimeState,
+} from "../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 
 const ENDPOINTS = [
   "https://daily-cloudcode-pa.googleapis.com",
@@ -184,6 +191,8 @@ function modelWindows(models: typeof Models.Type) {
 export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(function* (input: {
   readonly profileDirectory: string;
   readonly authMethod: AntigravitySettings["authMethod"];
+  /** Where the running runtime keeps its login; the managed profile when absent. */
+  readonly runtimeState?: Effect.Effect<AntigravityRuntimeState>;
 }) {
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
@@ -191,7 +200,6 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
   const crypto = yield* Digest.Digest;
   const platform = yield* HostProcess.Platform;
   const architecture = yield* HostProcess.Architecture;
-  const tokenPath = path.join(input.profileDirectory, "antigravity-acp", "acp_token.json");
   let cached:
     | { fingerprint: string; account: string; accessToken: string; expiresAt: number }
     | undefined;
@@ -219,6 +227,8 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
     if (input.authMethod !== "oauth-personal" && input.authMethod !== "oauth-business") {
       return makeUnavailableUsageLimits({ checkedAt, reason: "unsupported" });
     }
+    const state = yield* antigravityRuntimeStateOf(input);
+    const tokenPath = antigravityTokenPath(state, path);
     if (!(yield* fs.exists(tokenPath))) {
       cached = undefined;
       return makeUnavailableUsageLimits({
@@ -227,7 +237,10 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
         message: "Sign in with Google to see Antigravity limits.",
       });
     }
-    const token = yield* fs.readFileString(tokenPath).pipe(Effect.flatMap(decodeTokenFile));
+    const tokenText = yield* fs.readFileString(tokenPath);
+    const cli = yield* readAntigravityCliUsageLogin(state, tokenText, checkedAt);
+    if (cli?.unavailable) return cli.unavailable;
+    const token = cli?.token ?? (yield* decodeTokenFile(tokenText));
     const fingerprint = yield* sha256(
       `${token.client_id}\0${token.refresh_token}\0${token.project_id ?? ""}`,
     );
@@ -245,7 +258,7 @@ export const makeAntigravityUsageProbe = Effect.fn("makeAntigravityUsageProbe")(
             grant_type: "refresh_token",
           }),
         ),
-      ).pipe(Effect.flatMap(decodeTokenResponse));
+      ).pipe(Effect.flatMap(decodeTokenResponse), orAntigravityCliAccess(cli));
       accessToken = refreshed.access_token;
       // Use Google account IDs to merge accounts across environments; refresh tokens differ per machine.
       account = yield* request(
