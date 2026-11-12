@@ -317,7 +317,7 @@ interface MessagesTimelineProps {
   findQuery?: string;
   activeFindMatch?: ThreadFindMatch | null;
   findNavigationId?: number;
-  /** The rows already hold only the replies to show, so zen keeps every one of them. */
+  /** Rows hold only chosen replies, so zen keeps them all. No Working or Thinking row is drawn. */
   repliesChosen?: boolean;
 }
 
@@ -665,6 +665,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     expandedAttemptIds: visibleExpandedAttemptIds,
     expandedWorkGroupIds,
     isWorking,
+    repliesChosen,
     runlessWorkActive,
     activeTurnStartedAt,
     turnDiffSummaries,
