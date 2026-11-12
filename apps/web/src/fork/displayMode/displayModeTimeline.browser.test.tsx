@@ -12,12 +12,13 @@ import { LegendListRef } from "@legendapp/list/react";
 import { MESSAGES_ONLY_DISPLAY_MODE, NORMAL_DISPLAY_MODE } from "@t3tools/shared/displayModes";
 import * as DateTime from "effect/DateTime";
 import { createRef, type ComponentProps } from "react";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
 
 import { render } from "../../../test/render";
 import { MessagesTimeline } from "../../components/chat/MessagesTimeline";
+import { deriveMessagesTimelineRows } from "../../components/chat/MessagesTimeline.logic";
 import { __setClientSettingsForTests } from "../../hooks/useSettings";
 import { deriveTimelineEntriesFromVisibleTurnItems } from "../../session-logic";
 import { applyDisplayMode } from "./displayModeTimeline";
@@ -132,12 +133,14 @@ function props(): Omit<TimelineProps, "timelineEntries"> {
 async function renderTimeline(
   timelineEntries: TimelineProps["timelineEntries"],
   repliesChosen = false,
+  extra: Partial<TimelineProps> = {},
 ) {
   const container = document.createElement("div");
   container.style.cssText = "height: 900px; width: 800px; display: flex; flex-direction: column;";
   return render(
     <MessagesTimeline
       {...props()}
+      {...extra}
       timelineEntries={timelineEntries}
       repliesChosen={repliesChosen}
     />,
@@ -178,6 +181,52 @@ describe("Messages only timeline", () => {
     expect(text).toContain("Worked for");
     expect(text).toContain("Status from the build bot");
     expect(text).not.toContain("to the user");
+  });
+
+  describe("while the agent works", () => {
+    const working = { isWorking: true, activeTurnStartedAt: time(0) };
+    const asked = entriesOf([userMessage("work-ask", 0, "Please ship it.")]);
+    const liveRow = (container: HTMLElement, kind: "working" | "thinking") =>
+      container.querySelector(`[data-timeline-row-kind="${kind}"]`);
+
+    it("draws the Working and Thinking rows in Normal", async () => {
+      await using screen = await renderTimeline(
+        [...applyDisplayMode(NORMAL_DISPLAY_MODE, asked)],
+        false,
+        working,
+      );
+      await vi.waitFor(() => {
+        expect(liveRow(screen.container, "working")).not.toBeNull();
+        expect(liveRow(screen.container, "thinking")).not.toBeNull();
+      });
+    });
+
+    it("draws neither in a mode that chooses its replies", async () => {
+      await using screen = await renderTimeline(
+        [...applyDisplayMode(MESSAGES_ONLY_DISPLAY_MODE, asked)],
+        true,
+        working,
+      );
+      await expect.element(screen.getByText("Please ship it.")).toBeVisible();
+      expect(liveRow(screen.container, "working")).toBeNull();
+      expect(liveRow(screen.container, "thinking")).toBeNull();
+    });
+
+    it("groups a steer with the message before it once the Working row is gone", () => {
+      const rows = deriveMessagesTimelineRows({
+        timelineEntries: entriesOf([
+          userMessage("steer-ask", 0, "Please ship it."),
+          userMessage("steer-more", 1, "Run the tests first.", { inputIntent: "steer" }),
+        ]),
+        isWorking: true,
+        repliesChosen: true,
+        turnDiffSummaries: [],
+        supportsConversationRollback: false,
+      });
+      expect(rows.map((row) => row.kind)).toEqual(["message", "message"]);
+      expect(rows[0]).toMatchObject({ groupedWithNext: true });
+      expect(rows[1]).toMatchObject({ groupedWithPrevious: true });
+    });
   });
 
   describe("in a finished turn with two sends", () => {

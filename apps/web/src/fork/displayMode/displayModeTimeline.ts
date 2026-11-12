@@ -9,6 +9,7 @@ import {
   type VisibleCore,
 } from "@t3tools/shared/displayModes";
 
+import type { MessagesTimelineRow } from "../../components/chat/MessagesTimeline.logic";
 import type { TimelineEntry } from "../../session-logic";
 import type { SubThreadSummaries, SubThreadSummary } from "../subThreads/subThreadsState";
 
@@ -212,5 +213,15 @@ export function applyDisplayMode(
   });
   return rows.length === entries.length && rows.every((row, index) => row === entries[index])
     ? entries
+    : rows;
+}
+
+/** A mode that chooses its replies draws no Working or Thinking row. */
+export function displayModeRows(
+  rows: MessagesTimelineRow[],
+  repliesChosen: boolean,
+): MessagesTimelineRow[] {
+  return repliesChosen
+    ? rows.filter((row) => row.kind !== "working" && row.kind !== "thinking")
     : rows;
 }
