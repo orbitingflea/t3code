@@ -3855,6 +3855,8 @@ export const OrchestrationV2SubscribeThreadInput = Schema.Struct({
   /** The client restores `*Omitted` bodies from records it already holds. */
   acceptDedupedBodies: Schema.optionalKey(Schema.Boolean),
   acceptCompactIds: Schema.optionalKey(Schema.Boolean),
+  /** Fork: a bounded snapshot and its history pages hold only what a display mode shows. */
+  shownOnly: Schema.optionalKey(Schema.Boolean),
 });
 export type OrchestrationV2SubscribeThreadInput = typeof OrchestrationV2SubscribeThreadInput.Type;
 
