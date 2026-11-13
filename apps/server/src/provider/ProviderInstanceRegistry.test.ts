@@ -50,7 +50,6 @@ import { makeProviderInstanceRegistry } from "./ProviderInstanceRegistry.ts";
 import { ProviderDriverError } from "./Errors.ts";
 import * as ProviderInstallationGate from "./ProviderInstallationGate.ts";
 import * as ProviderOrchestrationAdapterInfrastructure from "./ProviderOrchestrationAdapterInfrastructure.ts";
-import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ProviderHostLive from "./ProviderHostLive.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";

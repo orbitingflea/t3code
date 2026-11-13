@@ -1,4 +1,3 @@
-<<<<<<< origin/main
 # About this fork
 
 This is a fork of T3 Code that integrates a few additional features, including:
@@ -21,14 +20,11 @@ This is a fork of T3 Code that integrates a few additional features, including:
 
 The following is the README from upstream.
 
-# T3 Code
-=======
 <p align="center">
   <a href="https://t3.codes">
     <img src="./assets/prod/t3-black-web-icon-192x192.png" width="80" height="80" alt="T3 Code logo" />
   </a>
 </p>
->>>>>>> upstream/main
 
 <h1 align="center">T3 Code</h1>
 

@@ -262,14 +262,10 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               text={activeQuestion.question}
               cwd={cwd}
               threadRef={threadRef}
-<<<<<<< origin/main
-              // Fork: selects upstream's single-tilde list, so a question's "1~2" keeps its tilde.
+              // Fork: selects the agent-text single-tilde list, so a question's "1~2" keeps its tilde.
               assistantReply
-              className={cn("pt-2 text-foreground/85", questionTextAlign)}
-=======
               lineBreaks
               className={cn("pt-0.5 text-foreground/85", questionTextAlign)}
->>>>>>> upstream/main
             />
             {/* Rows span the header row's width so the radios align with the question text and the shortcut column sits under the dismiss button. */}
             <div className="-ms-2 mt-1.5 sm:-ms-1.5">

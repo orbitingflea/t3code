@@ -76,9 +76,39 @@ const isUsageLimitSourceError = Schema.is(UsageLimitSourceError);
 const CLAUDE_API = "https://api.anthropic.com/api";
 export const CLAUDE_USAGE_URL = `${CLAUDE_API}/oauth/usage?cedar_ember=1`;
 
+const REDEEM_URL = /\/(?:consume|reset_rate_limits)$/;
+
 /** A redeem waits on the hub's own call to the provider, which can take longer than a read. */
 export const managementTimeout = (body: unknown) =>
-  typeof body === "object" && body !== null && "data" in body ? "30 seconds" : "15 seconds";
+  typeof body === "object" &&
+  body !== null &&
+  "url" in body &&
+  typeof body.url === "string" &&
+  REDEEM_URL.test(body.url)
+    ? "30 seconds"
+    : "15 seconds";
+
+const resetCredits = Effect.fn("ClaudeHub.resetCredits")(function* (
+  usage: typeof ClaudeUsage.Type,
+) {
+  return claudeResetCreditsToContract(
+    usage.cedar_ember,
+    DateTime.toEpochMillis(yield* DateTime.now),
+  );
+});
+
+/** Adds reset credits and the reading's time from a usage answer to a hub account read from it. */
+export const withClaudeUsageAnswer = Effect.fn("ClaudeHub.withUsageAnswer")(function* <
+  A extends { readonly usageLimits: ServerProviderUsageLimits },
+>(body: string, account: A) {
+  const credits = yield* resetCredits(yield* decodeClaudeUsage(body));
+  return withAccountReadAt(
+    body,
+    credits
+      ? { ...account, usageLimits: { ...account.usageLimits, resetCredits: credits } }
+      : account,
+  );
+});
 
 /** Claude reads and reset claims through a CLIProxyAPI hub's management API. */
 export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends HubAccount>(
@@ -111,28 +141,6 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
       ...(data === undefined ? {} : { data: yield* encodeJson(data) }),
     });
     return yield* decodeApiResponse(raw);
-  });
-
-  const resetCredits = Effect.fn("ClaudeHub.resetCredits")(function* (
-    usage: typeof ClaudeUsage.Type,
-  ) {
-    return claudeResetCreditsToContract(
-      usage.cedar_ember,
-      DateTime.toEpochMillis(yield* DateTime.now),
-    );
-  });
-
-  /** Adds reset credits and the reading's time from a usage answer to a hub account read from it. */
-  const withUsageAnswer = Effect.fn("ClaudeHub.withUsageAnswer")(function* <
-    A extends { readonly usageLimits: ServerProviderUsageLimits },
-  >(body: string, account: A) {
-    const credits = yield* resetCredits(yield* decodeClaudeUsage(body));
-    return withAccountReadAt(
-      body,
-      credits
-        ? { ...account, usageLimits: { ...account.usageLimits, resetCredits: credits } }
-        : account,
-    );
   });
 
   /** Usage in the Claude SDK's get_usage shape, plus reset credits. */
@@ -302,5 +310,5 @@ export const makeClaudeHub = Effect.fn("makeClaudeHub")(function* <A extends Hub
     } as const;
   });
 
-  return { withUsageAnswer, usage, findLogin, claimLogin, consume };
+  return { usage, findLogin, claimLogin, consume };
 });

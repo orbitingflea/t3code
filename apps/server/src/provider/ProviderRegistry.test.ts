@@ -66,7 +66,6 @@ import * as OpenCodeServerLedger from "@t3tools/provider-opencode/server/OpenCod
 import * as ProviderEventLoggers from "@t3tools/provider-core/server/ProviderEventLoggers";
 import * as ProviderInstallationGate from "./ProviderInstallationGate.ts";
 import * as ProviderInstanceRegistryHydration from "./ProviderInstanceRegistryHydration.ts";
-import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as PortScanner from "../preview/PortScanner.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerSettingsModule from "../serverSettings.ts";
@@ -3554,9 +3553,6 @@ it.layer(
         const layerProviderRegistry = ProviderRegistry.layer.pipe(
           Layer.provideMerge(
             ProviderInstanceRegistryHydration.layer.pipe(
-<<<<<<< origin/main
-              Layer.provide(Layer.merge(PortScanner.layerTest, SqlitePersistence.layerMemory)),
-=======
               Layer.provide(
                 Layer.mergeAll(
                   PortScanner.layerTest,
@@ -3564,7 +3560,6 @@ it.layer(
                   SqlitePersistence.layerMemory,
                 ),
               ),
->>>>>>> upstream/main
             ),
           ),
           Layer.provideMerge(AntigravityInstallation.AntigravityInstallation.layer),
@@ -3684,9 +3679,6 @@ it.layer(
         const layerProviderRegistry = ProviderRegistry.layer.pipe(
           Layer.provideMerge(
             ProviderInstanceRegistryHydration.layer.pipe(
-<<<<<<< origin/main
-              Layer.provide(Layer.merge(PortScanner.layerTest, SqlitePersistence.layerMemory)),
-=======
               Layer.provide(
                 Layer.mergeAll(
                   PortScanner.layerTest,
@@ -3694,7 +3686,6 @@ it.layer(
                   SqlitePersistence.layerMemory,
                 ),
               ),
->>>>>>> upstream/main
             ),
           ),
           Layer.provideMerge(AntigravityInstallation.AntigravityInstallation.layer),
@@ -3831,9 +3822,6 @@ it.layer(
       readSeed = false;
       const services = yield* Layer.build(
         ProviderInstanceRegistryHydration.layer.pipe(
-<<<<<<< origin/main
-          Layer.provide(Layer.merge(PortScanner.layerTest, SqlitePersistence.layerMemory)),
-=======
           Layer.provide(
             Layer.mergeAll(
               PortScanner.layerTest,
@@ -3841,7 +3829,6 @@ it.layer(
               SqlitePersistence.layerMemory,
             ),
           ),
->>>>>>> upstream/main
         ),
       ).pipe(Effect.provide(dependencies));
       failCurrentRead = input.failCurrentRead ?? false;

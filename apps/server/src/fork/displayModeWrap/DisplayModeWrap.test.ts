@@ -31,6 +31,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as SqlClient from "effect/sql/SqlClient";
 
+import * as EventSink from "../../orchestration-v2/EventSink.ts";
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProviderSessionManager from "../../orchestration-v2/ProviderSessionManager.ts";
 import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
@@ -290,6 +291,8 @@ const seedSource = Effect.fn("seedSource")(function* (now: DateTime.Utc) {
 
 const steered: string[] = [];
 let refuseSteer = false;
+// Steering never reads the event stream.
+const eventSink = Layer.mock(EventSink.EventSinkV2)({});
 const sessions = Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({
   get: () =>
     Effect.succeedSome({
@@ -461,7 +464,7 @@ it.effect("wraps a steering message sent after the agent's hidden tool work", ()
       Layer.merge(
         store,
         ProviderTurnControlService.layer.pipe(
-          Layer.provide(Layer.mergeAll(store, sessions, wrapper)),
+          Layer.provide(Layer.mergeAll(store, sessions, wrapper, eventSink)),
         ),
       ),
     ),
@@ -496,7 +499,7 @@ it.effect("leaves the note owed after a slash command sent as a steer", () =>
         store,
         wrapper,
         ProviderTurnControlService.layer.pipe(
-          Layer.provide(Layer.mergeAll(store, sessions, wrapper)),
+          Layer.provide(Layer.mergeAll(store, sessions, wrapper, eventSink)),
         ),
       ),
     ),

@@ -1229,8 +1229,6 @@ const UserMessageBody = memo(function UserMessageBody(props: {
       skills={props.skills}
       className="text-message-foreground user-message-markdown"
       lineBreaks
-      // Fork: selects upstream's single-tilde list, so a sent "1~2" keeps its tilde.
-      assistantReply
       parseRawHtml={false}
       extraRemarkPlugins={USER_MESSAGE_REMARK_PLUGINS}
       renderContextReference={props.renderContextReference}

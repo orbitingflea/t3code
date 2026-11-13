@@ -365,17 +365,12 @@ jobs:
     name: Test Web ${{ matrix.shard }}
     needs: changes
     if: ${{ !cancelled() && needs.changes.outputs.test_web != 'false' }}
-<<<<<<< origin/main
     runs-on: ubuntu-24.04
     timeout-minutes: 20
-=======
-    runs-on: blacksmith-8vcpu-ubuntu-2404
-    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
         shard: [1, 2]
->>>>>>> upstream/main
     steps:
       - name: Checkout
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0

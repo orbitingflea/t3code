@@ -1,12 +1,8 @@
 # Antigravity
 
 T3 Code runs Google's official Antigravity ACP agent on your selected environment.
-<<<<<<< origin/main
-It has its own sign-in, separate from the Antigravity IDE or CLI, unless you
-[use the Antigravity CLI](#use-the-antigravity-cli) as the runtime. Google controls
-=======
-T3 manages its own CLI installation and sign-in, separate from your terminal or IDE. Google controls
->>>>>>> upstream/main
+T3 manages its own CLI installation and sign-in, separate from your terminal or IDE, unless you
+[use your own Antigravity CLI](#use-a-manual-installation). Google controls
 which models and account access are available through this agent.
 
 ## Set up Antigravity
@@ -67,22 +63,15 @@ Set **Binary path** to its `agy` executable and update it yourself.
 Leave the field blank to use the managed runtime, or a compatible executable on
 `PATH` if no managed runtime is installed.
 
-<<<<<<< origin/main
-### Use the Antigravity CLI
-
-Set **Binary path** to the `agy` executable of Antigravity CLI 1.5 or later to run
-the CLI's own ACP mode instead of the managed runtime.
-
-The instance then has no private profile. The agent uses the CLI's own Google
-login, settings, and state folder (`~/.gemini/antigravity-cli`), so sign in with
-`agy` on the environment first. Every instance that points at the CLI shares that
-login, and its sessions are stored with the CLI's own.
+When **Binary path** names your own `agy` of Antigravity CLI 1.5 or later (a full
+path, or `agy` to find it on `PATH`), the instance has no private profile. The agent uses the CLI's own Google login, settings, and state
+folder (`~/.gemini/antigravity-cli`), so sign in with `agy` on the environment
+first. Every instance that uses it shares that login, and its sessions are stored
+with the CLI's own.
 
 The CLI's tool-permission setting decides whether it asks before a tool call. When
 it asks, T3 Code answers by the thread's [permission mode](./permission-modes.md).
 When the CLI is set to always proceed, tools run without asking in every mode.
-
-Send `/compact` to have the CLI compact the thread's context.
 
 **Usage > Limits** reads with the access the CLI last saved. T3 Code cannot renew
 that access, so once it expires the page says so until the CLI runs its next turn.
@@ -90,7 +79,7 @@ that access, so once it expires the page says so until the CLI runs its next tur
 T3 Code does not use the CLI for titles, commit messages, or other generated text
 while `~/.gemini/config` holds hooks or MCP servers, because they would run in
 those helper sessions too. Select another model for generated text.
-=======
+
 ## Update the managed runtime
 
 In web or desktop provider settings, choose **Update Antigravity** when an update
@@ -102,7 +91,6 @@ Updating an older 1.4.5 installation migrates it to the native CLI. You may need
 sign in again after migration. Threads already running finish with their original
 runtime; new sessions use the updated release. Custom binary paths keep using the
 executable you selected.
->>>>>>> upstream/main
 
 ## Models and threads
 
@@ -124,9 +112,8 @@ T3 Code keeps conversation history and file diffs, but Antigravity cannot rewind
 its conversation. Reverting a thread or editing and resubmitting an earlier turn
 is unavailable. Continue with a follow-up message or start a new thread.
 
-Manual context compaction is unavailable through the managed runtime. Send `/clear`
-when you need a fresh context, or [use the Antigravity CLI](#use-the-antigravity-cli),
-which has `/compact`.
+Send `/compact` to compact the thread's context. The older 1.4.5 runtime has no
+manual compaction; send `/clear` when you need a fresh context, or update Antigravity.
 
 ### Skills and attachments
 

@@ -9,6 +9,7 @@ import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientError, HttpClientResponse } from "effect/http";
 
 import { makeCliproxyApi } from "../../usage/cliproxyApi.ts";
+import { managementTimeout } from "./claudeHub.ts";
 
 const config = {
   kind: "cliproxy",
@@ -110,6 +111,15 @@ describe("Claude through a CLIProxyAPI hub", () => {
         availableCount: 3,
         nextCreditId: "grant_a",
         nextExpiresAt: "2099-01-01T00:00:00.000Z",
+        options: [
+          {
+            availableCount: 3,
+            creditId: "grant_a",
+            description: "Refills your 5-hour and weekly limits.",
+            expiresAt: "2099-01-01T00:00:00.000Z",
+            label: "Full reset",
+          },
+        ],
       });
       expect(test.requests.find((request) => request.body?.url)?.body?.url).toBe(
         "https://api.anthropic.com/api/oauth/usage?cedar_ember=1",
@@ -273,6 +283,8 @@ describe("Claude through a CLIProxyAPI hub", () => {
         yield* TestClock.adjust("29 seconds");
         expect((yield* Fiber.join(redeem)).outcome).toBe("reset");
       }
+      const postedRead = { auth_index: "a", url: "https://example.com/quota", data: "{}" };
+      expect(managementTimeout(postedRead)).toBe("15 seconds");
     }),
   );
 

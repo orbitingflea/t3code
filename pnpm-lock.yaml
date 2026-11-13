@@ -11745,7 +11745,6 @@ packages:
   remark-breaks@4.0.0:
     resolution: {integrity: sha512-IjEjJOkH4FuJvHZVIW0QCDWxcG96kCq7An/KVH2NfJe6rKZU2AsHeB3OEjPNRxi4QC34Xdx7I2KGYn6IpT7gxQ==}
 
-<<<<<<< origin/main
   remark-cjk-friendly@2.3.1:
     resolution: {integrity: sha512-f+pKZRxCRwNEGFBKNRAZAqU91GIK1SAo3ZyFHWRUgC9zcxRR0BXKd6YwqgSsxtW0rNpUDtONj7H5nje2WL3fcA==}
     engines: {node: '>=18'}
@@ -11755,10 +11754,9 @@ packages:
     peerDependenciesMeta:
       '@types/mdast':
         optional: true
-=======
+
   remark-frontmatter@5.0.0:
     resolution: {integrity: sha512-XTFYvNASMe5iPN0719nPrdItC9aU0ssC4v14mH1BCi1u0n1gAocqcujWUrByftZTbLhRtiKRyjYTSIOcr69UVQ==}
->>>>>>> upstream/main
 
   remark-gfm@4.0.1:
     resolution: {integrity: sha512-1quofZ2RQ9EWdeN34S79+KExV1764+wCUGop5CPL1WGdD0ocPpu91lzPGbwWMECpEpd42kJGQwzRfyov9j4yNg==}
@@ -22773,7 +22771,6 @@ snapshots:
       mdast-util-newline-to-break: 2.0.0
       unified: 11.0.5
 
-<<<<<<< origin/main
   remark-cjk-friendly@2.3.1(@types/mdast@4.0.4)(micromark-util-types@2.0.2)(micromark@4.0.2(patch_hash=cb79edde7eca83bbcaaafb6ceb7b044b81b987314cde4910823b15257ecada67)(supports-color@8.1.1))(unified@11.0.5):
     dependencies:
       mdast-util-to-markdown-cjk-friendly: 1.0.0(@types/mdast@4.0.4)(micromark-util-types@2.0.2)
@@ -22784,7 +22781,7 @@ snapshots:
     transitivePeerDependencies:
       - micromark
       - micromark-util-types
-=======
+
   remark-frontmatter@5.0.0(supports-color@8.1.1):
     dependencies:
       '@types/mdast': 4.0.4
@@ -22793,7 +22790,6 @@ snapshots:
       unified: 11.0.5
     transitivePeerDependencies:
       - supports-color
->>>>>>> upstream/main
 
   remark-gfm@4.0.1(supports-color@8.1.1):
     dependencies:

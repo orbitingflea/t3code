@@ -26,26 +26,12 @@ function typeset(tex: string, display: boolean): string {
   };
   let html = "";
   try {
-<<<<<<< origin/main
-    html = katex.renderToString(tex, {
-      displayMode: display,
-      output: "htmlAndMathml",
-      throwOnError: true,
-      // No \href, \url, \htmlClass, or other commands that emit active HTML.
-      trust: false,
-      strict: "ignore",
-      maxSize: 20,
-      maxExpand: 1000,
-      macros: mathMacros(),
-    });
-=======
-    html = katex.renderToString(tex, options);
->>>>>>> upstream/main
+    html = katex.renderToString(tex, { ...options, macros: mathMacros() });
   } catch {
     const repaired = escapeLiteralPercents(tex);
     if (repaired !== tex) {
       try {
-        html = katex.renderToString(repaired, options);
+        html = katex.renderToString(repaired, { ...options, macros: mathMacros() });
       } catch {
         // Unfinished or unsupported TeX stays readable as its source.
       }

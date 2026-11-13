@@ -774,9 +774,6 @@ function cancelledAppOwnedTask(
   };
 }
 
-<<<<<<< origin/main
-// Provider wakes and delegated completions can start follow-ups. Monitor updates only report progress.
-=======
 // A workspace change detaches the session, which can settle the calling run at once. Queuing its
 // follow-up in a later command would let a delegated task report its result before that exists.
 function metadataUpdateContinuation(
@@ -797,8 +794,7 @@ function metadataUpdateContinuation(
       };
 }
 
-// Provider wakes can start follow-up work; monitor updates only report progress.
->>>>>>> upstream/main
+// Provider wakes and delegated completions can start follow-ups. Monitor updates only report progress.
 // Dispatch takes the parent's lock for follow-ups because intake writes the parent.
 function mayStartSubagentFollowup(
   command: Extract<OrchestrationV2Command, { readonly type: "message.dispatch" }>,

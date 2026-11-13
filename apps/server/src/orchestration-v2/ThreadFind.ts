@@ -417,9 +417,6 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
           const cached = documents.get(row.position);
           if (cached) return cached;
           const decoded = yield* decode(row);
-<<<<<<< origin/main
-          const key = textKey(decoded.item, cwd, input.skills ?? [], sentTexts);
-=======
           if (
             decoded.item.type === "assistant_message" &&
             decoded.item.text === "" &&
@@ -429,8 +426,7 @@ export const makeThreadFind = Effect.fn("makeThreadFind")(function* (
             documents.set(row.position, document);
             return document;
           }
-          const key = textKey(decoded.item, cwd, input.skills ?? []);
->>>>>>> upstream/main
+          const key = textKey(decoded.item, cwd, input.skills ?? [], sentTexts);
           const segments = yield* Cache.get(
             key.text.length <= 32_768 ? textCache.text : textCache.largeText,
             key,

@@ -594,15 +594,7 @@ export default function ChatView(props: ChatViewProps) {
     select: (location) => location.state.assistantCitationActivation ?? location.state.__TSR_key,
   });
   const citationLocation = { href: citationHref, key: citationKey };
-<<<<<<< origin/main
-  const citationRequest = (() => {
-    const citation = timelineCitation(assistantCitationFromLocation(citationLocation.href));
-    return citation && citation.environmentId === environmentId && citation.threadId === threadId
-      ? { citation, key: citationLocation.key ?? citationLocation.href }
-      : null;
-  })() as AssistantCitationRequest | null;
-=======
-  const locationCitation = assistantCitationFromLocation(citationLocation.href);
+  const locationCitation = timelineCitation(assistantCitationFromLocation(citationLocation.href));
   const citationActivation = citationLocation.key ?? citationLocation.href;
   const citationRequest = (
     locationCitation &&
@@ -612,7 +604,6 @@ export default function ChatView(props: ChatViewProps) {
       : null
   ) as AssistantCitationRequest | null;
   useSideChatCitationReveal(embedded ? null : routeThreadRef, locationCitation, citationActivation);
->>>>>>> upstream/main
   const citationHistory = useCitedHistory(citationRequest);
   const { resolvedTheme } = useTheme();
   const composerRuntimeMode = useComposerDraftStore(
@@ -3415,14 +3406,8 @@ export default function ChatView(props: ChatViewProps) {
             {isWorkspaceFileDragActive ? <WorkspaceFileDropOverlay /> : null}
             <ChatBannerLane
               environmentId={activeThread.environmentId}
-<<<<<<< origin/main
               providerStatus={subThreadDraft === null ? visibleProviderStatus : null}
-              providerStatusBannerKey={providerStatusBannerKey}
-              setDismissedProviderStatusBannerKey={setDismissedProviderStatusBannerKey}
-=======
-              providerStatus={visibleProviderStatus}
               providerStatusDismissalKey={providerStatusDismissalKey}
->>>>>>> upstream/main
               onOpenProviderSetup={openProviderSetupStable}
               threadId={activeThread.id}
               threadError={timelineThreadError}
@@ -3511,15 +3496,10 @@ export default function ChatView(props: ChatViewProps) {
                   onOpenThread={onOpenRelatedThreadStable}
                   parentThreadLink={parentThreadLink}
                   workflowOpening={workflowOpening}
-<<<<<<< origin/main
                   supportsConversationRollback={
                     supportsConversationRollback && subThreadDraft === null
                   }
-                  threadStartCheckpointReady={threadStartCheckpointReady}
-=======
-                  supportsConversationRollback={supportsConversationRollback}
                   threadStartCheckpointAvailable={threadStartCheckpointAvailable}
->>>>>>> upstream/main
                   availableRevertTurnCounts={availableRevertTurnCounts}
                   onRevertToTurnCount={onRevertTimelineTurnStable}
                   onUseArtifactTemplate={insertArtifactTemplateStable}
@@ -4067,17 +4047,13 @@ export default function ChatView(props: ChatViewProps) {
         </ChatRightPanel>
       ) : null}
 
-<<<<<<< origin/main
       {subThreadDraft === null ? (
-        <RevertConfirmHost threadKey={routeThreadKey} onConfirm={onConfirmRevertStable} />
+        <RevertConfirmHost
+          threadKey={routeThreadKey}
+          checkpoints={serverProjection?.checkpoints}
+          onConfirm={onConfirmRevertStable}
+        />
       ) : null}
-=======
-      <RevertConfirmHost
-        threadKey={routeThreadKey}
-        checkpoints={serverProjection?.checkpoints}
-        onConfirm={onConfirmRevertStable}
-      />
->>>>>>> upstream/main
       {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       {subThreadDraft === null ? <ExpandedImageDialogHost threadKey={routeThreadKey} /> : null}

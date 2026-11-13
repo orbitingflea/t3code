@@ -56,6 +56,7 @@ const layerFor = (calls: Queue.Queue<GenerationCall>) =>
             Effect.succeedSome({
               projectId,
               title: "Project",
+              hasCustomTitle: false,
               workspaceRoot: "/repo",
               defaultModelSelection: null,
               defaultThreadEnvMode: null,

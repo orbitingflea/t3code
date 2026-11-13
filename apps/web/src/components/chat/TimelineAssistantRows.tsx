@@ -57,11 +57,8 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
           >
             <ChatMarkdown
               text={messageText}
-<<<<<<< origin/main
               assistantReply
-=======
               renderInsights
->>>>>>> upstream/main
               cwd={ctx.markdownCwd}
               threadRef={ctx.threadRef ?? undefined}
               isStreaming={Boolean(row.message.streaming)}
@@ -82,15 +79,12 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             onOpenTurnDiff={ctx.onOpenTurnDiff}
           />
         ) : null}
-<<<<<<< origin/main
         <SubThreadReplyLine rowId={row.id} fromUser={false} />
-=======
         {!row.showAssistantMeta && row.projectedItem?.item.status === "interrupted" ? (
           <div className="mt-1.5 flex">
             <AssistantStatusBadge status="interrupted" />
           </div>
         ) : null}
->>>>>>> upstream/main
         {row.showAssistantMeta ? (
           <AssistantMessageMeta
             className="mt-1.5"

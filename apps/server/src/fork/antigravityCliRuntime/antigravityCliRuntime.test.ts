@@ -43,6 +43,13 @@ import {
   makeAntigravityAdapterV2,
 } from "../../orchestration-v2/Adapters/AntigravityAdapterV2.ts";
 import { antigravitySessionMeta } from "../../provider/acp/AntigravityAcpSupport.ts";
+import {
+  antigravityRuntimeState,
+  type AntigravityRuntimeState,
+  profileAntigravityRuntimeState,
+  withAntigravityCliCompaction,
+  withUserAgyState,
+} from "./antigravityCliRuntime.ts";
 import { makeAntigravityUsageProbe } from "../../provider/antigravityUsageLimits.ts";
 import {
   type AntigravityTextGenerationOptions,
@@ -74,14 +81,6 @@ const cliRuntimeState = (path: Path.Path, userHome: string) =>
     root: path.join(userHome, ".gemini"),
     appFolder: "antigravity-cli",
     tokenFile: "antigravity-oauth-token",
-  });
-
-const managedRuntimeState = (profileDirectory: string) =>
-  Effect.succeed({
-    runtime: "managed" as const,
-    root: profileDirectory,
-    appFolder: "antigravity-acp",
-    tokenFile: "acp_token.json",
   });
 
 const ERROR_MESSAGE = 17;
@@ -256,13 +255,48 @@ const cliHelperTurn = Effect.fn("cliHelperTurn")(function* (
 });
 
 describe("Antigravity CLI runtime", () => {
+  it.effect("runs a user's own agy on its own state and a managed release on the profile", () =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const input = { profileDirectory: "/profile", userHome: "/home/user", path };
+      const profileArgs = ["acp", "--gemini-dir", "/profile", "--app-data-dir", "antigravity-acp"];
+      const spawn = { command: "agy", args: profileArgs, cwd: "/project" };
+      for (const [found, managedVersionDirectory, runtime, args] of [
+        ["the user's own", null, "cli", ["acp"]],
+        ["a managed release", "/managed/versions/release", "managed", profileArgs],
+      ] as const) {
+        const executable = { harnessPath: null, managedVersionDirectory };
+        assert.equal(antigravityRuntimeState(executable, input).runtime, runtime, found);
+        assert.deepEqual(withUserAgyState(executable, spawn).args, args, found);
+      }
+      const harness = { harnessPath: "/release/harness", managedVersionDirectory: null };
+      assert.equal(antigravityRuntimeState(harness, input).runtime, "harness");
+      assert.deepEqual(withUserAgyState(harness, spawn).args, profileArgs);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("offers /compact on every agy and not on the harness runtime", () =>
+    Effect.gen(function* () {
+      const session = { compactThread: () => Effect.void };
+      for (const [runtime, offered] of [
+        ["cli", true],
+        ["managed", true],
+        ["harness", false],
+      ] as const) {
+        const open = withAntigravityCliCompaction(() => Effect.succeed(session), {
+          profileDirectory: "profile",
+          runtimeState: Effect.succeed({ ...profileAntigravityRuntimeState("profile"), runtime }),
+        });
+        assert.equal("compactThread" in (yield* open(undefined)), offered, runtime);
+      }
+    }),
+  );
+
   it.effect("opens CLI sessions without additional directories", () =>
     Effect.gen(function* () {
       const path = yield* Path.Path;
       const attachmentsDir = path.join("state", "attachments");
-      const sent = (
-        runtimeState: ReturnType<typeof cliRuntimeState | typeof managedRuntimeState>,
-      ) =>
+      const sent = (runtimeState: Effect.Effect<AntigravityRuntimeState>) =>
         Effect.gen(function* () {
           let directories: RuntimeInput["additionalDirectories"];
           const options = {
@@ -281,8 +315,12 @@ describe("Antigravity CLI runtime", () => {
           return directories ?? [];
         });
 
-      assert.deepEqual(yield* sent(managedRuntimeState("profile")), [attachmentsDir]);
+      assert.deepEqual(yield* sent(Effect.succeed(profileAntigravityRuntimeState("profile"))), [
+        attachmentsDir,
+      ]);
       assert.deepEqual(yield* sent(cliRuntimeState(path, "home")), []);
+      const managedAgy = Effect.succeed(profileAntigravityRuntimeState("profile", "managed"));
+      assert.deepEqual(yield* sent(managedAgy), [], "T3's managed agy");
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 

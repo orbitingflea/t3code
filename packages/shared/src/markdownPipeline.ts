@@ -278,7 +278,12 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkNormalizeLinksAndTagInlineCode,
 ];
 
-<<<<<<< origin/main
+// Users type paths like ~/a and (~/b, which GFM's single-tilde strikethrough hides as <del>.
+// Appended after the base list, this reconfigures its remark-gfm entry; ~~double~~ still strikes.
+export const CHAT_USER_MARKDOWN_REMARK_PLUGINS: PluggableList = [
+  [remarkGfm, { singleTilde: false }],
+];
+
 export const ASSISTANT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   ...CHAT_MARKDOWN_REMARK_PLUGINS,
   [remarkGfm, { singleTilde: false }],
@@ -286,11 +291,6 @@ export const ASSISTANT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
 
 export const ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-=======
-// Users type paths like ~/a and (~/b, which GFM's single-tilde strikethrough hides as <del>.
-// Appended after the base list, this reconfigures its remark-gfm entry; ~~double~~ still strikes.
-export const CHAT_USER_MARKDOWN_REMARK_PLUGINS: PluggableList = [
->>>>>>> upstream/main
   [remarkGfm, { singleTilde: false }],
 ];
 

@@ -17,13 +17,9 @@ import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
-<<<<<<< origin/main
-import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
-import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
-=======
 import * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
+import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as EventSink from "./EventSink.ts";
->>>>>>> upstream/main
 import * as ProjectionStore from "./ProjectionStore.ts";
 import * as ProviderSessionManager from "./ProviderSessionManager.ts";
 
@@ -460,9 +456,7 @@ export const layer: Layer.Layer<
               },
             })
             .pipe(
-<<<<<<< origin/main
               Effect.tap(() => wrapped.accepted),
-=======
               Effect.catchTags({
                 ProviderAdapterSteerDeclinedError: (cause) =>
                   Effect.fail(
@@ -475,7 +469,6 @@ export const layer: Layer.Layer<
                     }),
                   ),
               }),
->>>>>>> upstream/main
               Effect.catch((cause) =>
                 Effect.gen(function* () {
                   if (isProviderTurnControlError(cause)) return yield* cause;

@@ -135,9 +135,6 @@ export const threadTitleEvaluationCases = [
     ],
     rubric: "Keep title generation as the subject. Do not focus on filing the PR.",
   },
-<<<<<<< origin/main
-  ...subThreadSummaryCases,
-=======
   {
     id: "project-name",
     source: "https://github.com/pingdotgg/t3code/pull/33418",
@@ -156,7 +153,7 @@ export const threadTitleEvaluationCases = [
     ],
     rubric: "Name the default config on init. Leave out Hyperdrive, the project name.",
   },
->>>>>>> upstream/main
+  ...subThreadSummaryCases,
 ] satisfies ReadonlyArray<{
   id: string;
   source: string;

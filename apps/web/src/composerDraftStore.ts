@@ -1579,12 +1579,8 @@ function resolveComposerThreadId(
   }
   return (
     state.draftThreadsByThreadKey[normalizedTarget]?.threadId ??
-<<<<<<< origin/main
     threadOfSubThreadDraft(normalizedTarget)?.threadId ??
-    null
-=======
     queuedRunEditThreadId(normalizedTarget)
->>>>>>> upstream/main
   );
 }
 

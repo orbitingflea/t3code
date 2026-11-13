@@ -8157,20 +8157,6 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
             resolveExtractedTextPath: host.resolveExtractedTextPath,
           });
           const isNativeSlashCommand = userText.trimStart().startsWith("/");
-<<<<<<< origin/main
-          const text = t3AcpPromptWithInstructions({
-            prompt: messageText,
-            state: instructionState,
-            provider: driver,
-            ...(previousInstructionState === undefined || compactionMarker !== undefined
-              ? {}
-              : { previousState: previousInstructionState }),
-          });
-          if (text.length > 0) {
-            prompt.push({ type: "text", text });
-          }
-=======
->>>>>>> upstream/main
           const imageAttachments = turnInput.message.attachments.filter(
             isProviderNativeImageAttachment,
           );
@@ -8246,6 +8232,7 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
           const text = t3AcpPromptWithInstructions({
             prompt: messageText,
             state: instructionState,
+            provider: driver,
             ...(previousInstructionState === undefined || compactionMarker !== undefined
               ? {}
               : { previousState: previousInstructionState }),

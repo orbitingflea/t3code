@@ -81,7 +81,9 @@ function ResponseCard({
   leading: boolean;
   trailing: boolean;
 }) {
-  const linkProps = useCitationSourceLinkProps(citation);
+  const { onClick, ...linkProps } = useCitationSourceLinkProps(citation);
+  // Fork: a Dashboard quote has no message to go to.
+  const navigable = !isDashboardCitation(citation);
   return (
     // One copy boundary for the card and its comment, so a copied card carries the comment once.
     <span
@@ -90,6 +92,7 @@ function ResponseCard({
     >
       <Link
         {...linkProps}
+        {...(navigable ? { onClick } : { disabled: true })}
         // A selection inside the card's boundary copies the card here and the comment as text.
         data-markdown-copy={cardCopyMarkdown}
         // The response is findable in its own message; here it is clamped and mostly hidden.
@@ -259,21 +262,6 @@ export function AssistantCitationChip({
       }
     : undefined;
   const label = assistantCitationLabel(citation);
-<<<<<<< origin/main
-  const sourceLinkProps = {
-    to: "/$environmentId/$threadId" as const,
-    params: { environmentId: citation.environmentId, threadId: citation.threadId },
-    hash: assistantCitationHash(citation),
-    "data-markdown-copy": serializeAssistantCitation(citation),
-    resetScroll: false,
-    onClick: (event: ReactMouseEvent<HTMLAnchorElement>) => {
-      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
-        return;
-      }
-      event.preventDefault();
-      void navigate(assistantCitationNavigation(citation));
-    },
-  };
   const navigable = !isDashboardCitation(citation);
   const composerSourceLink = !navigable ? (
     <span className="inline-flex min-w-0 items-center gap-[0.2em] self-baseline">
@@ -283,9 +271,6 @@ export function AssistantCitationChip({
       </ContextChipLabel>
     </span>
   ) : (
-=======
-  const composerSourceLink = (
->>>>>>> upstream/main
     <Link
       {...sourceLinkProps}
       className="inline-flex min-w-0 items-center gap-[0.2em] self-baseline text-inherit no-underline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-current rounded-sm"
@@ -297,32 +282,6 @@ export function AssistantCitationChip({
       </ContextChipLabel>
     </Link>
   );
-<<<<<<< origin/main
-  if (!composer) {
-    return (
-      <ContextChipPopover
-        kind="citation"
-        icon={<QuoteIcon />}
-        label={label}
-        accessibleLabel={`Quoted assistant text: ${label}`}
-        copyMarkdown={serializeAssistantCitation(citation)}
-      >
-        <div className="flex max-h-[calc(var(--available-height)_-_1rem_-_2px)] flex-col items-start gap-3 p-1 text-sm">
-          <AssistantCitationQuote citation={citation} />
-          {navigable ? (
-            <PopoverClose
-              render={<Button variant="outline" size="sm" render={<Link {...sourceLinkProps} />} />}
-            >
-              <ArrowUpRightIcon aria-hidden="true" />
-              Go to source
-            </PopoverClose>
-          ) : null}
-        </div>
-      </ContextChipPopover>
-    );
-  }
-=======
->>>>>>> upstream/main
   return (
     <ContextChip
       kind="citation"

@@ -378,11 +378,7 @@ export function applyPreferredCodexDefaultModel(
   });
 }
 
-<<<<<<< origin/main
-export function applyConfiguredCodexServiceTier(
-=======
 function mapCodexOptionDescriptors(
->>>>>>> upstream/main
   models: ReadonlyArray<ServerProviderModel>,
   update: (
     descriptors: ReadonlyArray<ProviderOptionDescriptor>,
@@ -422,7 +418,7 @@ function withConfiguredSelectDefault(
   );
 }
 
-function applyConfiguredCodexServiceTier(
+export function applyConfiguredCodexServiceTier(
   models: ReadonlyArray<ServerProviderModel>,
   serviceTier: string | undefined,
 ): ReadonlyArray<ServerProviderModel> {

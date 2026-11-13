@@ -102,7 +102,9 @@ const CLIENT_BOUNDED_OPT_INS = {
   dedupeBodies: "1",
   compactIds: "1",
   deferWork: "1",
-} satisfies Required<typeof EnvironmentOrchestrationThreadBoundedSnapshotQuery.Type>;
+} satisfies Required<
+  Omit<typeof EnvironmentOrchestrationThreadBoundedSnapshotQuery.Type, "shownOnly">
+>;
 const CLIENT_HISTORY_OPT_INS = { compactIds: "1", deferWork: "1" } satisfies Required<
   Omit<typeof EnvironmentOrchestrationThreadHistoryQuery.Type, "cursor" | "throughEntryId" | "view">
 >;
@@ -117,7 +119,9 @@ const CLIENT_THREAD_SUBSCRIPTION = {
   acceptCompactTurnItems: true,
   acceptCompactIds: true,
   acceptDedupedBodies: true,
-} satisfies Required<Omit<OrchestrationV2SubscribeThreadInput, "threadId" | "afterSequence">>;
+} satisfies Required<
+  Omit<OrchestrationV2SubscribeThreadInput, "threadId" | "afterSequence" | "shownOnly">
+>;
 type ShellResumeField = "afterSequence" | "httpSnapshotFallback" | "knownProjectIdentities";
 const CLIENT_SHELL_SUBSCRIPTION = {
   requestCompletionMarker: true,

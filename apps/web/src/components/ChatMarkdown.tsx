@@ -19,12 +19,9 @@ import {
   CHAT_MARKDOWN_REMARK_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
-<<<<<<< origin/main
   ASSISTANT_MARKDOWN_REMARK_PLUGINS,
   ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-=======
   remarkAssistantInsights,
->>>>>>> upstream/main
 } from "@t3tools/shared/markdownPipeline";
 import { useAtomValue } from "@effect/atom-react";
 import {

@@ -922,50 +922,6 @@ describe("pools", () => {
     ).toEqual(["weekly", "weekly:secondary"]);
   });
 
-<<<<<<< origin/main
-  it("orders accounts by weekly reset, then by the first window for accounts without one", () => {
-    const account = (id: string, sessionReset: string, weeklyReset?: string) => ({
-      id,
-      driver: claude,
-      email: `${id}@example.com`,
-      usageLimits: {
-        checkedAt,
-        windows: [
-          { ...window, resetsAt: sessionReset },
-          ...(weeklyReset ? [{ ...weekly, usedPercent: 20, resetsAt: weeklyReset }] : []),
-        ],
-      },
-    });
-    const input = new Map([
-      [
-        EnvironmentId.make("env-a"),
-        {
-          ...laptop,
-          serverConfig: {
-            providers: [],
-            usageLimitSources: [
-              {
-                ...source,
-                accounts: [
-                  account("late-week", "2026-09-03T12:30:00.000Z", "2026-09-08T12:00:00.000Z"),
-                  account("no-week-late", "2026-09-03T16:00:00.000Z"),
-                  account("early-week", "2026-09-03T15:00:00.000Z", "2026-09-04T12:00:00.000Z"),
-                  account("no-week-early", "2026-09-03T13:00:00.000Z"),
-                ],
-              },
-            ],
-          },
-        },
-      ],
-    ]);
-    const [pool] = collectLimitPools(collectLimitAccounts(input), now);
-    expect(pool?.accounts.map((account) => account.email)).toEqual([
-      "early-week@example.com",
-      "late-week@example.com",
-      "no-week-early@example.com",
-      "no-week-late@example.com",
-    ]);
-=======
   it("weights pooled Codex quota and resets by each account's plan capacity", () => {
     const [pool] = collectLimitPools(
       collectLimitAccounts(
@@ -1010,7 +966,50 @@ describe("pools", () => {
         restoresPercent,
       ]),
     ).toContainEqual(["pro@example.com", 95]);
->>>>>>> upstream/main
+  });
+
+  it("orders accounts by weekly reset, then by the first window for accounts without one", () => {
+    const account = (id: string, sessionReset: string, weeklyReset?: string) => ({
+      id,
+      driver: claude,
+      email: `${id}@example.com`,
+      usageLimits: {
+        checkedAt,
+        windows: [
+          { ...window, resetsAt: sessionReset },
+          ...(weeklyReset ? [{ ...weekly, usedPercent: 20, resetsAt: weeklyReset }] : []),
+        ],
+      },
+    });
+    const input = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          ...laptop,
+          serverConfig: {
+            providers: [],
+            usageLimitSources: [
+              {
+                ...source,
+                accounts: [
+                  account("late-week", "2026-09-03T12:30:00.000Z", "2026-09-08T12:00:00.000Z"),
+                  account("no-week-late", "2026-09-03T16:00:00.000Z"),
+                  account("early-week", "2026-09-03T15:00:00.000Z", "2026-09-04T12:00:00.000Z"),
+                  account("no-week-early", "2026-09-03T13:00:00.000Z"),
+                ],
+              },
+            ],
+          },
+        },
+      ],
+    ]);
+    const [pool] = collectLimitPools(collectLimitAccounts(input), now);
+    expect(pool?.accounts.map((account) => account.email)).toEqual([
+      "early-week@example.com",
+      "late-week@example.com",
+      "no-week-early@example.com",
+      "no-week-late@example.com",
+    ]);
   });
 
   it("pools windows by id across accounts and orders resets by when they land", () => {

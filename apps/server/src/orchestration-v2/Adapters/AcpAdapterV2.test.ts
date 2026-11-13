@@ -4594,7 +4594,6 @@ describe("AcpAdapterV2", () => {
       );
       assert.equal(runtimeOrdinalSeen, 2);
       assert.lengthOf(runtimeInputs, 2);
-<<<<<<< origin/main
       assert.isFalse(yield* accountChanged!, "restarted process read the new account");
 
       account = Option.some("account-c");
@@ -4609,10 +4608,7 @@ describe("AcpAdapterV2", () => {
       assert.isFalse(yield* accountChanged!, "replacement process read the new account");
       account = Option.none();
       assert.isFalse(yield* accountChanged!, "unreadable");
-    }).pipe(Effect.provide(layerTest), Effect.scoped),
-=======
     }).pipe(Effect.provide(layerTest)),
->>>>>>> upstream/main
   );
 
   it.effect("fails a prompt its agent leaves silent past the inactivity timeout", () =>

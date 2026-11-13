@@ -32,8 +32,9 @@ import {
 } from "../../textGeneration/AntigravityTextGeneration.ts";
 import {
   antigravityRuntimeState,
-  managedAntigravityRuntimeState,
+  profileAntigravityRuntimeState,
   removeAntigravityRuntimeSessionFiles,
+  withUserAgyState,
 } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { makeAntigravityAuth, type AntigravityAuth } from "../AntigravityAuth.ts";
 import * as AntigravityInstallation from "../AntigravityInstallation.ts";
@@ -187,7 +188,7 @@ export const AntigravityDriver: ProviderDriver<
       Effect.map((executable) =>
         antigravityRuntimeState(executable, { profileDirectory, userHome, path }),
       ),
-      Effect.orElseSucceed(() => managedAntigravityRuntimeState(profileDirectory)),
+      Effect.orElseSucceed(() => profileAntigravityRuntimeState(profileDirectory)),
     );
     const continuationIdentity = defaultProviderContinuationIdentity({
       driverKind: DRIVER,
@@ -280,14 +281,17 @@ export const AntigravityDriver: ProviderDriver<
         runtimeVersion: executable.version,
         authMethod: auth.authMethod,
         childProcessSpawner: spawner,
-        spawn: buildAntigravityAcpSpawnInput({
-          installation: executable,
-          profile,
-          cwd: input.cwd,
-          baseEnv: processEnvironment,
-          auth,
-          runtimeTempDirectory,
-        }),
+        spawn: withUserAgyState(
+          executable,
+          buildAntigravityAcpSpawnInput({
+            installation: executable,
+            profile,
+            cwd: input.cwd,
+            baseEnv: processEnvironment,
+            auth,
+            runtimeTempDirectory,
+          }),
+        ),
       }).pipe(Effect.provideService(SecureRandom.SecureRandom, random));
       return {
         ...runtime,

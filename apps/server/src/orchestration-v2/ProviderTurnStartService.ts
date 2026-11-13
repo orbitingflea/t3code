@@ -35,12 +35,8 @@ import * as GitWorkflowService from "../git/GitWorkflowService.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
-<<<<<<< origin/main
 import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
-import { makeIsManagedWorktreePath } from "../worktreesDirectory.ts";
-=======
 import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
->>>>>>> upstream/main
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";
 import * as ContextHandoffService from "./ContextHandoffService.ts";
@@ -167,76 +163,9 @@ export const layer: Layer.Layer<
     const providerSessions = yield* ProviderSessionManager.ProviderSessionManagerV2;
     const runExecution = yield* RunExecutionService.RunExecutionServiceV2;
     const runtimePolicy = yield* RuntimePolicy.RuntimePolicyV2;
-<<<<<<< origin/main
     const displayModeWrap = yield* DisplayModeWrap.orUnchanged;
-    const isManagedWorktreePath = yield* makeIsManagedWorktreePath;
-
-    const resolveRecreateBase = Effect.fn("ProviderTurnStartService.resolveRecreateBase")(
-      function* (cwd: string) {
-        // Recovery can follow an external checkout, before the status cache expires.
-        yield* gitWorkflow.invalidateLocalStatus(cwd);
-        const { refName: currentBranch } = yield* gitWorkflow.localStatus({ cwd });
-        if (currentBranch !== null) {
-          const refName = `refs/heads/${currentBranch}`;
-          return { refName, baseRefName: refName };
-        }
-        if (yield* gitWorkflow.hasCommit({ cwd, refName: "refs/remotes/origin/HEAD" })) {
-          const { commitSha } = yield* gitWorkflow.resolveRemoteTrackingCommit({
-            cwd,
-            refName: "HEAD",
-            fallbackRemoteName: "origin",
-          });
-          // Start from the commit so the thread branch does not track the default branch.
-          return { refName: commitSha, baseRefName: "refs/remotes/origin/HEAD" };
-        }
-        if (yield* gitWorkflow.hasCommit({ cwd, refName: "HEAD" })) {
-          return { refName: "HEAD", baseRefName: undefined };
-        }
-        return null;
-      },
-    );
-
-    const recreateMissingWorktree = Effect.fn("ProviderTurnStartService.recreateMissingWorktree")(
-      function* (input: {
-        readonly cwd: string;
-        readonly worktreePath: string;
-        readonly branch: string;
-      }) {
-        const { cwd, worktreePath, branch } = input;
-        yield* gitWorkflow.pruneWorktrees({ cwd });
-        const localBranchNames = yield* gitWorkflow.listLocalBranchNames(cwd);
-        if (localBranchNames.includes(branch)) {
-          yield* gitWorkflow.createWorktree({ cwd, refName: branch, path: worktreePath });
-          return;
-        }
-        // Push keeps the tracking ref current, so recovery reads it without fetching.
-        const pushedRef = `refs/remotes/origin/${branch}`;
-        if (yield* gitWorkflow.hasCommit({ cwd, refName: pushedRef })) {
-          yield* gitWorkflow.createWorktree({
-            cwd,
-            refName: pushedRef,
-            newRefName: branch,
-            path: worktreePath,
-          });
-          return;
-        }
-        const base = yield* resolveRecreateBase(cwd);
-        if (base === null) {
-          return yield* new WorktreeRecreateNoBaseError({ worktreePath, branch });
-        }
-        yield* gitWorkflow.createWorktree({
-          cwd,
-          refName: base.refName,
-          newRefName: branch,
-          ...(base.baseRefName === undefined ? {} : { baseRefName: base.baseRefName }),
-          path: worktreePath,
-        });
-      },
-    );
-=======
     const restoreMissingWorktree = yield* makeRestoreMissingWorktree;
     const turnItemPositions = yield* TurnItemPositionStore.TurnItemPositionStoreV2;
->>>>>>> upstream/main
 
     // Build draining callbacks outside startup scope so they cannot retain full thread history.
     const makeRunControls = (input: {
@@ -821,7 +750,6 @@ export const layer: Layer.Layer<
       });
       let effectiveHandoffs = handoffs;
       let resumeFellBack = false;
-<<<<<<< origin/main
       const wrapInput = {
         threadId: run.threadId,
         message,
@@ -832,19 +760,11 @@ export const layer: Layer.Layer<
       };
       let wrapped = yield* displayModeWrap.wrapUserText(wrapInput);
       let userText = wrapped.text;
-      // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
-      const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
-=======
-      const userText = projectComposerContextForProvider({
-        text: message.text,
-        records: message.context?.records ?? [],
-      });
       // Native goal commands go verbatim; handoff history waits a turn.
       const goalDriver =
         session.driver === "codex" ||
         session.driver === "claudeAgent" ||
         session.providerSession.capabilities.turns.supportsNativeGoals === true;
->>>>>>> upstream/main
       const goalCommand = goalDriver && parseGoalCommand(message) !== null;
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(

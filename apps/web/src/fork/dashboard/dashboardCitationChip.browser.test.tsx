@@ -1,10 +1,12 @@
 import { EnvironmentId, MessageId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
-import { page, userEvent } from "vite-plus/test/browser";
 
 import "~/index.css";
 
-import { AssistantCitationChip } from "../../components/chat/AssistantCitationChip";
+import {
+  AssistantCitationChip,
+  AssistantCitationEmbed,
+} from "../../components/chat/AssistantCitationChip";
 import { render } from "../../../test/render";
 
 const quote = (messageId: string) => ({
@@ -26,24 +28,22 @@ const cases = [
 
 describe("a quote chip", () => {
   it.each(cases)(
-    "for $source in a sent message offers Go to source: $navigable",
+    "for $source in a sent message goes to the source: $navigable",
     async ({ messageId, navigable }) => {
-      await using screen = await render(<AssistantCitationChip citation={quote(messageId)} />);
-      await userEvent.click(
-        screen.getByRole("button", { name: "Quoted assistant text: Pick A. Show details" }),
+      await using screen = await render(
+        <AssistantCitationEmbed citation={quote(messageId)} leading trailing />,
       );
-      await expect.element(page.getByRole("blockquote")).toHaveTextContent("Pick A");
+      const card = screen.container.querySelector("a")!;
 
-      expect(page.getByText("Go to source").query() !== null).toBe(navigable);
+      expect(card.hasAttribute("href")).toBe(navigable);
+      expect(card.getAttribute("aria-disabled") === "true").toBe(!navigable);
     },
   );
 
   it.each(cases)(
     "for $source in the composer links its label to the source: $navigable",
     async ({ messageId, navigable }) => {
-      await using screen = await render(
-        <AssistantCitationChip citation={quote(messageId)} composer />,
-      );
+      await using screen = await render(<AssistantCitationChip citation={quote(messageId)} />);
 
       expect(screen.container.querySelector("a") !== null).toBe(navigable);
       expect(screen.container.textContent).toContain("Pick A");

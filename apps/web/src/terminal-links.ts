@@ -1,6 +1,3 @@
-<<<<<<< origin/main
-import { blankCjkPunctuation } from "./fork/cjkLinkEnd";
-=======
 import {
   formatFilePathPosition,
   parseFileUrlHref,
@@ -9,7 +6,7 @@ import {
 } from "@t3tools/shared/fileLinks";
 import { safeDecodeURIComponent } from "@t3tools/shared/markdownLinks";
 import { stripSlashPrefixedWindowsDrive } from "@t3tools/shared/path";
->>>>>>> upstream/main
+import { blankCjkPunctuation } from "./fork/cjkLinkEnd";
 import { isMacPlatform } from "./lib/utils";
 
 export type TerminalLinkKind = "url" | "path";
@@ -138,15 +135,11 @@ export function extractTerminalLinks(line: string): TerminalLinkMatch[] {
     [...prose.matchAll(REQUEST_ROUTE_PATTERN), ...prose.matchAll(SCHEME_URL_PATTERN)],
     (match) => ({ start: match.index, end: match.index + match[0].length }),
   );
-<<<<<<< origin/main
-  const urlMatches = collectMatches(prose, "url", URL_PATTERN, promptMatches);
-=======
   const remoteTails = Array.from(line.matchAll(SCP_REMOTE_PATTERN), (match) => ({
     start: match.index + match[0].indexOf(":") + 1,
     end: match.index + match[0].length,
   }));
-  const urlMatches = collectMatches(line, "url", URL_PATTERN, promptMatches);
->>>>>>> upstream/main
+  const urlMatches = collectMatches(prose, "url", URL_PATTERN, promptMatches);
   const quotedMatches = collectMatches(line, "path", QUOTED_FILE_PATH_PATTERN, [
     ...promptMatches,
     ...urlMatches,

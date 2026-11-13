@@ -165,22 +165,6 @@ function buttonsLabelled(container: HTMLElement, label: string) {
   );
 }
 
-<<<<<<< origin/main
-it("keeps single tildes in assistant replies and renders double-tilde strikethrough", async () => {
-  setup();
-  const text = "1~3月的数据不完整，建议使用4~9月的数据进行对比。 ~~删除~~";
-  await using screen = await renderText(text, { assistantReply: true, isStreaming: true });
-  await vi.waitFor(() => {
-    expect(screen.container.textContent).toBe(
-      "1~3月的数据不完整，建议使用4~9月的数据进行对比。 删除",
-    );
-    expect([...screen.container.querySelectorAll("del")].map((node) => node.textContent)).toEqual([
-      "删除",
-    ]);
-  });
-  await screen.rerender(<ChatMarkdown cwd="/tmp/project" text={text} />);
-  await vi.waitFor(() => expect(screen.container.querySelectorAll("del")).toHaveLength(2));
-=======
 const SOURCE_NUMBER_PLUGINS = [remarkEnableOrderedListNumbers];
 
 it("keeps decimal markers in nested user lists while documents keep their counter styles", async () => {
@@ -211,7 +195,22 @@ it("keeps decimal markers in nested user lists while documents keep their counte
   expect(
     [...preview!.querySelectorAll("ol")].map((list) => getComputedStyle(list).listStyleType),
   ).toEqual(["decimal", "lower-alpha", "lower-roman"]);
->>>>>>> upstream/main
+});
+
+it("keeps single tildes in assistant replies and renders double-tilde strikethrough", async () => {
+  setup();
+  const text = "1~3月的数据不完整，建议使用4~9月的数据进行对比。 ~~删除~~";
+  await using screen = await renderText(text, { assistantReply: true, isStreaming: true });
+  await vi.waitFor(() => {
+    expect(screen.container.textContent).toBe(
+      "1~3月的数据不完整，建议使用4~9月的数据进行对比。 删除",
+    );
+    expect([...screen.container.querySelectorAll("del")].map((node) => node.textContent)).toEqual([
+      "删除",
+    ]);
+  });
+  await screen.rerender(<ChatMarkdown cwd="/tmp/project" text={text} />);
+  await vi.waitFor(() => expect(screen.container.querySelectorAll("del")).toHaveLength(2));
 });
 
 it("shows unavailable audio when a workspace embed has no thread", async () => {

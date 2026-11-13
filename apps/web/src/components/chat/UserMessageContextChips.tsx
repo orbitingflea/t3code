@@ -1,5 +1,6 @@
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "@t3tools/shared/image";
+import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -580,8 +581,8 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
             skills={ctx.skills}
             parseRawHtml={false}
             lineBreaks
-            // Fork: selects upstream's single-tilde list, so a sent "1~2" keeps its tilde.
-            assistantReply
+            // Fork: a sent "1~2" keeps its tilde, as in the user's message.
+            extraRemarkPlugins={CHAT_USER_MARKDOWN_REMARK_PLUGINS}
           />
         </div>
       )}

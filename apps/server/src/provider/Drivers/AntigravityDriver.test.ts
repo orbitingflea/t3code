@@ -444,6 +444,18 @@ it.layer(layerTest)("AntigravityDriver", (it) => {
               .map((request) => request.params?.value),
           ).toEqual(["default"]);
         }
+
+        // Fork: a user's own agy keeps its own state, so it gets no profile flags.
+        h.controls.selected = { ...h.controls.selected, managedVersionDirectory: null };
+        const userThreadId = ThreadId.make("thread-antigravity-user-agy");
+        const userSession = yield* h.instance.orchestrationAdapter.openSession({
+          threadId: userThreadId,
+          providerSessionId: ProviderSessionId.make("provider-session-user-agy"),
+          modelSelection,
+          runtimePolicy,
+        });
+        yield* userSession.ensureThread({ threadId: userThreadId, modelSelection, runtimePolicy });
+        expect(h.launches.at(-1)?.args).toEqual(["acp"]);
       }),
   );
 

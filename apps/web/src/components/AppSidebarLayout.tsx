@@ -333,13 +333,9 @@ function SidebarControl({
   const router = useRouter();
   const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
-<<<<<<< origin/main
-  const { setOpen, toggleSidebar, isMobile, mobileSheetMounted } = useSidebar();
+  const { setOpen, toggleSidebar } = useSidebar();
   useWhiteboardSidebarStartState(boardHidden, sidebarFits, setOpen);
-=======
-  const { toggleSidebar } = useSidebar();
   const mobileSidebarSheetMounted = useMobileSidebarSheetMounted();
->>>>>>> upstream/main
   const isSidebarVisible = useSidebarVisibility();
   const environmentIdentificationMode = useEnvironmentIdentificationMode();
   const stageBackdropVariant = useSidebarStageBackdropVariant(environmentIdentificationMode);

@@ -253,9 +253,6 @@ export const CodexDriver: ProviderDriver<
           Effect.map((value) => value.models),
         ),
         compatibility: installation.compatibility,
-        models: Effect.suspend(() => snapshot.getSnapshot).pipe(
-          Effect.map((value) => value.models),
-        ),
       },
     ).pipe(
       Effect.mapError(

@@ -35,6 +35,7 @@ import * as ClaudeAdapterV2 from "../../orchestration-v2/Adapters/ClaudeAdapterV
 import * as CodexAdapterV2 from "../../orchestration-v2/Adapters/CodexAdapterV2.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
+import * as ProviderInstallationGate from "../../provider/ProviderInstallationGate.ts";
 import * as ProviderOrchestrationAdapterInfrastructure from "../../provider/ProviderOrchestrationAdapterInfrastructure.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 
@@ -110,6 +111,7 @@ const infrastructureFor = (threadId: ThreadId, prefix: string) =>
     Layer.provideMerge(settingsFor(threadId)),
     Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix })),
     Layer.provideMerge(McpProviderSessions.layer),
+    Layer.provideMerge(ProviderInstallationGate.layer),
     Layer.provideMerge(
       Layer.succeed(
         ProviderEventLoggers.ProviderEventLoggers,
@@ -169,6 +171,7 @@ const startClaudeTurn = Effect.fn("startClaudeTurn")(function* (
         }),
       forkSession: () => Effect.die("unused"),
       subagentLaunchToolUseId: () => Effect.succeed(null),
+      subagentModel: () => Effect.succeed(null),
       assertComplete: Effect.void,
     }),
   );
@@ -290,11 +293,20 @@ const codexTurnStart = (input: {
   readonly text: string;
   readonly additionalContext?: Record<string, unknown>;
 }) => [
+  ...codexRequest(
+    input.id,
+    "config/read",
+    { cwd: "/workspace", includeLayers: false },
+    {
+      config: {},
+      origins: {},
+    },
+  ),
   {
     type: "expect_outbound" as const,
     label: "turn/start",
     frame: {
-      id: input.id,
+      id: input.id + 1,
       method: "turn/start",
       params: {
         threadId: input.nativeThreadId,
@@ -307,14 +319,14 @@ const codexTurnStart = (input: {
         approvalPolicy: "never",
         approvalsReviewer: "user",
         sandboxPolicy: { type: "dangerFullAccess" },
-        summary: "detailed",
+        summary: "auto",
         collaborationMode: { mode: "default", settings: { model: "gpt-5.4" } },
       },
     },
   },
   {
     type: "emit_inbound" as const,
-    frame: { id: input.id, result: { turn: codexTurn(input.nativeTurnId, "inProgress") } },
+    frame: { id: input.id + 1, result: { turn: codexTurn(input.nativeTurnId, "inProgress") } },
   },
   codexNotification("turn/started", {
     threadId: input.nativeThreadId,
@@ -322,17 +334,19 @@ const codexTurnStart = (input: {
   }),
 ];
 
-/** Codex's compaction, then the note that T3 adds again after it, and nothing else. */
+/** Codex's compaction, the turn's end, then the note that T3 adds again after it, and nothing else. */
 const codexCompaction = (input: {
   readonly id: number;
   readonly nativeThreadId: string;
   readonly nativeTurnId: string;
+  readonly turnEnd: ReadonlyArray<CodexReplay.CodexAppServerReplayEntry>;
 }) => [
   codexNotification("item/completed", {
     threadId: input.nativeThreadId,
     turnId: input.nativeTurnId,
     item: { type: "contextCompaction", id: "compaction-note-item" },
   }),
+  ...input.turnEnd,
   ...codexRequest(
     input.id,
     "thread/inject_items",
@@ -529,10 +543,16 @@ it.live(
       waitForTerminal: true,
       transcript: codexTranscript(nativeThreadId, [
         ...codexTurnStart({ id: 3, nativeThreadId, nativeTurnId, text: "work" }),
-        ...codexCompaction({ id: 4, nativeThreadId, nativeTurnId }),
-        codexNotification("turn/completed", {
-          threadId: nativeThreadId,
-          turn: codexTurn(nativeTurnId, "completed"),
+        ...codexCompaction({
+          id: 5,
+          nativeThreadId,
+          nativeTurnId,
+          turnEnd: [
+            codexNotification("turn/completed", {
+              threadId: nativeThreadId,
+              turn: codexTurn(nativeTurnId, "completed"),
+            }),
+          ],
         }),
       ]),
     });
@@ -583,20 +603,26 @@ it.live(
             },
           }),
           ...codexRequest(
-            6,
+            7,
             "thread/goal/set",
             { threadId: nativeThreadId, status: "active" },
             { goal: codexGoal(nativeThreadId, "active") },
           ),
-          ...codexCompaction({ id: 7, nativeThreadId, nativeTurnId }),
-          codexNotification("thread/goal/updated", {
-            threadId: nativeThreadId,
-            turnId: nativeTurnId,
-            goal: codexGoal(nativeThreadId, "complete"),
-          }),
-          codexNotification("turn/completed", {
-            threadId: nativeThreadId,
-            turn: codexTurn(nativeTurnId, "completed"),
+          ...codexCompaction({
+            id: 8,
+            nativeThreadId,
+            nativeTurnId,
+            turnEnd: [
+              codexNotification("thread/goal/updated", {
+                threadId: nativeThreadId,
+                turnId: nativeTurnId,
+                goal: codexGoal(nativeThreadId, "complete"),
+              }),
+              codexNotification("turn/completed", {
+                threadId: nativeThreadId,
+                turn: codexTurn(nativeTurnId, "completed"),
+              }),
+            ],
           }),
         ]),
       });

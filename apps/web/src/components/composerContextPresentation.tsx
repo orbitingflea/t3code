@@ -1,5 +1,6 @@
 import ChatMarkdown from "./ChatMarkdown";
 import { isSvgAttachment } from "@t3tools/shared/image";
+import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
 import { ReadOnlySourcePreview } from "./files/AttachmentFilePreview";
 import type {
   EnvironmentContextRecord,
@@ -298,8 +299,8 @@ function ComposerReviewCommentDetails({ comment }: { comment: ReviewCommentConte
         <ChatMarkdown
           text={comment.text.trim()}
           cwd={undefined}
-          // Fork: selects upstream's single-tilde list, so "1~2" keeps its tilde before sending.
-          assistantReply
+          // Fork: "1~2" keeps its tilde before sending, as in the user's message.
+          extraRemarkPlugins={CHAT_USER_MARKDOWN_REMARK_PLUGINS}
         />
       ) : null}
       {comment.diff.trim() ? (

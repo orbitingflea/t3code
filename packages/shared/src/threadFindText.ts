@@ -36,13 +36,8 @@ import {
   remarkAssistantInsights,
   CHAT_MARKDOWN_REHYPE_PLUGINS,
   CHAT_MARKDOWN_REMARK_PLUGINS,
-<<<<<<< origin/main
-  ASSISTANT_MARKDOWN_REMARK_PLUGINS,
-  ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-=======
   CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
   CHAT_USER_MARKDOWN_REMARK_PLUGINS,
->>>>>>> upstream/main
 } from "./markdownPipeline.ts";
 
 // Inline wrappers (including Shiki token spans) must not split a search phrase.
@@ -85,34 +80,17 @@ export const THREAD_FIND_BLOCK_TAGS = new Set([
   "ul",
 ]);
 
-<<<<<<< origin/main
-const assistantProcessor = unified()
-  .use(remarkParse)
-  .use(CHAT_MARKDOWN_REMARK_PLUGINS)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
-const replyProcessor = unified()
-  .use(remarkParse)
-  .use(ASSISTANT_MARKDOWN_REMARK_PLUGINS)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
-const replyBreaksProcessor = unified()
-  .use(remarkParse)
-  .use(ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
-// Fork: selects upstream's single-tilde list, as sent messages render, so find matches them.
-const userProcessor = unified()
-  .use(remarkParse)
-  .use(ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
-=======
 function assistantTextProcessor(lineBreaks = false, renderInsights = false) {
-  return unified()
-    .use(remarkParse)
-    .use(renderInsights ? [remarkAssistantInsights] : [])
-    .use(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS)
-    .use(remarkRehype, { allowDangerousHtml: true })
-    .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
+  return (
+    unified()
+      .use(remarkParse)
+      .use(renderInsights ? [remarkAssistantInsights] : [])
+      .use(lineBreaks ? CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS : CHAT_MARKDOWN_REMARK_PLUGINS)
+      // Fork: agent text renders with single tildes kept, so find matches it.
+      .use(CHAT_USER_MARKDOWN_REMARK_PLUGINS)
+      .use(remarkRehype, { allowDangerousHtml: true })
+      .use(CHAT_MARKDOWN_REHYPE_PLUGINS)
+  );
 }
 const assistantProcessor = assistantTextProcessor();
 const assistantBreaksProcessor = assistantTextProcessor(true);
@@ -122,7 +100,6 @@ const userProcessor = unified()
   .use(remarkParse)
   .use(CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS)
   .use(CHAT_USER_MARKDOWN_REMARK_PLUGINS)
->>>>>>> upstream/main
   .use(remarkRehype, { allowDangerousHtml: true });
 
 interface TextTree {
@@ -143,18 +120,6 @@ function markdownThreadFindText(
   cwd?: string,
   skills: readonly InlineSkill[] = [],
   lineBreaks = false,
-<<<<<<< origin/main
-  assistantReply = false,
-): string[] {
-  const processor = userMessage
-    ? userProcessor
-    : !assistantReply
-      ? assistantProcessor
-      : lineBreaks
-        ? replyBreaksProcessor
-        : replyProcessor;
-  const tree = processor.runSync(processor.parse(markdown));
-=======
   renderInsights = false,
 ): string[] {
   const processor = userMessage
@@ -168,7 +133,6 @@ function markdownThreadFindText(
       : insightProcessor
     : processor;
   const tree = renderer.runSync(renderer.parse(markdown), markdown);
->>>>>>> upstream/main
   const paths = [
     ...extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(markdown)),
     ...extractInlineCodeSpans(markdown).flatMap((span) => inlineCodeFilePathCandidate(span) ?? []),
@@ -262,8 +226,7 @@ function markdownThreadFindText(
 export function searchablePlanSegments(markdown: string, cwd?: string): readonly string[] {
   return [
     proposedPlanTitle(markdown) ?? "Proposed plan",
-    // Fork: selects upstream's single-tilde list, as plan cards render, so find matches them.
-    ...markdownThreadFindText(stripDisplayedPlanMarkdown(markdown), false, cwd, [], false, true),
+    ...markdownThreadFindText(stripDisplayedPlanMarkdown(markdown), false, cwd, []),
   ];
 }
 

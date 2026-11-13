@@ -7,7 +7,7 @@ import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import type * as EffectAcpSchema from "effect-acp/compat";
 
-import { managedAntigravityRuntimeState } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
+import { profileAntigravityRuntimeState } from "../../fork/antigravityCliRuntime/antigravityCliRuntime.ts";
 import { watchAntigravityPromptOutcome } from "./AntigravityTurnOutcome.ts";
 
 const USER_INPUT = 14;
@@ -66,7 +66,7 @@ describe("watchAntigravityPromptOutcome", () => {
       ) =>
         Effect.gen(function* () {
           const check = yield* watchAntigravityPromptOutcome(
-            managedAntigravityRuntimeState(profileDirectory),
+            profileAntigravityRuntimeState(profileDirectory),
             sessionId,
           );
           appendSteps(steps);
@@ -195,7 +195,7 @@ describe("watchAntigravityPromptOutcome", () => {
         path.join(conversations, `${own}.db`),
       );
       const linked = yield* watchAntigravityPromptOutcome(
-        managedAntigravityRuntimeState(profileDirectory),
+        profileAntigravityRuntimeState(profileDirectory),
         own,
       );
       append(peer, ERROR_MESSAGE, QUOTA_ERROR);
@@ -206,7 +206,7 @@ describe("watchAntigravityPromptOutcome", () => {
       yield* fs.remove(path.join(conversations, `${own}.db`));
       yield* fs.writeFileString(path.join(conversations, `${own}.db`), "not a database");
       const corrupt = yield* watchAntigravityPromptOutcome(
-        managedAntigravityRuntimeState(profileDirectory),
+        profileAntigravityRuntimeState(profileDirectory),
         own,
       );
       assert.isUndefined(yield* corrupt({ stopReason: "end_turn" }));

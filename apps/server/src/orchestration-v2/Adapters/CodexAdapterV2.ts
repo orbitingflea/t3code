@@ -839,10 +839,7 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
     const serviceTier =
       input.omitServiceTier === true
         ? undefined
-<<<<<<< origin/main
         : resolveCodexTurnServiceTier(input.modelSelection, input.models ?? []);
-=======
-        : getCodexServiceTierOptionValue(input.modelSelection);
     // A chosen program goes as is, even one the model lacks, so Codex rejects it visibly.
     const cyberAccessProgram =
       input.cyberAccess === undefined
@@ -851,7 +848,6 @@ export const buildCodexTurnStartParams = Effect.fn("CodexAdapterV2.buildCodexTur
             getModelSelectionStringOptionValue(input.modelSelection, "cyberAccessProgram"),
             input.cyberAccess.defaultProgram,
           ].find(isCodexCyberAccessProgram);
->>>>>>> upstream/main
     // MCP-written app context must be quoted user input, not developer instructions.
     const appContext = Object.fromEntries(
       (input.appContext ?? []).map((entry) => [
@@ -1862,7 +1858,6 @@ export interface CodexAdapterV2Options {
   /** The provider's published models, read per turn for catalog defaults. */
   readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
   readonly resolveRuntime?: Effect.Effect<CodexEffectiveRuntime, ProviderSetupError, Scope.Scope>;
-  readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
   readonly compatibility?: (
     version: string,
   ) => Effect.Effect<ServerProviderCompatibilityAdvisory | undefined>;
@@ -7414,7 +7409,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               browserToolsAvailable: mcpSession?.browserToolsAvailable ?? true,
               deviceToolsAvailable: mcpSession?.capabilities?.has("device") ?? false,
               omitServiceTier: adapterOptions.resolveRuntime !== undefined,
-              models: yield* adapterOptions.models ?? Effect.succeed([]),
+              models,
               ...(turnInput.appContext === undefined ? {} : { appContext: turnInput.appContext }),
               ...(configuredReasoningSummary === undefined ? {} : { configuredReasoningSummary }),
             });
@@ -7488,7 +7483,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           const activation = { stopped: false };
           goalActivations.set(threadId, activation);
           yield* Effect.gen(function* () {
-            yield* startNativeTurn(turnInput, yield* codexInput);
+            yield* startNativeTurn(turnInput, yield* codexInput, turnInput.commandNote);
             if (activation.stopped) return;
             const { goal } = yield* client.request("thread/goal/set", {
               threadId,
@@ -7574,53 +7569,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               });
               goalsByNativeThread.set(threadId, providerGoalFromCodex(goal));
             }
-<<<<<<< origin/main
-            // Hold fast first turns until activation; Stop cancels activation.
-            const activation = { stopped: false };
-            goalActivations.set(threadId, activation);
-            yield* Effect.gen(function* () {
-              // A bare objective gets echoed back, and "start this goal" gets a
-              // create_goal call that Codex rejects because the goal already exists.
-              yield* startNativeTurn(
-                turnInput,
-                command.type === "set"
-                  ? yield* toCodexInput({
-                      ...turnInput,
-                      message: {
-                        ...turnInput.message,
-                        text: `This thread's goal is already set. Do not call create_goal. Start working on it now: ${command.objective}`,
-                      },
-                    })
-                  : [],
-                turnInput.commandNote,
-              );
-              if (activation.stopped) return;
-              const { goal } = yield* client.request("thread/goal/set", {
-                threadId,
-                status: "active",
-              });
-              goalsByNativeThread.set(threadId, providerGoalFromCodex(goal));
-              if (activation.stopped) {
-                const paused = yield* client.request("thread/goal/set", {
-                  threadId,
-                  status: "paused",
-                });
-                goalsByNativeThread.set(threadId, providerGoalFromCodex(paused.goal));
-              }
-            }).pipe(
-              Effect.ensuring(
-                turnTerminalizationPermit.withPermits(1)(
-                  Effect.gen(function* () {
-                    if (goalActivations.get(threadId) === activation) {
-                      goalActivations.delete(threadId);
-                    }
-                    if (goalsByNativeThread.get(threadId)?.status !== "active") {
-                      yield* releaseGoalHold(threadId);
-                    }
-                  }),
-                ),
-              ),
-=======
             // A bare objective gets echoed back, and "start this goal" gets a
             // create_goal call that Codex rejects because the goal already exists.
             yield* activateGoal(
@@ -7635,7 +7583,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                     },
                   })
                 : Effect.succeed([]),
->>>>>>> upstream/main
             );
           },
           (effect, turnInput) =>
@@ -7734,7 +7681,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
           providerSession: session,
           events: Stream.fromEffectRepeat(Queue.take(events)),
           canReuseContextUsage: canReuseCodexContextUsage,
-<<<<<<< origin/main
           accountChanged: readCodexAccount(fileSystem, authPath).pipe(
             Effect.map(
               (current) =>
@@ -7742,9 +7688,7 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 (Option.isNone(spawnedAccount) || current.value !== spawnedAccount.value),
             ),
           ),
-=======
           normalizeThreadLoadModelSelection: normalizeCodexThreadLoadModelSelection,
->>>>>>> upstream/main
           // Idle release can beat delayed subagent resumes: Codex reports them completed between turns with no resume-expected signal.
           hasPendingBackgroundWork: Effect.gen(function* () {
             for (const items of (yield* Ref.get(runningCommandItemsByTurn)).values()) {

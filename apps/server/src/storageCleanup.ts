@@ -679,17 +679,7 @@ const make = Effect.gen(function* () {
         );
       if (result === null) return null;
       if (result.exitCode === 0 || result.exitCode === allowedExitCode) return result;
-<<<<<<< origin/main
-      const stderr = result.stderr.toLowerCase();
-      // Newer Git (seen on 2.56, not 2.43) reports a dangling gitfile this way.
-      if (
-        stderr.includes("not a git repository") ||
-        stderr.includes("does not point to a valid repository")
-      )
-        return null;
-=======
       if (isNonRepositoryGitStderr(result.stderr)) return null;
->>>>>>> upstream/main
       return yield* failure(
         result.stderr.trim().split(/\r?\n/)[0]?.slice(0, 1000) || "command failed",
       );

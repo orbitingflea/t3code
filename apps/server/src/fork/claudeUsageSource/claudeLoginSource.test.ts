@@ -30,6 +30,7 @@ import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import { ClaudeDriver } from "../../provider/Drivers/ClaudeDriver.ts";
 import * as ModelManifest from "../../provider/ModelManifest.ts";
+import * as ProviderInstallationGate from "../../provider/ProviderInstallationGate.ts";
 import { makeProviderInstanceRegistry } from "../../provider/ProviderInstanceRegistry.ts";
 import * as ProviderHostLive from "../../provider/ProviderHostLive.ts";
 import * as ProviderOrchestrationAdapterInfrastructure from "../../provider/ProviderOrchestrationAdapterInfrastructure.ts";
@@ -79,6 +80,7 @@ const layerTest = ProviderOrchestrationAdapterInfrastructure.layer.pipe(
       ),
       Layer.provideMerge(ProviderLatestVersions.layer),
       Layer.provideMerge(McpProviderSessions.layer),
+      Layer.provideMerge(ProviderInstallationGate.layer),
       Layer.provideMerge(ModelManifest.layerTest),
       Layer.provideMerge(ResetCreditCoordinator.layerTest),
     ),
@@ -241,7 +243,7 @@ const redeemClaudeReset = (claim: {
     const instance = yield* registry.getInstance(instanceId);
     expect(instance).toBeDefined();
     const before = yield* instance!.snapshot.refresh;
-    const outcome = yield* instance!.consumeResetCredit!().pipe(Effect.result);
+    const outcome = yield* instance!.consumeResetCredit!(undefined).pipe(Effect.result);
     return { before, outcome, after: yield* instance!.snapshot.getSnapshot, direct, viaHub };
   }).pipe(
     // macOS logins live in the Keychain, where resets are never read.

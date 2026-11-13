@@ -233,14 +233,11 @@ import {
   useActiveRowReveal,
 } from "./sidebar/routeReveal";
 import { stackedThreadToast, toastManager } from "./ui/toast";
-<<<<<<< origin/main
+import { titleRegenerationToast } from "./threadTitleRegenerationToast";
 import {
   displayModeMenuItems,
   useDisplayModeMenuAction,
 } from "../fork/displayMode/useThreadDisplayMode";
-=======
-import { titleRegenerationToast } from "./threadTitleRegenerationToast";
->>>>>>> upstream/main
 import { copyThreadReference } from "../lib/copyThreadReference";
 import { threadChipCopyTarget } from "@t3tools/client-runtime/thread-reference";
 import { Button } from "./ui/button";

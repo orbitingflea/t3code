@@ -21,7 +21,7 @@ import { PULL_REQUEST_LINKING_INSTRUCTIONS } from "@t3tools/provider-core/server
 import {
   antigravityCliMcpToolCall,
   antigravitySessionDirectories,
-  managedAntigravityRuntimeState,
+  profileAntigravityRuntimeState,
   readAntigravityAccount,
   withAntigravityCliCompaction,
   type AntigravityRuntimeState,
@@ -148,7 +148,7 @@ export function makeAntigravityAcpAdapterFlavor(
 ): AcpAdapterV2Flavor {
   const { profileDirectory } = options;
   const runtimeState =
-    options.runtimeState ?? Effect.succeed(managedAntigravityRuntimeState(profileDirectory));
+    options.runtimeState ?? Effect.succeed(profileAntigravityRuntimeState(profileDirectory));
   const antigravityClientFileRoots = (cwd: string | null) =>
     cwd === null ? [options.host.paths.attachmentsDir] : [cwd, options.host.paths.attachmentsDir];
   const makeRuntime = Effect.fn("AntigravityAdapterV2.makeRuntime")(
@@ -231,12 +231,8 @@ export function makeAntigravityAcpAdapterFlavor(
     mcpOverHttp: true,
     sessionCarriesPullRequestLinking: antigravityAppendsSystemPrompt,
     makeRuntime,
-<<<<<<< origin/main
     readAccount: readAntigravityAccount(runtimeState, options),
-    buildPrompt: ({
-=======
     buildAttachmentPrompt: ({
->>>>>>> upstream/main
       text,
       attachments,
       resolveAttachmentPath,
@@ -296,7 +292,7 @@ export function makeAntigravityAcpAdapterFlavor(
       antigravityCliMcpToolCall(normalizeAntigravityToolCall(toolCall)),
     extractSubagentUpdate: extractAntigravitySubagentUpdate,
     supportsImagePrompts: true,
-    // Only the CLI compacts on /compact; makeAntigravityAdapterV2 withholds it from the managed runtime.
+    // `agy` compacts on /compact; makeAntigravityAdapterV2 withholds it from the older harness runtime.
     supportsCompaction: true,
     requiresSignIn: isAntigravitySignInRequiredError,
     // Antigravity can leave a prompt open without updates; long tools and approvals pause this.

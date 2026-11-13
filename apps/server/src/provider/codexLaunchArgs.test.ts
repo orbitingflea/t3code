@@ -5,7 +5,7 @@ import { describe, it } from "vite-plus/test";
 import {
   codexAppServerArgs,
   codexExecLaunchArgs,
-<<<<<<< origin/main
+  codexMcpListLaunchArgs,
   resolveCodexSkillRoot,
 } from "./codexLaunchArgs.ts";
 
@@ -21,10 +21,6 @@ describe("resolveCodexSkillRoot", () => {
     NodeAssert.equal(resolveCodexSkillRoot({ T3CODE_CODEX_SKILL_ROOT: "   " }), undefined);
   });
 });
-=======
-  codexMcpListLaunchArgs,
-} from "./codexLaunchArgs.ts";
->>>>>>> upstream/main
 
 describe("codexAppServerArgs", () => {
   it.each([

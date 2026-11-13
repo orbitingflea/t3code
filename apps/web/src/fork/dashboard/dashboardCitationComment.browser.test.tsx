@@ -72,7 +72,10 @@ function Composer(props: {
       onCitationDraftSave={(replacedValue, savedValue) => {
         if (replacedValue === prompt) setPrompt(savedValue);
       }}
-      onCitationSubmitAndSend={() => setPrompt("")}
+      onCitationSubmitAndSend={() => {
+        setPrompt("");
+        return true;
+      }}
       onPaste={() => {}}
     />
   );

@@ -22,11 +22,8 @@ import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { thirdPartyLicensesPlugin } from "../../scripts/lib/third-party-licenses";
 import { tailwindPlugins } from "./vite/tailwind";
 import { warmBundledDevPlugin } from "./vite/warmBundledDev";
-<<<<<<< origin/main
-import { whiteboardBuildPlugin } from "./vite/fork/whiteboardBuild";
-=======
 import { formatAppDisplayName, resolveWebAppStageLabel } from "./src/branding.logic";
->>>>>>> upstream/main
+import { whiteboardBuildPlugin } from "./vite/fork/whiteboardBuild";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -330,11 +327,8 @@ export default defineConfig(() => {
       react({ compiler: true }),
       tailwindPlugins(bundledDev),
       warmBundledDevPlugin(),
-<<<<<<< origin/main
       whiteboardBuildPlugin(),
-=======
       bundledDev ? bundledDevStableNamesPlugin() : undefined,
->>>>>>> upstream/main
     ],
     optimizeDeps: {
       include: [

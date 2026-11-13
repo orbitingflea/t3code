@@ -78,6 +78,7 @@ import { mapCodexModelCapabilities } from "../provider/CodexProvider.ts";
 import { DocumentText } from "../provider/DocumentText.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import { PullRequestReviewGuideService } from "../pullRequest/PullRequestReviewGuideService.ts";
+import { PullRequestService } from "../pullRequest/PullRequestService.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -239,6 +240,7 @@ const claude: ProviderFixture = {
               ),
             forkSession: () => Effect.die("unused"),
             subagentLaunchToolUseId: () => Effect.succeed(null),
+            subagentModel: () => Effect.succeed(null),
             assertComplete: Effect.void,
           },
         });
@@ -665,6 +667,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(ProviderAdapterRegistry.ProviderAdapterRegistryV2)({}),
   Layer.mock(ProviderRegistry.ProviderRegistry)({}),
   Layer.mock(PullRequestReviewGuideService)({}),
+  Layer.mock(PullRequestService)({}),
   Layer.mock(RemoteDelegation.RemoteDelegation)({}),
   Layer.mock(ScheduledTaskService.ScheduledTaskService)({}),
   Layer.mock(SecretRequests.SecretRequests)({}),

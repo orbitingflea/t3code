@@ -308,13 +308,10 @@ export type ClaudeCapabilitiesProbe = {
   /** Undefined means get_usage failed; absent windows on success mean no subscription windows, as with API keys. */
   readonly usage?: Pick<SDKControlGetUsageResponse, "rate_limits_available" | "rate_limits">;
   readonly usageCheckedAt?: string;
-<<<<<<< origin/main
   readonly usageReadAt?: string | undefined;
   readonly usageError?: { readonly message: string };
-=======
   /** Each settings source's `maxEffortLevel` caps; Claude Code clamps every higher effort. */
   readonly effortCapSources?: ReadonlyArray<ClaudeEffortCapSource>;
->>>>>>> upstream/main
 };
 
 // `getSettings` exists at runtime but is missing from the SDK's `Query` type, and older CLIs

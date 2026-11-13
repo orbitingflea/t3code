@@ -95,11 +95,8 @@ import type * as Statement from "effect/sql/Statement";
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import { SEND_TO_USER_PAYLOAD_LIKE } from "@t3tools/shared/displayModes";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
-<<<<<<< origin/main
 import * as ShownHistory from "../fork/shownHistory/ShownHistory.ts";
-=======
 import { readableSearchText } from "./messageSearchIndex.ts";
->>>>>>> upstream/main
 import {
   isFoldableWorkItem,
   isThreadHistoryUserTurn,
@@ -6988,7 +6985,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       sql
         .withTransaction(
           Effect.gen(function* () {
-<<<<<<< origin/main
             const shown = workMode === "work" ? null : ShownHistory.shownCursorOf(cursor);
             if (shown !== null)
               return (
@@ -7000,9 +6996,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                   inheritedRunFork,
                 )) ?? (yield* new ProjectionStoreThreadNotFoundError({ threadId }))
               );
-            const index = yield* readTimelineIndex(threadId, new Set(), workMode !== undefined);
-            if (index.records.thread.deletedAt !== null)
-=======
             const withWork = workMode !== undefined;
             // A jump to a target entry selects from the whole index.
             const local =
@@ -7012,7 +7005,6 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             const full =
               local === null ? yield* readSnapshotTimelineIndex(threadId, withWork) : null;
             if ((local ?? full)?.records.thread.deletedAt !== null)
->>>>>>> upstream/main
               return yield* new ProjectionStoreThreadNotFoundError({ threadId });
             const revisions = yield* sql<{
               sequence: number;

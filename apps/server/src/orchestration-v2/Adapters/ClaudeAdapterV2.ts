@@ -181,7 +181,6 @@ import {
   type CompiledClaudeModelSelection,
 } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
-import { isClaudeSteerQueuedPastResult, trackClaudeSteer } from "../../fork/claudeSteerQueue.ts";
 import { claudeTerminalToolEnvironment } from "../../fork/userMessageTools/claudeTerminalTool.ts";
 import {
   claudeDisplayModeHooks,
@@ -2060,12 +2059,8 @@ export function makeClaudeQueryOptions(input: {
       : typeof input.sdkSettings === "object" && input.sdkSettings !== null
         ? ({ ...input.sdkSettings, ...selectionSettings } as ClaudeSdkSettings)
         : selectionSettings;
-<<<<<<< origin/main
   const pluginRoot = input.environment?.T3CODE_CLAUDE_PLUGIN_ROOT?.trim();
-  const compactQuerySettings =
-=======
   const autoCompactWindow =
->>>>>>> upstream/main
     input.settings?.autoCompactWindow === undefined || input.settings.autoCompactWindow.length === 0
       ? undefined
       : input.settings.autoCompactWindow;
@@ -5290,12 +5285,9 @@ export interface ClaudeAdapterV2Options {
       request: ProviderContinuationRequests.ProviderContinuationRequest,
     ) => Effect.Effect<void>;
   };
-<<<<<<< origin/main
   /** Omitting this sends no display mode note after a compaction or beside a slash command. */
   readonly displayModeCompactionNote?: DisplayModeCompactionNoteShape | undefined;
-=======
   readonly installationGate?: ProviderInstallationGate.ProviderInstallationGate["Service"];
->>>>>>> upstream/main
 }
 
 export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
@@ -11185,10 +11177,10 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             const completedAt = yield* DateTime.now;
             const interrupted = (yield* Ref.get(interruptedTurns)).has(context.providerTurnId);
             const wasSteered = (yield* Ref.get(steeredTurns)).has(context.providerTurnId);
-<<<<<<< origin/main
-            if (!interrupted && wasSteered && isClaudeSteerQueuedPastResult(context, message)) {
-=======
-            if (!interrupted && wasSteered && isClaudeActiveSteeringAbortResult(message)) {
+            // Fork: a steer waits in Claude's queue, so the turn stays open while one is not yet taken in.
+            const steerQueued =
+              context.pendingSteers.size > 0 && (message.user_message_uuids?.length ?? 0) > 0;
+            if (!interrupted && wasSteered && steerQueued) {
               const cutOffReply = context.assistant.lastReply;
               context.assistant.lastReply = null;
               if (message.terminal_reason === "aborted_streaming") {
@@ -11202,7 +11194,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                   completedAt,
                 });
               }
->>>>>>> upstream/main
               context.steeredSegmentUsage.push(message.usage);
               context.steeredLedgerUsage = addClaudeLedgerUsage(
                 context.steeredLedgerUsage,
@@ -12973,9 +12964,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }),
               persistAttachmentBudget(existing.nativeThreadId),
             );
-<<<<<<< origin/main
-            const steerUuid = yield* random.uuidV4().pipe(Effect.filterOrFail(isClaudePromptUuid));
-=======
             // A selection sent with the steer applies to the running turn when the live process can switch to it.
             const steerSelection =
               turnInput.modelSelection === undefined
@@ -12989,7 +12977,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 existing.openedPermissionMode === currentTurn.queryPolicy.permissionMode)
                 ? steerSelection
                 : undefined;
->>>>>>> upstream/main
             const userMessage = yield* makeClaudeUserMessageWithAttachments({
               text: applyClaudePromptEffortPrefix(
                 turnInput.message.text,
@@ -12999,10 +12986,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 ).promptEffort,
               ),
               attachments: turnInput.message.attachments,
-<<<<<<< origin/main
-=======
-              priority: "now",
->>>>>>> upstream/main
               uuid: steerUuid,
               attachmentsDir,
               fileSystem,
@@ -13043,11 +13026,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               next.add(turnInput.providerTurnId);
               return next;
             });
-<<<<<<< origin/main
-            const forgetSteer = trackClaudeSteer(currentTurn, steerUuid);
-=======
             yield* emitSteerStatus(currentTurn, messageId, "pending");
->>>>>>> upstream/main
             yield* Effect.uninterruptibleMask((restore) =>
               restore(
                 existing.query.offer(userMessage, () => {
@@ -13059,7 +13038,6 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     pdfReservation.commit();
                   }),
                 ),
-                Effect.onError(() => Effect.sync(forgetSteer)),
               ),
             ).pipe(
               Effect.onError(() =>
@@ -13798,11 +13776,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
     const queryRunner = yield* ClaudeAgentSdkQueryRunner;
     const serverConfig = yield* ServerConfig.ServerConfig;
     const continuationRequests = yield* ProviderContinuationRequests.ProviderContinuationRequests;
-<<<<<<< origin/main
     const displayModeCompactionNote = yield* providedCompactionNote;
-=======
     const installationGate = yield* ProviderInstallationGate.ProviderInstallationGate;
->>>>>>> upstream/main
     const baseEnvironment = yield* mergeClaudeProcessEnvironment(
       config,
       environment,
@@ -13826,11 +13801,8 @@ export const createClaudeAdapterV2 = Effect.fn("ClaudeAdapterV2Driver.create")(
       idAllocator,
       queryRunner,
       continuationRequests,
-<<<<<<< origin/main
       displayModeCompactionNote,
-=======
       installationGate,
->>>>>>> upstream/main
       ...hooks,
     });
   },

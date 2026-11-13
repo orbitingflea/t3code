@@ -537,15 +537,11 @@ const makeContextHandoffService = Effect.fn("orchestrationV2.ContextHandoffServi
           ),
         );
       const runStatuses = new Map(input.runs?.map((run) => [run.id, run.status]));
-<<<<<<< origin/main
-      const coverage = handoffCoverage(input);
-      const sentTexts = foldSentTexts(input.items);
-=======
       const coverage = handoffCoverage({
         ...input,
         threadId: input.sourceThreadId ?? input.threadId,
       });
->>>>>>> upstream/main
+      const sentTexts = foldSentTexts(input.items);
       const selected = selectHistory({
         messages: input.items.flatMap((item) => {
           const message = historicalMessage(item, sentTexts);

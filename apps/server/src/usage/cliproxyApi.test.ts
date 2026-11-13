@@ -49,25 +49,16 @@ const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
 function fixture(
   options: {
-<<<<<<< origin/main
-    accounts?: Array<
-      (typeof accounts)[number] & {
-        label?: string;
-        disabled?: boolean;
-        id_token: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
-      }
-    >;
-=======
     accounts?: Array<{
       id: string;
       auth_index: string;
       provider: string;
+      label?: string;
       email?: string;
       disabled?: boolean;
       project_id?: string;
       id_token?: { chatgpt_account_id: string; plan_type?: string; chatgpt_plan_type?: string };
     }>;
->>>>>>> upstream/main
     upstream?: (request: RequestBody) => { status: number; body: unknown };
     cooldownStatus?: number;
   } = {},
