@@ -630,6 +630,8 @@ export function buildBoundedThreadProjection(input: {
   readonly projection: OrchestrationV2ThreadProjection;
   readonly snapshotSequence: number;
   readonly policy?: ThreadHistoryPagePolicy | undefined;
+  /** Set when the caller bounded the visible rows itself: all of them stay, with this cursor. */
+  readonly window?: Pick<SelectTimelinePageResult, "nextCursor" | "hasMoreHistory"> | undefined;
 }): BoundedProjectionResult {
   const policy = input.policy ?? THREAD_HISTORY_PAGE_POLICY;
   const threadId = input.projection.thread.id;
@@ -682,12 +684,15 @@ export function buildBoundedThreadProjection(input: {
   );
   const windowPolicy: ThreadHistoryPagePolicy = { ...policy, maxEncodedBytes: windowBudget };
 
-  const window = selectRecentTimelineWindow({
-    items: controlProjection.visibleTurnItems,
-    snapshotSequence: input.snapshotSequence,
-    policy: windowPolicy,
-    rowEncodedBytes: (row) => projectedRowBoundedSnapshotEncodedBytes(row, threadId),
-  });
+  const window =
+    input.window === undefined
+      ? selectRecentTimelineWindow({
+          items: controlProjection.visibleTurnItems,
+          snapshotSequence: input.snapshotSequence,
+          policy: windowPolicy,
+          rowEncodedBytes: (row) => projectedRowBoundedSnapshotEncodedBytes(row, threadId),
+        })
+      : { ...input.window, items: controlProjection.visibleTurnItems };
   const visibleTurnItems = renumberPositions(window.items);
   const windowTurnItems = localTurnItemsForVisibleWindow(controlProjection, visibleTurnItems);
   const dependencyTurnItems = retainedInterruptRequestTurnItems(

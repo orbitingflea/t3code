@@ -97,6 +97,7 @@ import type * as Statement from "effect/sql/Statement";
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
 import { SEND_TO_USER_PAYLOAD_LIKE } from "@t3tools/shared/displayModes";
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
+import * as ShownHistory from "../fork/shownHistory/ShownHistory.ts";
 import {
   isThreadHistoryUserTurn,
   isConversationHistoryItem,
@@ -711,12 +712,14 @@ export interface ProjectionStoreV2Shape {
       readonly anchorItemId?: TurnItemId | undefined;
       readonly anchorThreadId?: ThreadId | undefined;
       readonly requiredRunId?: RunId | undefined;
+      readonly shownOnly?: boolean | undefined;
     },
   ) => Effect.Effect<
     {
       readonly schemaVersion: number;
       readonly snapshotSequence: number;
       readonly projection: OrchestrationV2ThreadProjection;
+      readonly shownHistory?: { readonly next: ShownHistory.ShownKey | null };
     },
     ProjectionStoreV2Error
   >;
@@ -728,6 +731,7 @@ type ProjectionWindow = Omit<
 > & {
   readonly suppressLocal?: boolean | undefined;
   readonly historyAnchor?: { readonly threadId: ThreadId; readonly itemId: TurnItemId } | undefined;
+  readonly shown?: ShownHistory.ShownWalk | undefined;
 };
 
 export class ProjectionStoreV2 extends Context.Service<ProjectionStoreV2, ProjectionStoreV2Shape>()(
@@ -2889,6 +2893,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       threadId: ThreadId,
       window: ProjectionWindow,
     ) {
+      if (window.shown !== undefined)
+        return ShownHistory.shownRetainedRows(sql, threadId, window.shown);
       const eligible = sql`
                 WITH eligible AS NOT MATERIALIZED (
                   SELECT item.rowid AS item_rowid, item.payload_json, item.ordinal, item.turn_item_id,
@@ -3819,6 +3825,8 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
             ? ["runs", "attempts", "turnItems"]
             : undefined,
         );
+        if (window?.shown !== undefined)
+          return ShownHistory.withInherited(withLocalVisibleTurnItems(projection), window.shown);
         const forkedFrom = inheritedRunFork(projection.thread);
         if (forkedFrom === null || seenThreadIds.has(forkedFrom.threadId)) {
           return withLocalVisibleTurnItems(projection);
@@ -5875,6 +5883,17 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
       sql
         .withTransaction(
           Effect.gen(function* () {
+            const shown = workMode === "work" ? null : ShownHistory.shownCursorOf(cursor);
+            if (shown !== null)
+              return (
+                (yield* ShownHistory.shownHistoryPage(
+                  sql,
+                  threadId,
+                  shown,
+                  throughEntryId,
+                  inheritedRunFork,
+                )) ?? (yield* new ProjectionStoreThreadNotFoundError({ threadId }))
+              );
             const index = yield* readTimelineIndex(threadId, new Set(), workMode !== undefined);
             if (index.records.thread.deletedAt !== null)
               return yield* new ProjectionStoreThreadNotFoundError({ threadId });
@@ -6107,6 +6126,9 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                       `).map((row) => ThreadId.make(row.thread_id))[0] ??
                       threadId,
                   };
+            const shown = options.shownOnly
+              ? yield* ShownHistory.selectShownWindow(sql, threadId, inheritedRunFork)
+              : undefined;
             const projection = yield* readProjection(threadId, new Set(), {
               rowLimit: options.rowLimit,
               userTurnLimit: options.userTurnLimit,
@@ -6115,6 +6137,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
                 ? { anchorItemId: historyAnchor.itemId }
                 : {}),
               ...(historyAnchor === undefined ? {} : { historyAnchor }),
+              ...(shown === undefined ? {} : { shown }),
             });
             // Pending requests outlive their turn's window; clients read their prompt from the card.
             const retainedIds = new Set(projection.turnItems.map((item) => item.id));
@@ -6154,6 +6177,7 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               schemaVersion: ORCHESTRATION_V2_PROJECTION_SCHEMA_VERSION,
               snapshotSequence: rows[0]?.snapshot_sequence ?? 0,
               projection: windowProjection,
+              ...(shown === undefined ? {} : { shownHistory: { next: shown.next } }),
             };
           }),
         )

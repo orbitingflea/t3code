@@ -197,6 +197,7 @@ import * as ServerBrowser from "./preview/ServerBrowser.ts";
 import * as DeviceService from "./device/DeviceService.ts";
 import * as ThreadDashboard from "./fork/threadDashboard/ThreadDashboard.ts";
 import * as SubThreads from "./fork/subThreads/SubThreads.ts";
+import { shownWindow } from "./fork/shownHistory/ShownHistory.ts";
 import { remoteSshDeviceHosts } from "./device/localSshDeviceHost.ts";
 import * as PreviewManager from "./preview/Manager.ts";
 import { issueAssetUrl } from "./assets/AssetAccess.ts";
@@ -895,6 +896,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
     readonly acceptCompactTurnItems?: boolean;
     readonly acceptDedupedBodies?: boolean;
     readonly acceptCompactIds?: boolean;
+    readonly shownOnly?: boolean;
   }) {
     const threadManagement = yield* ThreadManagementService.ThreadManagementService;
     const dedupeBodies = input.acceptDedupedBodies === true;
@@ -977,6 +979,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
               rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
               deferWork: input.acceptDeferredWork === true,
               userTurnLimit: THREAD_HISTORY_PAGE_POLICY.maxUserTurns,
+              ...(input.shownOnly === true ? { shownOnly: true } : {}),
             })
           : threadManagement.getThreadSnapshot(input.threadId)
       ).pipe(
@@ -993,6 +996,7 @@ export const subscribeOrchestrationV2Thread = Effect.fn("ws.orchestrationV2.subs
       const snapshotItem = useBoundedSnapshot
         ? buildBoundedThreadStreamSnapshot({
             ...snapshot,
+            window: shownWindow(snapshot),
             compactTurnItems: input.acceptCompactTurnItems === true,
             dedupeBodies,
             compactIds: input.acceptCompactIds === true,
