@@ -17,6 +17,7 @@ import * as Option from "effect/Option";
 import { AsyncResult, Atom } from "effect/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
+import { displayModeThreadStates } from "../fork/displayMode/threadView";
 import { connectionAtomRuntime } from "../connection/runtime";
 import { serverEnvironment } from "./server";
 import { environmentShell } from "./shell";
@@ -33,7 +34,9 @@ export const threadEnvironment = createThreadEnvironmentAtoms(
   connectionAtomRuntime,
   threadFamilies.snapshotAtom,
 );
-const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
+const environmentThreads = displayModeThreadStates(
+  createEnvironmentThreadStateAtoms(connectionAtomRuntime),
+);
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );

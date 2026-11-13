@@ -15,7 +15,6 @@ import {
   NORMAL_DISPLAY_MODE,
   resolveDisplayMode,
   foldCores,
-  SEND_TO_USER_PAYLOAD_LIKE,
   SUB_THREAD_WINDOW_CORES,
   subThreadCores,
   subThreadOfRecords,
@@ -34,6 +33,7 @@ import type * as SqlError from "effect/sql/SqlError";
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProviderRegistry from "../../provider/ProviderRegistry.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import { sendCallSql } from "../shownHistory/ShownHistory.ts";
 import * as SubThreads from "../subThreads/SubThreads.ts";
 import { createToldTable } from "./DisplayModeCompactionNote.ts";
 
@@ -251,8 +251,7 @@ export const layer: Layer.Layer<
       }
 
       // The screen shows only user messages and send_to_user calls, so the query steps over other rows.
-      const shownOnly = sql`(item.type = 'user_message' OR (item.type = 'dynamic_tool'
-        AND item.payload_json LIKE ${SEND_TO_USER_PAYLOAD_LIKE}))`;
+      const shownOnly = sql`(item.type = 'user_message' OR ${sendCallSql(sql)})`;
       const found: OrchestrationV2TurnItem[] = [];
       let cores = 0;
       let passedTyped = before !== null;

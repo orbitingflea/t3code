@@ -56,7 +56,10 @@ export function useDisplayModeTimeline(
 ): {
   readonly entries: ReadonlyArray<TimelineEntry>;
   readonly repliesChosen: boolean;
-  /** The key that the thread-switch cache keeps these rows under. A sub-thread's view keeps none. */
+  /**
+   * The key that the thread-switch cache keeps these rows under, one per mode, since modes load
+   * different views. A sub-thread's view keeps none.
+   */
   readonly rememberKey: string | null;
 } {
   const mode = useThreadDisplayMode(threadRef);
@@ -64,7 +67,8 @@ export function useDisplayModeTimeline(
   return {
     entries: applyDisplayMode(mode, entries, mode.subThreads ? subThread : null),
     repliesChosen: mode.visibleCores !== null,
-    rememberKey: subThread === null ? activeThreadKey : null,
+    rememberKey:
+      subThread === null && activeThreadKey !== null ? `${activeThreadKey}\u0000${mode.id}` : null,
   };
 }
 

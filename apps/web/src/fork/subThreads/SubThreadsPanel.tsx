@@ -1,3 +1,4 @@
+import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef, ThreadSubThread } from "@t3tools/contracts";
 import { ArrowLeftIcon } from "lucide-react";
@@ -9,6 +10,8 @@ import { RelativeTime } from "../../components/RelativeTime";
 import { ComposerHandleContext } from "../../composerHandleContext";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
 import { cn } from "../../lib/utils";
+import { useQuietThreadProjection, useThreadHistory } from "../../state/entities";
+import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
 import {
@@ -44,7 +47,14 @@ export function SubThreadsPanel(props: {
   // A rewind can remove the first message of the sub-thread on screen; the list takes its place.
   const shown = chosen !== null && summaries.has(chosen) ? chosen : null;
   if (shown === null) {
-    return <SubThreadList summaries={summaries} states={states} onOpen={show} />;
+    return (
+      <SubThreadList
+        threadRef={props.threadRef}
+        summaries={summaries}
+        states={states}
+        onOpen={show}
+      />
+    );
   }
   return (
     <SubThreadView
@@ -61,11 +71,26 @@ export function SubThreadsPanel(props: {
 }
 
 function SubThreadList(props: {
+  readonly threadRef: ScopedThreadRef;
   readonly summaries: ReadonlyMap<string, SubThreadSummary>;
   readonly states: ReadonlyMap<string, ThreadSubThread>;
   readonly onOpen: (first: string) => void;
 }) {
   const [unreadOnly, setUnreadOnly] = useState(false);
+  const loaded = useQuietThreadProjection(props.threadRef) !== null;
+  const syncError = useAtomValue(environmentThreadDetails.errorAtom(props.threadRef));
+  const history = useThreadHistory(props.threadRef);
+  const loadEarlier = useAtomCommand(threadEnvironment.loadEarlierHistory, {
+    label: "load earlier replies",
+    reportFailure: false,
+  });
+  const emptyText = unreadOnly
+    ? "No unread replies."
+    : !loaded
+      ? (syncError ?? "Loading replies…")
+      : history.hasMoreHistory
+        ? "No replies in the loaded messages."
+        : "No replies yet. Point at a message in the chat and choose Reply.";
   const rows = [...props.summaries.values()]
     .filter((summary) => summary.replies > 0)
     .map((summary) => {
@@ -97,10 +122,8 @@ function SubThreadList(props: {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {rows.length === 0 ? (
-          <p className="p-3 text-muted-foreground text-xs">
-            {unreadOnly
-              ? "No unread replies."
-              : "No replies yet. Point at a message in the chat and choose Reply."}
+          <p role="status" className="p-3 text-muted-foreground text-xs">
+            {emptyText}
           </p>
         ) : (
           rows.map(({ summary, state, unread }) => (
@@ -132,6 +155,26 @@ function SubThreadList(props: {
             </button>
           ))
         )}
+        {loaded && (history.hasMoreHistory || history.error !== null) ? (
+          <div className="flex flex-col items-start gap-1 px-3 py-2 text-muted-foreground text-xs">
+            {history.error !== null ? <p role="status">{history.error}</p> : null}
+            {history.hasMoreHistory ? (
+              <button
+                type="button"
+                disabled={history.loading}
+                onClick={() =>
+                  void loadEarlier({
+                    environmentId: props.threadRef.environmentId,
+                    input: { threadId: props.threadRef.threadId },
+                  })
+                }
+                className="rounded-sm outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset disabled:cursor-default"
+              >
+                {history.loading ? "Loading earlier messages…" : "Load earlier messages"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     </div>
   );

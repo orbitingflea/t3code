@@ -71,10 +71,12 @@ export function buildBoundedThreadStreamSnapshot(input: {
   readonly compactTurnItems?: boolean;
   readonly dedupeBodies?: boolean;
   readonly compactIds?: boolean;
+  readonly window?: Parameters<typeof buildBoundedThreadProjection>[0]["window"];
 }): ThreadSnapshotStreamItem {
   const bounded = buildBoundedThreadProjection({
     snapshotSequence: input.snapshotSequence,
     projection: projectThreadProjectionForWire(input.projection),
+    window: input.window,
   });
   return {
     kind: "snapshot",

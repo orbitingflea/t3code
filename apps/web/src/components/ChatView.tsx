@@ -357,6 +357,7 @@ import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDashboardSurfaceAdder } from "../fork/dashboard/dashboardSurface";
 import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThreads/subThreadReply";
 import { SubThreadViewContext } from "../fork/subThreads/subThreadsState";
+import { useThreadShownView } from "../fork/displayMode/threadView";
 import { timelineCitation } from "../fork/dashboard/dashboardCitation";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem, extensionStatusBannerItem } from "./chat/ThreadActivityBanners";
@@ -535,7 +536,11 @@ export default function ChatView(props: ChatViewProps) {
   const serverVisibleTurnItems = useQuietThreadVisibleTurnItems(routeThreadDetailRef);
   const serverThreadHistory = useThreadHistory(routeThreadDetailRef);
   const threadHistoryControls = (() => {
-    if (routeThreadDetailRef === null || !shouldShowLoadEarlierControl(serverThreadHistory)) {
+    if (
+      routeThreadDetailRef === null ||
+      subThreadDraft !== null ||
+      !shouldShowLoadEarlierControl(serverThreadHistory)
+    ) {
       return undefined;
     }
     return {
@@ -1588,9 +1593,11 @@ export default function ChatView(props: ChatViewProps) {
   );
   const turnDiffSummaries = useThreadCheckpointSummaries(routeThreadDetailRef);
   const availableRevertTurnCounts = deriveAvailableRevertTurnCounts(serverProjection);
+  const threadShownView = useThreadShownView(routeThreadDetailRef);
   // A paged history window cannot identify the first loaded run as the thread start.
   const threadStartCheckpointReady =
     !serverThreadHistory.hasMoreHistory &&
+    !threadShownView &&
     findRevertCheckpoint(serverProjection?.checkpoints ?? [], 0) !== undefined;
 
   const workspaceMutationId = deriveWorkspaceMutationId(

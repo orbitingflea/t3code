@@ -27,6 +27,7 @@ export const fetchEnvironmentBoundedThreadSnapshot = Effect.fn(
     RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization["Service"]
   >;
   readonly timeoutMs?: number;
+  readonly shownOnly?: boolean | undefined;
 }) {
   const endpoint = {
     params: { threadId: input.threadId },
@@ -35,6 +36,7 @@ export const fetchEnvironmentBoundedThreadSnapshot = Effect.fn(
       dedupeBodies: "1",
       compactIds: "1",
       deferWork: "1",
+      ...(input.shownOnly ? { shownOnly: "1" } : {}),
     },
   };
   return yield* executeAuthenticatedEnvironmentHttpRequest({
@@ -76,12 +78,14 @@ export const layer: Layer.Layer<
       load: Effect.fn("ThreadSnapshotLoader.load")(function (
         prepared: PreparedConnection,
         threadId: ThreadId,
+        shownOnly?: boolean,
       ) {
         return fetchEnvironmentBoundedThreadSnapshot({
           prepared,
           threadId,
           signer,
           remoteAuthorization,
+          shownOnly,
         }).pipe(
           Effect.map((bounded): ThreadSnapshotLoader.ThreadSnapshotLoadResult => ({
             _tag: "present",

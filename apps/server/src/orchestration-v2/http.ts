@@ -34,6 +34,7 @@ import * as ProjectStore from "./ProjectStore.ts";
 import { loadSubscriberShellSnapshot } from "./ShellStream.ts";
 import { boundedSnapshotResponseFields } from "./ThreadStream.ts";
 import { projectThreadProjectionForWire } from "./WireProjection.ts";
+import * as ShownHistory from "../fork/shownHistory/ShownHistory.ts";
 
 const isInvalidThreadHistoryCursorError = Schema.is(InvalidThreadHistoryCursorError);
 
@@ -131,11 +132,13 @@ export const layer = HttpApiBuilder.group(
           typeof threadManagement.getThreadSnapshotWindow
         >[1]["anchorThreadId"],
         deferWork = false,
+        shownOnly = false,
       ) {
         return yield* threadManagement
           .getThreadSnapshotWindow(threadId, {
             rowLimit: THREAD_HISTORY_SNAPSHOT_ROW_LIMIT,
             deferWork,
+            ...(shownOnly ? { shownOnly } : {}),
             userTurnLimit:
               anchorItemId === undefined
                 ? THREAD_HISTORY_PAGE_POLICY.maxUserTurns
@@ -227,10 +230,12 @@ export const layer = HttpApiBuilder.group(
             undefined,
             undefined,
             args.query.deferWork === "1",
+            args.query.shownOnly === "1",
           ).pipe(traceLocalHandlerWork);
           const bounded = buildBoundedThreadProjection({
             projection: snapshot.projection,
             snapshotSequence: snapshot.snapshotSequence,
+            window: ShownHistory.shownWindow(snapshot),
           });
           return {
             snapshotSequence: snapshot.snapshotSequence,

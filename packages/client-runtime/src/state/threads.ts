@@ -31,6 +31,7 @@ import * as EnvironmentSupervisor from "../connection/supervisor.ts";
 import * as ConnectionWakeups from "../connection/wakeups.ts";
 import * as Persistence from "../platform/persistence.ts";
 import { runCachePersistence } from "./cachePersistence.ts";
+import * as ShownOnly from "../fork/shownOnlyThread.ts";
 import * as ManagedRelay from "../relay/managedRelay.ts";
 import { isAuthorizationFailure, request, subscribeDynamic } from "../rpc/client.ts";
 import { parseThreadKey, threadKey } from "./entities.ts";
@@ -205,9 +206,11 @@ function hasMissingPendingQuestionCard(projection: OrchestrationV2ThreadProjecti
 export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make")(function* (
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
+  shownOnly = false,
 ) {
   const supervisor = yield* EnvironmentSupervisor.EnvironmentSupervisor;
-  const cache = yield* Persistence.EnvironmentCacheStore;
+  const store = yield* Persistence.EnvironmentCacheStore;
+  const cache = shownOnly ? ShownOnly.withoutThreadSnapshots(store) : store;
   const snapshotLoader = yield* ThreadSnapshotLoader.ThreadSnapshotLoader;
   const historyController = yield* Effect.serviceOption(
     ThreadHistoryController.ThreadHistoryController,
@@ -753,7 +756,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
         const views =
           workAnchorId !== undefined
             ? ["work" as const]
-            : throughEntryId === undefined
+            : throughEntryId === undefined || shownOnly
               ? [undefined]
               : ["conversation" as const, undefined];
         let nextCursor: string | null = null;
@@ -776,6 +779,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
             (workAnchorId !== undefined
               ? page.nextCursor !== null
               : throughEntryId === undefined &&
+                !shownOnly &&
                 page.hasMoreHistory &&
                 !page.items.some(
                   ({ item }) => item.type === "user_message" && item.createdBy === "user",
@@ -1012,7 +1016,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
             ),
           );
           const httpResult: ThreadSnapshotLoader.ThreadSnapshotLoadResult =
-            yield* snapshotLoader.load(prepared, threadId);
+            yield* snapshotLoader.load(prepared, threadId, shownOnly);
           switch (httpResult._tag) {
             case "present": {
               if (canLoadHistory && httpResult.history !== undefined) {
@@ -1070,6 +1074,7 @@ export const makeEnvironmentThreadState = Effect.fn("EnvironmentThreadState.make
                 acceptCompactIds: true as const,
               }
             : {}),
+          ...(shownOnly ? { shownOnly: true as const } : {}),
           acceptDedupedBodies: true as const,
         };
       }),
@@ -1100,11 +1105,14 @@ function threadStateChanges(
   environmentId: EnvironmentIdType,
   threadId: ThreadIdType,
   resumeCache?: ThreadResumeCache,
+  shownOnly?: boolean,
 ) {
   return followStreamInEnvironment(
     environmentId,
     Stream.unwrap(
-      makeEnvironmentThreadState(threadId, resumeCache).pipe(Effect.map(SubscriptionRef.changes)),
+      makeEnvironmentThreadState(threadId, resumeCache, shownOnly).pipe(
+        Effect.map(SubscriptionRef.changes),
+      ),
     ),
   );
 }
@@ -1130,14 +1138,15 @@ export function createEnvironmentThreadStateAtoms<R, E>(
     ),
   );
   const family = Atom.family((key: string) => {
-    const { environmentId, threadId } = parseThreadKey(key);
+    const view = ShownOnly.parseThreadViewKey(key);
+    const { environmentId, threadId } = parseThreadKey(view.threadKey);
     const resumeAtom = resumeFamily(key);
     return runtime
       .atom(
         (get) => {
           get.mount(resumeAtom);
           const resume = get.once(resumeAtom);
-          const live = threadStateChanges(environmentId, threadId, resume);
+          const live = threadStateChanges(environmentId, threadId, resume, view.shownOnly);
           return resume.snapshot === undefined
             ? live
             : Stream.concat(Stream.succeed(cachedThreadState(resume.snapshot.state)), live);
@@ -1150,8 +1159,8 @@ export function createEnvironmentThreadStateAtoms<R, E>(
   });
 
   return {
-    stateAtom: (environmentId: EnvironmentIdType, threadId: ThreadIdType) =>
-      family(threadKey({ environmentId, threadId })),
+    stateAtom: (environmentId: EnvironmentIdType, threadId: ThreadIdType, shownOnly = false) =>
+      family(ShownOnly.threadViewKey(threadKey({ environmentId, threadId }), shownOnly)),
   };
 }
 
