@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { mathMacros } from "../../fork/mathMacros";
 import { LRUCache } from "../../lib/lruCache";
+import { escapeLiteralPercents } from "./MathTypeset.logic";
 
 // Virtualized threads remount messages while scrolling; cached markup keeps
 // that from typesetting the same formulas again. "" records a parse error.
@@ -13,8 +14,19 @@ function typeset(tex: string, display: boolean): string {
   const key = `${display ? "display" : "inline"}:${tex}`;
   const cached = typesetCache.get(key);
   if (cached !== null) return cached;
+  const options = {
+    displayMode: display,
+    output: "htmlAndMathml" as const,
+    throwOnError: true,
+    // No \href, \url, \htmlClass, or other commands that emit active HTML.
+    trust: false,
+    strict: "ignore" as const,
+    maxSize: 20,
+    maxExpand: 1000,
+  };
   let html = "";
   try {
+<<<<<<< origin/main
     html = katex.renderToString(tex, {
       displayMode: display,
       output: "htmlAndMathml",
@@ -26,8 +38,18 @@ function typeset(tex: string, display: boolean): string {
       maxExpand: 1000,
       macros: mathMacros(),
     });
+=======
+    html = katex.renderToString(tex, options);
+>>>>>>> upstream/main
   } catch {
-    // Unfinished or unsupported TeX stays readable as its source.
+    const repaired = escapeLiteralPercents(tex);
+    if (repaired !== tex) {
+      try {
+        html = katex.renderToString(repaired, options);
+      } catch {
+        // Unfinished or unsupported TeX stays readable as its source.
+      }
+    }
   }
   typesetCache.set(key, html, (key.length + html.length) * 2);
   return html;
