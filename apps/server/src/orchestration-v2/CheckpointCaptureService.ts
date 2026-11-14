@@ -129,7 +129,9 @@ export const layer: Layer.Layer<
       });
       // Omit delegatedCompletion to preserve cohort writes made after capture loaded the run.
       const { delegatedCompletion: _delegatedCompletion, ...runWithoutDelegatedCompletion } = run;
-      const commandId = CommandId.make(`command:effect:checkpoint.capture:${run.id}`);
+      const commandId = CommandId.make(
+        `command:effect:checkpoint.capture:${run.activeAttemptId ?? run.id}`,
+      );
       yield* eventSink.commitCommand({
         commandId,
         threadId: input.threadId,
