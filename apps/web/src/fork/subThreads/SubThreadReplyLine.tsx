@@ -2,7 +2,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { ReplyIcon } from "lucide-react";
 import { use } from "react";
 
-import { TimelineRowCtx } from "../../components/chat/timelineRowContext";
+import { type TimelineRow, TimelineRowCtx } from "../../components/chat/timelineRowContext";
 import { RelativeTime } from "../../components/RelativeTime";
 import { cn } from "../../lib/utils";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
@@ -92,25 +92,43 @@ function ReplyLine(props: {
 }
 
 /**
+ * The Reply slot's height with a mouse: the button's 16px less the row's bottom padding, so the
+ * button stays inside the row, which the list clips. Mirrors TimelineRowContent's message padding:
+ * pb-1 when grouped with the next row, pb-2 for an agent message with no meta, else pb-4.
+ */
+const fineSlotHeight = (row: Extract<TimelineRow, { kind: "message" }>) =>
+  row.groupedWithNext
+    ? "h-3"
+    : row.message.role === "assistant" && !row.showAssistantMeta
+      ? "h-2"
+      : "h-0";
+
+/**
  * At the end of a first message's row that has no reply yet: a Reply button. With a mouse it shows
- * while the pointer is on the row and takes no height, so a row keeps its size. On a touch screen
- * it always shows and has its own height, so it stays clear of the next row.
+ * while the pointer is on the row, in the row's bottom padding and a slot that tops it up. On a touch
+ * screen it always shows and has its own height, so it stays clear of the next row.
  */
 export function SubThreadReplyButton(props: {
-  readonly rowId: string;
-  readonly fromUser: boolean;
+  readonly row: Extract<TimelineRow, { kind: "message" }>;
 }) {
-  const subThread = useRowSubThread(props.rowId);
+  const subThread = useRowSubThread(props.row.id);
   if (subThread === null || subThread.summary.replies > 0) return null;
   const { threadRef, summary } = subThread;
+  const fromUser = props.row.message.role === "user";
   return (
-    <div className={cn("relative flex h-0 pointer-coarse:h-auto", props.fromUser && "justify-end")}>
+    <div
+      className={cn(
+        "relative flex pointer-coarse:h-auto",
+        fineSlotHeight(props.row),
+        fromUser && "justify-end",
+      )}
+    >
       <button
         type="button"
         onClick={() => openSubThread(threadRef, summary.first)}
         className={cn(
-          "absolute top-0 z-10 inline-flex items-center gap-1 rounded-md bg-background px-1.5 py-0.5 text-muted-foreground text-xs opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset group-hover/sub-thread-row:opacity-100 pointer-coarse:static pointer-coarse:opacity-100",
-          props.fromUser ? "right-0" : "left-0",
+          "absolute top-0 z-10 inline-flex items-center gap-1 rounded-md bg-background px-1.5 text-muted-foreground text-xs opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset group-hover/sub-thread-row:opacity-100 pointer-coarse:static pointer-coarse:py-0.5 pointer-coarse:opacity-100",
+          fromUser ? "right-0" : "left-0",
         )}
       >
         <ReplyIcon className="size-3" />

@@ -1684,9 +1684,7 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
         <AssistantTimelineRow row={row} />
       ) : null}
       {row.kind === "assistant-meta" ? <AssistantMetaTimelineRow row={row} /> : null}
-      {row.kind === "message" ? (
-        <SubThreadReplyButton rowId={row.id} fromUser={row.message.role === "user"} />
-      ) : null}
+      {row.kind === "message" ? <SubThreadReplyButton row={row} /> : null}
       {row.kind === "proposed-plan" ? <ProposedPlanTimelineRow row={row} /> : null}
       {row.kind === "html-render" ? <HtmlRenderTimelineRow row={row} /> : null}
       {row.kind === "viewed-images" ? <ViewedImagesTimelineRow row={row} /> : null}
