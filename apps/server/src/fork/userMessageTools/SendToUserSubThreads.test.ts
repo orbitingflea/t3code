@@ -109,6 +109,8 @@ const sent = (id: string, input: Record<string, unknown>) =>
   }) satisfies OrchestrationV2TurnItem;
 const answer = (id: string, text: string, to: string) =>
   sent(id, { text, reply_to: shortId(to), user_message: "" });
+const ackOf = (id: string, text: string, to: string) =>
+  sent(id, { text, reply_to: shortId(to), user_message: "", ack: true });
 const news = (id: string, text: string) => sent(id, { text, new_sub_thread: true });
 
 let history: ReadonlyArray<OrchestrationV2TurnItem> = [];
@@ -182,7 +184,8 @@ const twoSubThreads = () => [
 
 it.effect("refuses a send that names neither a message to answer nor a new sub-thread", () =>
   Effect.gen(function* () {
-    setup(twoSubThreads());
+    // An ack is not an answer, so its message stays in the list.
+    setup([...twoSubThreads(), ackOf("k2", "On it.", "q2")]);
     for (const args of [
       { text: "Lint passes too." },
       { text: "Lint passes too.", reply_to: "", new_sub_thread: false },
@@ -349,6 +352,34 @@ it.effect("refuses a second answer to one message, and points to the replace too
   }).pipe(Effect.provide(layer)),
 );
 
+it.effect("takes one ack before the answer to a message, and none for a new message", () =>
+  Effect.gen(function* () {
+    setup(twoSubThreads());
+    const q2 = { reply_to: shortId("q2"), user_message: "And the lint job?" };
+    const ack = yield* call("send_to_user", { text: "Checking.", ack: true, ...q2 });
+    expect(ack.structuredContent).toEqual({
+      ok: true,
+      message: "Shown to the user as an ack. Send your answer when it is ready.",
+    });
+    expect(changes).toEqual([]);
+    expect(
+      refusalLines(yield* call("send_to_user", { text: "Still checking.", ack: true, ...q2 }))[0],
+    ).toBe(
+      `Refused: you already sent an ack for message "${shortId("q2")}". Send your answer without ack, or make the ack your answer with replace_send_to_user with reply_to "${shortId("q2")}".`,
+    );
+    const answer = yield* call("send_to_user", { text: "Lint passes too.", ...q2 });
+    expect(answer.isError).not.toBe(true);
+    expect(changes.map((change) => change.lines.at(-1))).toEqual(["[you] Lint passes too."]);
+    expect(
+      refusalLines(yield* call("send_to_user", { text: "Done.", ack: true, ...q2 }))[0],
+    ).toContain("an ack goes only before the answer");
+    const fresh = yield* call("send_to_user", { text: "On it.", ack: true, new_sub_thread: true });
+    expect(refusalLines(fresh)[0]).toBe(
+      "Refused: an ack answers a message from the user, so it needs reply_to. Send a new message without ack.",
+    );
+  }).pipe(Effect.provide(layer)),
+);
+
 it.effect("holds an accepted answer against a second one that arrives before it is stored", () =>
   Effect.gen(function* () {
     setup(twoSubThreads());
@@ -365,6 +396,25 @@ it.effect("holds an accepted answer against a second one that arrives before it 
       user_message: "Which build was deployed?",
     });
     expect(other.isError).not.toBe(true);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("holds a replace that makes an ack the answer, before the replace is stored", () =>
+  Effect.gen(function* () {
+    setup([...twoSubThreads(), ackOf("k2", "Checking.", "q2")]);
+    const replaced = yield* call("replace_send_to_user", {
+      reply_to: shortId("q2"),
+      user_message: "And the lint job?",
+      old_text: "Checking.",
+      new_text: "Lint passes too.",
+    });
+    expect(replaced.isError).not.toBe(true);
+    const again = yield* call("send_to_user", {
+      text: "Types pass too.",
+      reply_to: shortId("q2"),
+      user_message: "And the lint job?",
+    });
+    expect(refusalLines(again)[0]).toContain("you already answered");
   }).pipe(Effect.provide(layer)),
 );
 
@@ -491,7 +541,7 @@ it.effect("keeps sub-thread pointers out of a thread with no sub-threads", () =>
       { text: "Done.", reply_to: shortId("u1"), user_message: "Fix the build." },
       messagesThread,
     );
-    expect(refusalLines(ignored)[0]).toContain("you already sent the user a message");
+    expect(refusalLines(ignored)[0]).toContain("you already answered the user's last message");
     const refused = refusalLines(
       yield* call(
         "replace_send_to_user",
@@ -515,6 +565,10 @@ it.effect("gives two user messages with one short id an answer each", () =>
     // Both ids hash to "003d88".
     const [early, late] = ["message-11914", "message-20610"] as const;
     expect(shortId(early)).toBe(shortId(late));
+    // The answer to the earlier one is not stored yet: its hold is that message's, not the id's.
+    setup([typed(early, "First?")]);
+    const first = { text: "One.", reply_to: shortId(early), user_message: "First?" };
+    expect((yield* call("send_to_user", first)).isError).not.toBe(true);
     setup([typed(early, "First?"), answer("a1", "One.", early), typed(late, "Second?")]);
     const args = { text: "Two.", reply_to: shortId(late), user_message: "Second?" };
     expect((yield* call("send_to_user", args)).isError).not.toBe(true);
@@ -527,6 +581,30 @@ it.effect("gives two user messages with one short id an answer each", () =>
       new_text: "Two, in short.",
     });
     expect(replaced.isError).not.toBe(true);
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("refuses a replace while the answer after an ack is still being delivered", () =>
+  Effect.gen(function* () {
+    setup([
+      ...twoSubThreads(),
+      ackOf("k2", "Checking.", "q2"),
+      { ...answer("a2", "Lint passes too.", "q2"), status: "running" as const },
+    ]);
+    const replaced = yield* call(
+      "replace_send_to_user",
+      {
+        reply_to: shortId("q2"),
+        user_message: "And the lint job?",
+        old_text: "Checking.",
+        new_text: "Lint and types pass.",
+      },
+      repliesThread,
+      "r2",
+    );
+    expect(refusalLines(replaced)[0]).toBe(
+      `Refused: your message for message "${shortId("q2")}" is still being delivered. Call replace_send_to_user with reply_to "${shortId("q2")}" again.`,
+    );
   }).pipe(Effect.provide(layer)),
 );
 

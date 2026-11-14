@@ -5,6 +5,7 @@ import {
 } from "@t3tools/contracts";
 import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCitations";
 import {
+  ACK_MAX_BYTES,
   displayEventFromTurnItem,
   foldCores,
   freshFirstPointer,
@@ -22,7 +23,6 @@ import {
   type VisibleCore,
   WRAPPED_CORE_COUNT,
 } from "@t3tools/shared/displayModes";
-import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
 import { TEXT_MATCH_MIN_RATIO, textSimilarity } from "@t3tools/shared/textMatch";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
@@ -36,6 +36,13 @@ import * as McpToolAccess from "../../mcp/McpToolAccess.ts";
 import * as ServerSettings from "../../serverSettings.ts";
 import { DisplayModeWrap } from "../displayModeWrap/DisplayModeWrap.ts";
 import * as SubThreads from "../subThreads/SubThreads.ts";
+import {
+  judgeReplace,
+  judgeSend,
+  makeReplyHolds,
+  type ReplyCall,
+  replyCallOf,
+} from "./replyStage.ts";
 
 // The description goes before the checks: one set after a custom check is left out of the JSON schema.
 const MessageText = Schema.String.annotate({
@@ -45,13 +52,15 @@ const MessageText = Schema.String.annotate({
 const jsonEscapedBytes = (text: string) => Buffer.byteLength(JSON.stringify(text), "utf8") - 2;
 
 // Each MessageText field goes through this in its handler; a schema failure loses the exact text.
-const checkMessageSize = (text: string) =>
-  jsonEscapedBytes(text) <= SEND_TO_USER_MAX_BYTES
+const checkMessageSize = (text: string, ack = false) =>
+  jsonEscapedBytes(text) <= (ack ? ACK_MAX_BYTES : SEND_TO_USER_MAX_BYTES)
     ? Effect.void
     : Effect.fail(
         new OrchestratorMcpFailure({
           code: "invalid_request",
-          message: "only say one concise point at a time",
+          message: ack
+            ? `an ack is at most ${ACK_MAX_BYTES} bytes. Say only that you got the message and are on it.`
+            : "only say one concise point at a time",
         }),
       );
 
@@ -74,6 +83,11 @@ const UNNAMED_SEND_HOLD_MS = 10_000;
 const MIN_PERCENT = Math.round(TEXT_MATCH_MIN_RATIO * 100);
 const DONE = "If you are done, end your turn with no text.";
 const SHOWN = { ok: true as const, message: `Shown to the user. ${DONE}` };
+const ACKED = {
+  ok: true as const,
+  message: "Shown to the user as an ack. Send your answer when it is ready.",
+};
+const LAST_MESSAGE = { what: "the user's last message", replace: REPLACE_SEND_TO_USER_TOOL_NAME };
 
 // An agent that fills every optional field sends null, an empty string or false for "none".
 const Pointer = (description: string) =>
@@ -109,6 +123,13 @@ const SendToUserTool = Tool.make(SEND_TO_USER_TOOL_NAME, {
         }),
       ),
     ),
+    ack: Schema.optional(
+      Schema.NullOr(
+        Schema.Boolean.annotate({
+          description: `True for a note of at most ${ACK_MAX_BYTES} bytes that you got the message and are on it, only when your answer will take a while. At most one, before the answer.`,
+        }),
+      ),
+    ),
   }),
   success: Schema.Struct({
     ok: Schema.Literal(true),
@@ -125,7 +146,7 @@ const SendToUserTool = Tool.make(SEND_TO_USER_TOOL_NAME, {
   .annotate(Tool.OpenWorld, false);
 
 const ReplaceSendToUserTool = Tool.make(REPLACE_SEND_TO_USER_TOOL_NAME, {
-  description: `In threads set to Messages only, Messages + Dashboard or Chat + Replies, the user gets one message from you per message of theirs. This replaces that message in place. Pass the user's last message and your current message as the recap shows them (their words only), each at least ${MIN_PERCENT}% alike, and the whole new text. In Chat + Replies, also pass reply_to or sub_thread.`,
+  description: `In threads set to Messages only, Messages + Dashboard or Chat + Replies, you answer each message of the user once, after at most one ack. This replaces your latest message for it in place; an ack becomes the answer. Pass the user's last message and your current message as the recap shows them (their words only), each at least ${MIN_PERCENT}% alike, and the whole new text. In Chat + Replies, also pass reply_to or sub_thread.`,
   parameters: Schema.Struct({
     reply_to: Pointer(
       "Chat + Replies only. The id of the user's message whose answer you replace. user_message is then that message.",
@@ -153,9 +174,6 @@ const ReplaceSendToUserTool = Tool.make(REPLACE_SEND_TO_USER_TOOL_NAME, {
 
 export const SendToUserToolkit = Toolkit.make(SendToUserTool, ReplaceSendToUserTool);
 
-const isSendCall = (item: OrchestrationV2TurnItem) =>
-  item.type === "dynamic_tool" && resolveT3McpToolId(item.toolName) === SEND_TO_USER_TOOL_NAME;
-
 /** The items stored before the calling tool use, when the provider names it; else all of them. */
 function itemsBefore(shown: ReadonlyArray<OrchestrationV2TurnItem>, ownItem: string | undefined) {
   const ownAt =
@@ -173,6 +191,19 @@ const coresOf = (items: ReadonlyArray<OrchestrationV2TurnItem>) =>
     }),
   );
 
+/** The calls toward the answer to the user message at `at`: those after it that `concerns` keeps. */
+function replyCallsAfter(
+  items: ReadonlyArray<OrchestrationV2TurnItem>,
+  at: number,
+  named: boolean,
+  concerns: (item: OrchestrationV2TurnItem) => boolean = () => true,
+): ReadonlyArray<ReplyCall> {
+  return items.slice(at + 1).flatMap((item) => {
+    const call = concerns(item) ? replyCallOf(item, named) : null;
+    return call === null ? [] : [call];
+  });
+}
+
 /**
  * What the thread shows since the user's last typed message. `ownItem` is the native id of the
  * calling tool use when the provider names it; only then do sends still running count, and only
@@ -183,20 +214,15 @@ function readTurn(shown: ReadonlyArray<OrchestrationV2TurnItem>, ownItem: string
   const items = itemsBefore(shown, ownItem);
   const cores = coresOf(items);
   const typedAt = cores.findLastIndex((core) => core.from === "user");
-  const since = items.slice(
-    items.findLastIndex((item) => displayEventFromTurnItem(item)?.type === "user") + 1,
-  );
   return {
     latest: cores.slice(-WRAPPED_CORE_COUNT),
     typed: typedAt < 0 ? undefined : cores[typedAt],
     current: cores.slice(typedAt + 1).findLast((core) => core.from === "agent"),
-    sends: since.filter((item) => {
-      if (!isSendCall(item)) return false;
-      if (ownItem === undefined) return displayEventFromTurnItem(item)?.type === "sent";
-      return (
-        item.nativeItemRef?.nativeId !== ownItem && displayEventFromTurnItem(item)?.type !== "other"
-      );
-    }).length,
+    calls: replyCallsAfter(
+      items,
+      items.findLastIndex((item) => displayEventFromTurnItem(item)?.type === "user"),
+      ownItem !== undefined,
+    ),
   };
 }
 
@@ -258,7 +284,7 @@ function unansweredLines(cores: ReadonlyArray<VisibleCore>): ReadonlyArray<strin
       // `/compact` runs with no turn of the agent, so no answer is owed to it.
       core.text.trim().toLowerCase() !== "/compact" &&
       // After the message: an earlier message may have the same short id, with an answer of its own.
-      !cores.slice(index + 1).some((answer) => answer.replyTo === core.shortId) &&
+      !cores.slice(index + 1).some((answer) => answer.replyTo === core.shortId && !answer.ack) &&
       !cores.slice(index + 1).some((later) => later.from === "user" && later.first === core.first),
   );
   return open.length === 0
@@ -308,6 +334,25 @@ const inputField = (item: OrchestrationV2TurnItem, field: string): unknown =>
     ? Reflect.get(item.input, field)
     : undefined;
 
+/** The calls toward the answer to the user message `target` that name it by `replyTo`. */
+function answerCalls(
+  items: ReadonlyArray<OrchestrationV2TurnItem>,
+  target: string,
+  replyTo: string,
+  named: boolean,
+) {
+  // After the message: an earlier message may have the same short id, with an answer of its own.
+  const targetAt = items.findIndex(
+    (item) => item.type === "user_message" && item.messageId === target,
+  );
+  return replyCallsAfter(
+    items,
+    targetAt,
+    named,
+    (item) => messagePointer(inputField(item, "reply_to")) === replyTo,
+  );
+}
+
 const orchestrationError = (error: { readonly message: string }) =>
   new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
 
@@ -347,19 +392,13 @@ export const layerHandlers = McpToolAccess.toLayer(
     });
 
     // A call that does not name itself cannot tell a send still running from its own, so two such
-    // sends in one response would both pass. The send it accepted counts for a few seconds instead,
-    // while the provider has not yet stored it, and only until the user types again.
+    // sends in one response would both pass. The stage that an accepted call reached counts for a
+    // few seconds instead, while the provider has not yet stored it, for that user message only.
     /** The ids given to first messages that may not be in the history yet, each with its hold's end. */
     const givenIds = new Map<string, number>();
-    const unnamedSends = new Map<
-      string,
-      { readonly typed: string | null; readonly until: number }
-    >();
-    /** The hold under `key`. Holds that ran out leave the map here, so it stays small. */
-    const liveHold = (key: string, now: number) => {
-      for (const [held, { until }] of unnamedSends) if (until <= now) unnamedSends.delete(held);
-      return unnamedSends.get(key);
-    };
+    const holds = makeReplyHolds(UNNAMED_SEND_HOLD_MS);
+    const holdKey = (threadId: ThreadId, userMessage: string | undefined) =>
+      `${threadId}\n${userMessage ?? ""}`;
 
     const readThreadCores = Effect.fn("SendToUser.readThreadCores")(function* (threadId: ThreadId) {
       const client = yield* Effect.serviceOption(McpSchema.McpServerClient);
@@ -391,6 +430,7 @@ export const layerHandlers = McpToolAccess.toLayer(
         readonly reply_to?: string | null | undefined;
         readonly user_message?: string | null | undefined;
         readonly new_sub_thread?: boolean | null | undefined;
+        readonly ack?: boolean | null | undefined;
       },
     ) {
       const { items, cores, named } = yield* readThreadCores(threadId);
@@ -400,6 +440,16 @@ export const layerHandlers = McpToolAccess.toLayer(
           "invalid_request",
           [
             "this thread is set to Chat + Replies. To answer a message from the user, pass reply_to with its id and user_message with its words. For a message that answers none, pass new_sub_thread true and no reply_to.",
+          ],
+          [],
+          unansweredLines(cores),
+        );
+      }
+      if (replyTo === undefined && input.ack === true) {
+        return yield* subThreadRefusal(
+          "invalid_request",
+          [
+            "an ack answers a message from the user, so it needs reply_to. Send a new message without ack.",
           ],
           [],
           unansweredLines(cores),
@@ -457,34 +507,20 @@ export const layerHandlers = McpToolAccess.toLayer(
         );
       }
       const now = yield* Clock.currentTimeMillis;
-      const holdKey = `${threadId}\n${replyTo}`;
-      const held = liveHold(holdKey, now);
-      // After the message: an earlier message may have the same short id, with an answer of its own.
-      const targetAt = items.findIndex(
-        (item) => item.type === "user_message" && item.messageId === target.id,
-      );
-      const answers = items
-        .slice(targetAt + 1)
-        .filter(
-          (item) =>
-            isSendCall(item) &&
-            messagePointer(inputField(item, "reply_to")) === replyTo &&
-            (named
-              ? displayEventFromTurnItem(item)?.type !== "other"
-              : displayEventFromTurnItem(item)?.type === "sent"),
-        ).length;
-      if (answers > 0 || (!named && held !== undefined && now < held.until)) {
-        return yield* subThreadRefusal(
-          "invalid_request",
-          [
-            `you already answered message "${replyTo}". To change your answer, call replace_send_to_user with reply_to "${replyTo}".`,
-          ],
-          thread,
-          [],
-        );
-      }
-      if (!named)
-        unnamedSends.set(holdKey, { typed: target.id, until: now + UNNAMED_SEND_HOLD_MS });
+      const key = holdKey(threadId, target.id);
+      const verdict = judgeSend({
+        calls: answerCalls(items, target.id, replyTo, named),
+        held: holds.held(key, named, now),
+        kind: input.ack === true ? "ack" : "answer",
+        subject: {
+          what: `message "${replyTo}"`,
+          replace: `${REPLACE_SEND_TO_USER_TOOL_NAME} with reply_to "${replyTo}"`,
+        },
+      });
+      if (!verdict.ok)
+        return yield* subThreadRefusal("invalid_request", [verdict.reason], thread, []);
+      holds.record(key, named, input.ack === true ? "ack" : "answer", verdict.next, now);
+      if (input.ack === true) return ACKED;
       yield* subThreadChanged(
         threadId,
         [...thread, { id: "", from: "agent", text: input.text, first: target.first, reply: true }],
@@ -506,7 +542,7 @@ export const layerHandlers = McpToolAccess.toLayer(
         readonly new_text: string;
       },
     ) {
-      const { cores, coresNow } = yield* readThreadCores(threadId);
+      const { items, cores, coresNow, named } = yield* readThreadCores(threadId);
       const replyTo = messagePointer(input.reply_to);
       const subThread = messagePointer(input.sub_thread);
       if ((replyTo === undefined) === (subThread === undefined)) {
@@ -530,6 +566,19 @@ export const layerHandlers = McpToolAccess.toLayer(
           );
         }
         const thread = subThreadCores(cores, target.first);
+        const now = yield* Clock.currentTimeMillis;
+        const key = holdKey(threadId, target.id);
+        const verdict = judgeReplace({
+          calls: answerCalls(items, target.id, replyTo, named),
+          held: holds.held(key, named, now),
+          subject: {
+            what: `message "${replyTo}"`,
+            replace: `${REPLACE_SEND_TO_USER_TOOL_NAME} with reply_to "${replyTo}"`,
+          },
+        });
+        if (!verdict.ok) {
+          return yield* subThreadRefusal("invalid_request", [verdict.reason], thread, []);
+        }
         const answer = thread
           .slice(thread.indexOf(target) + 1)
           .findLast((core) => core.replyTo === replyTo);
@@ -578,6 +627,7 @@ export const layerHandlers = McpToolAccess.toLayer(
             CHECK_SUB_THREAD,
           ]);
         }
+        holds.record(key, named, "replace", verdict.next, now);
         yield* subThreadChanged(
           threadId,
           thread.map((core) => (core === answer ? { ...core, text: input.new_text } : core)),
@@ -623,30 +673,34 @@ export const layerHandlers = McpToolAccess.toLayer(
     return {
       [SEND_TO_USER_TOOL_NAME]: McpToolAccess.readsAsCaller((input) =>
         Effect.gen(function* () {
-          const { text } = input;
-          yield* checkMessageSize(text);
+          const ack = input.ack === true;
+          yield* checkMessageSize(input.text, ack);
           const { threadId, mode } = yield* callerThread;
           if (mode.subThreads)
             return yield* sendInSubThread(threadId, input).pipe(lockFor(threadId).withPermits(1));
           if (!mode.oneSendPerMessage) return SHOWN;
           return yield* Effect.gen(function* () {
             const turn = yield* readThreadTurn(threadId);
-            const now = yield* Clock.currentTimeMillis;
-            const typed = turn.typed?.id ?? null;
-            const held = liveHold(threadId, now);
-            const heldSend = !turn.named && held?.typed === typed && now < held.until;
-            if (turn.sends > 0 || heldSend) {
+            if (ack && turn.typed === undefined) {
               return yield* refusal(
                 "invalid_request",
                 [
-                  "you already sent the user a message after their last one, and this thread allows one per message of theirs. To change it, call replace_send_to_user.",
+                  "an ack answers a message from the user, and they have typed none. Send without ack.",
                 ],
                 turn,
               );
             }
-            if (!turn.named)
-              unnamedSends.set(threadId, { typed, until: now + UNNAMED_SEND_HOLD_MS });
-            return SHOWN;
+            const now = yield* Clock.currentTimeMillis;
+            const key = holdKey(threadId, turn.typed?.id);
+            const verdict = judgeSend({
+              calls: turn.calls,
+              held: holds.held(key, turn.named, now),
+              kind: ack ? "ack" : "answer",
+              subject: LAST_MESSAGE,
+            });
+            if (!verdict.ok) return yield* refusal("invalid_request", [verdict.reason], turn);
+            holds.record(key, turn.named, ack ? "ack" : "answer", verdict.next, now);
+            return ack ? ACKED : SHOWN;
           }).pipe(lockFor(threadId).withPermits(1));
         }),
       ),
@@ -677,11 +731,19 @@ export const layerHandlers = McpToolAccess.toLayer(
               return yield* refusal(
                 "capability_denied",
                 [
-                  "replace_send_to_user works only in a thread whose display mode allows one message from you per message of the user. This thread's mode does not. Use send_to_user.",
+                  "replace_send_to_user works only in a thread whose display mode allows one answer from you per message of the user. This thread's mode does not. Use send_to_user.",
                 ],
                 turn,
               );
             }
+            const now = yield* Clock.currentTimeMillis;
+            const key = holdKey(threadId, turn.typed?.id);
+            const verdict = judgeReplace({
+              calls: turn.calls,
+              held: holds.held(key, turn.named, now),
+              subject: LAST_MESSAGE,
+            });
+            if (!verdict.ok) return yield* refusal("invalid_request", [verdict.reason], turn);
             if (turn.current === undefined) {
               return yield* refusal(
                 "invalid_request",
@@ -705,6 +767,7 @@ export const layerHandlers = McpToolAccess.toLayer(
                   ]),
             ];
             if (mismatches.length > 0) return yield* refusal("invalid_request", mismatches, turn);
+            holds.record(key, turn.named, "replace", verdict.next, now);
             return SHOWN;
           }).pipe(lockFor(threadId).withPermits(1));
         }),

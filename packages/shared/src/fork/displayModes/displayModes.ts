@@ -17,6 +17,8 @@ export const REPLACE_SEND_TO_USER_TOOL_NAME = "replace_send_to_user";
 export const SEND_TO_USER_PAYLOAD_LIKE = `%"toolName":"%${SEND_TO_USER_TOOL_NAME}"%`;
 /** One concise point per message: a longer send or rewrite is refused. */
 export const SEND_TO_USER_MAX_BYTES = 1_000;
+/** An ack only says that the agent got the message and is on it. */
+export const ACK_MAX_BYTES = 200;
 export const DASHBOARD_SET_TOOL_NAME = "dashboard_set";
 export const DASHBOARD_GET_TOOL_NAME = "dashboard_get";
 
@@ -47,6 +49,7 @@ export type DisplayEvent =
   /**
    * `replyTo` is the short id of the user message that the send answers. Without it, the send is a
    * first message, and `pointer` is the short id that the send returned for it, when it returned one.
+   * `ack` marks a note that the agent got the message, sent before its answer.
    */
   | {
       readonly type: "sent";
@@ -54,6 +57,7 @@ export type DisplayEvent =
       readonly text: string;
       readonly replyTo?: string | undefined;
       readonly pointer?: string | undefined;
+      readonly ack?: true;
     }
   /**
    * A completed `replace_send_to_user` call. With `replyTo`, the latest answer to that user message
@@ -93,6 +97,10 @@ export interface VisibleCore {
   readonly shortId?: string | undefined;
   /** For an agent's reply, the short id of the user message that it answers. */
   readonly replyTo?: string | undefined;
+  /** An ack that no rewrite has made the answer yet. */
+  readonly ack?: true;
+  /** The id of the latest rewrite that changed the core's text. */
+  readonly editedBy?: string;
 }
 
 /** Six hex digits of the FNV-1a hash of `text`. The agent names a message by this. */
@@ -129,8 +137,8 @@ export interface DisplayMode {
   /** Whether the thread has a Dashboard that the user sees and the agent writes. */
   readonly dashboard: boolean;
   /**
-   * Whether the agent may send one message after each message that the user types. To say more,
-   * it rewrites that message with `replace_send_to_user`.
+   * Whether the agent may send one answer after each message that the user types, after at most
+   * one ack. To say more, it rewrites its latest message with `replace_send_to_user`.
    */
   readonly oneSendPerMessage: boolean;
   /**
@@ -167,8 +175,8 @@ export const messagePointer = (value: unknown): string | undefined =>
 /**
  * The messages that `events` show, in order. Each `user` and `sent` event adds one; a `rewrite`
  * sets the text of the `sent` it names, or of the latest `sent` before it, and adds none. A rewrite
- * whose send is not among the events, such as one on a history page not loaded yet, shows nothing
- * and goes to `onUnmatched`.
+ * always leaves an answer, so it ends an ack. A rewrite whose send is not among the events, such as
+ * one on a history page not loaded yet, shows nothing and goes to `onUnmatched`.
  */
 export function foldCores(
   events: Iterable<DisplayEvent>,
@@ -207,6 +215,7 @@ export function foldCores(
               first: event.id,
               reply: false,
               shortId: id,
+              ...(event.ack && { ack: event.ack }),
             }) - 1;
           agentFirstByShortId.set(id, latestSent);
         } else {
@@ -219,6 +228,7 @@ export function foldCores(
               first: answered === undefined ? null : cores[answered]!.first,
               reply: true,
               replyTo: event.replyTo,
+              ...(event.ack && { ack: event.ack }),
             }) - 1;
           answerByReplyTo.set(event.replyTo, latestSent);
         }
@@ -230,8 +240,13 @@ export function foldCores(
             : event.subThread !== undefined
               ? agentFirstByShortId.get(event.subThread)
               : latestSent;
-        if (target !== undefined) cores[target] = { ...cores[target]!, text: event.text };
-        else onUnmatched?.(event);
+        if (target === undefined) {
+          onUnmatched?.(event);
+          break;
+        }
+        const { ack: _ack, ...core } = cores[target]!;
+        cores[target] =
+          core.text === event.text ? core : { ...core, text: event.text, editedBy: event.id };
         break;
       }
       case "other":
@@ -433,6 +448,10 @@ const MESSAGE_TOOLS: Readonly<
 
 const pointerField = (input: object, field: string) => messagePointer(Reflect.get(input, field));
 
+/** Whether a `send_to_user` call's input marks it as an ack. The only reader of the flag. */
+export const isAckInput = (input: unknown): boolean =>
+  typeof input === "object" && input !== null && Reflect.get(input, "ack") === true;
+
 /** A call that ended without reaching the user is `other`. A call that still runs shows nothing yet. */
 function messageToolEvent(
   item: Extract<OrchestrationV2TurnItem, { readonly type: "dynamic_tool" }>,
@@ -455,6 +474,7 @@ function messageToolEvent(
         text,
         replyTo,
         pointer: messagePointer(compactDynamicToolOutput(item.output)?.messageId),
+        ...(isAckInput(input) && { ack: true as const }),
       }
     : { type: "rewrite", id: item.id, text, replyTo, subThread: pointerField(input, "sub_thread") };
 }
