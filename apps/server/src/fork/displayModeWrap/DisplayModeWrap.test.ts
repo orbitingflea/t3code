@@ -54,6 +54,7 @@ const newId = ThreadId.make("thread:display-wrap:new");
 const rewrittenId = ThreadId.make("thread:display-wrap:rewritten");
 const latestId = ThreadId.make("thread:display-wrap:latest");
 const ownCallId = ThreadId.make("thread:display-wrap:own-call");
+const mainFirstId = ThreadId.make("thread:display-wrap:main-first");
 const switchId = ThreadId.make("thread:display-wrap:switch");
 const repliesId = ThreadId.make("thread:display-wrap:replies");
 const providerThreadId = ProviderThreadId.make("provider-thread:display-wrap");
@@ -655,6 +656,41 @@ it.effect("counts back from the caller's own item when it names one", () =>
     );
     // The typed message before the call's own item is read, though two came after it.
     assert.deepEqual(ordinals, [1, 2, 3, 4, 5]);
+  }).pipe(Effect.provide(Layer.merge(store, wrapper))),
+);
+
+it.effect("reads back to the latest message of the main list when asked, past many replies", () =>
+  Effect.gen(function* () {
+    const now = yield* DateTime.now;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const wrap = yield* DisplayModeWrap.DisplayModeWrap;
+    const news = itemUpdated(now, mainFirstId, runId, 2, { type: "send_to_user", text: "News." });
+    const replies = Array.from({ length: 125 }, (_, index) =>
+      itemUpdated(now, mainFirstId, runId, index + 3, {
+        type: "user_message",
+        messageId: MessageId.make(`message:display-wrap:main-first:${index + 3}`),
+        text: `Reply ${index + 3}`,
+        inputIntent: "steer",
+        under: `item:${mainFirstId}:2`,
+      }),
+    );
+    const events: ReadonlyArray<OrchestrationV2DomainEvent> = [
+      threadCreated(now, mainFirstId, null),
+      runCreated(now, mainFirstId, runId, "running"),
+      itemUpdated(now, mainFirstId, runId, 1, {
+        type: "user_message",
+        messageId: MessageId.make("message:display-wrap:main-first:1"),
+        text: "Ship it.",
+        inputIntent: "turn_start",
+      }),
+      news,
+      ...replies,
+    ];
+    yield* Effect.forEach(events, (event) => projections.apply(event), { discard: true });
+    const first = (items: ReadonlyArray<OrchestrationV2TurnItem>) => items[0]?.ordinal;
+    assert.strictEqual(first(yield* wrap.latestShownItems(mainFirstId, undefined, 120)), 8);
+    // The agent's news at 2 is the main list's latest message; the user's first message is not needed.
+    assert.strictEqual(first(yield* wrap.latestShownItems(mainFirstId, undefined, 120, true)), 2);
   }).pipe(Effect.provide(Layer.merge(store, wrapper))),
 );
 

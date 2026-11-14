@@ -132,7 +132,11 @@ const layer = McpHttpServer.toolkitRegistration(
   ),
   Layer.provide(
     Layer.mock(DisplayModeWrap)({
-      latestShownItems: () => Effect.succeed(history),
+      // As the real read: the latest `cores` messages, or back to the main list's latest message.
+      latestShownItems: (_threadId, _ownNativeId, cores, toMainListMessage) =>
+        Effect.succeed(
+          cores === undefined || toMainListMessage === true ? history : history.slice(-cores),
+        ),
       forgetNotesAfterCompaction: () => (ingest) => ingest,
     }),
   ),
@@ -203,7 +207,7 @@ it.effect("refuses a send that names neither a message to answer nor a new sub-t
 
 it.effect("shows a new message and returns the id that names it", () =>
   Effect.gen(function* () {
-    setup(twoSubThreads());
+    setup([...twoSubThreads(), typed("q3", "Anything else?")]);
     const result = yield* call("send_to_user", {
       text: "CI is red on main.",
       new_sub_thread: true,
@@ -215,7 +219,9 @@ it.effect("shows a new message and returns the id that names it", () =>
       messageId: shortId("CI is red on main."),
     });
     expect(changes).toEqual([]);
-    // A second send with the same words, before the first is in the history, gets its own id.
+    // The same words again after the user writes in the main list, before the first send is in
+    // the history, get their own id.
+    setup([...twoSubThreads(), typed("q3", "Anything else?"), typed("q4", "And the docs?")]);
     const together = yield* call("send_to_user", {
       text: "CI is red on main.",
       new_sub_thread: true,
@@ -224,6 +230,7 @@ it.effect("shows a new message and returns the id that names it", () =>
       messageId: shortId("CI is red on main.\n1"),
     });
     // The same words as an earlier first message get an id of their own, kept in the result.
+    setup([...twoSubThreads(), typed("q5", "And the tests?")]);
     const again = yield* call("send_to_user", {
       text: "The deploy is done.",
       new_sub_thread: true,
@@ -233,6 +240,104 @@ it.effect("shows a new message and returns the id that names it", () =>
       ...shown(`Shown to the user as a new message with the id "${id}".`),
       messageId: id,
     });
+  }).pipe(Effect.provide(layer)),
+);
+
+it.effect("takes one new message in the main list until the user sends one there", () =>
+  Effect.gen(function* () {
+    const news2 = { text: "CI is red on main.", new_sub_thread: true };
+    const taken =
+      "Refused: you already sent a new message to the main list, and the user has not written there since. You may not send two in a row there.";
+    const delivering =
+      "That message is still being delivered. To change it once it shows, call replace_send_to_user with sub_thread set to the id that its send returned.";
+    const unanswered = (...ids: ReadonlyArray<readonly [string, string]>) => [
+      "Messages from the user with no answer yet, by id:",
+      ...ids.map(([id, text]) => `"${shortId(id)}": ${text}`),
+    ];
+    const running = (item: OrchestrationV2TurnItem) => ({ ...item, status: "running" }) as const;
+
+    // The user's replies under the agent's news are in its sub-thread, not in the main list.
+    setup(twoSubThreads());
+    expect(refusalLines(yield* call("send_to_user", news2))).toEqual([
+      taken,
+      "The user has replied under it, so it stays as it is.",
+      ...unanswered(["why", "Which build was deployed?"], ["q2", "And the lint job?"]),
+      DONE,
+    ]);
+    // However long the sub-thread under it grows.
+    setup([
+      typed("q0", "Ship it."),
+      news("n0", "Shipped."),
+      ...Array.from({ length: 130 }, (_, index) => typed(`r${index}`, "And?", "n0")),
+    ]);
+    expect(refusalLines(yield* call("send_to_user", news2))[0]).toBe(taken);
+    setup([typed("q1", "Is the build green?"), news("n1", "The deploy is done.")]);
+    expect(refusalLines(yield* call("send_to_user", news2))).toEqual([
+      taken,
+      "To change it, call replace_send_to_user with sub_thread set to its id:",
+      `"${shortId("The deploy is done.")}": The deploy is done.`,
+      ...unanswered(["q1", "Is the build green?"]),
+      DONE,
+    ]);
+
+    // A send not stored yet holds the main list too.
+    setup([...twoSubThreads(), typed("q3", "Anything else?")]);
+    expect((yield* call("send_to_user", news2)).isError).not.toBe(true);
+    expect(refusalLines(yield* call("send_to_user", news2)).slice(0, 2)).toEqual([
+      taken,
+      delivering,
+    ]);
+
+    // A named call counts a new message still running before it, and not the agent's older news.
+    setup([
+      news("n0", "The deploy is done."),
+      typed("q4", "Anything else?"),
+      running(news("s1", "Lint is red.")),
+      running(news("s2", "CI is red.")),
+    ]);
+    expect(refusalLines(yield* call("send_to_user", news2, repliesThread, "s2"))).toEqual([
+      taken,
+      delivering,
+      ...unanswered(["q4", "Anything else?"]),
+      DONE,
+    ]);
+    expect((yield* call("send_to_user", news2, repliesThread, "s1")).isError).not.toBe(true);
+    // A running call that the handler refuses takes nothing.
+    setup([
+      typed("q5", "Anything else?"),
+      running(sent("s3", { text: "Lint is red." })),
+      running(sent("s4", { text: "On it.", new_sub_thread: true, ack: true })),
+      running(news("s6", "a".repeat(1001))),
+      running(news("s7", "")),
+      running(news("s5", "CI is red.")),
+    ]);
+    expect((yield* call("send_to_user", news2, repliesThread, "s5")).isError).not.toBe(true);
+
+    // An ack and an answer go into a sub-thread, and a replace adds no message.
+    setup([
+      typed("q6", "Is the build green?"),
+      ackOf("k6", "Checking.", "q6"),
+      answer("a6", "Yes.", "q6"),
+    ]);
+    expect((yield* call("send_to_user", news2)).isError).not.toBe(true);
+    setup([
+      news("n7", "The deploy is done."),
+      typed("q7", "Anything else?"),
+      {
+        ...sent("r7", {
+          sub_thread: shortId("The deploy is done."),
+          user_message: "",
+          old_text: "The deploy is done.",
+          new_text: "The deploy is done and checked.",
+        }),
+        toolName: "mcp__t3-code__replace_send_to_user",
+      },
+    ]);
+    expect((yield* call("send_to_user", news2)).isError).not.toBe(true);
+
+    // A message the user sends to the main list opens it again.
+    setup([...twoSubThreads(), typed("q8", "Anything else?")]);
+    expect((yield* call("send_to_user", news2)).isError).not.toBe(true);
   }).pipe(Effect.provide(layer)),
 );
 
