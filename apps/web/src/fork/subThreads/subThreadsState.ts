@@ -36,11 +36,11 @@ export interface SubThreadSummary {
   readonly firstFrom: "user" | "agent";
   readonly firstText: string;
   readonly replies: number;
-  /** When its latest message was made. */
+  /** The activity time of its latest message: when it was sent, or last edited. */
   readonly lastAt: string;
   readonly lastFrom: "user" | "agent";
   readonly lastText: string;
-  /** When each of the agent's replies was made, oldest first. */
+  /** The activity time of each of the agent's replies (send, or latest edit), in message order. */
   readonly agentReplyTimes: ReadonlyArray<string>;
 }
 

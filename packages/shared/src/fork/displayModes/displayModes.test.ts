@@ -148,6 +148,33 @@ describe("displayEventFromTurnItem", () => {
       { type: "sent", id: "item-1", text: "Done" },
     ],
     [
+      "a completed ack",
+      {
+        type: "dynamic_tool",
+        toolName: "mcp__t3-code__send_to_user",
+        input: { text: "On it.", ack: true },
+      },
+      { type: "sent", id: "item-1", text: "On it.", ack: true },
+    ],
+    [
+      "a send with ack false",
+      {
+        type: "dynamic_tool",
+        toolName: "mcp__t3-code__send_to_user",
+        input: { text: "Done", ack: false },
+      },
+      { type: "sent", id: "item-1", text: "Done" },
+    ],
+    [
+      "a send with ack null",
+      {
+        type: "dynamic_tool",
+        toolName: "mcp__t3-code__send_to_user",
+        input: { text: "Done", ack: null },
+      },
+      { type: "sent", id: "item-1", text: "Done" },
+    ],
+    [
       "a failed send",
       {
         type: "dynamic_tool",
@@ -275,8 +302,22 @@ describe("visibleCores", () => {
     ).toMatchObject([
       { id: "sent:A", from: "agent", text: "A" },
       { id: "user:B", from: "user", text: "B" },
-      { id: "sent:C", from: "agent", text: "C3" },
+      { id: "sent:C", from: "agent", text: "C3", editedBy: "rewrite:C3" },
       { id: "user:D", from: "user", text: "D" },
+    ]);
+  });
+
+  it("marks a send edited only by a rewrite that changes its text, and any rewrite ends an ack", () => {
+    const ack: DisplayEvent = { type: "sent", id: "sent:On it.", text: "On it.", ack: true };
+    const core = { id: "sent:On it.", from: "agent", first: "sent:On it.", reply: false };
+    const shortIdOf = { shortId: shortId("On it.") };
+    expect(foldCores([ack])).toEqual([{ ...core, ...shortIdOf, text: "On it.", ack: true }]);
+    expect(foldCores([ack, rewrite("On it.")])).toEqual([
+      { ...core, ...shortIdOf, text: "On it." },
+    ]);
+    const again: DisplayEvent = { type: "rewrite", id: "again", text: "Done." };
+    expect(foldCores([ack, rewrite("Done."), again])).toEqual([
+      { ...core, ...shortIdOf, text: "Done.", editedBy: "rewrite:Done." },
     ]);
   });
 
@@ -479,6 +520,15 @@ describe("sub-threads", () => {
       "Q2",
       "Because",
       "A2",
+    ]);
+    expect(cores.map((core) => core.editedBy)).toEqual([
+      undefined,
+      "r2",
+      "r1",
+      undefined,
+      undefined,
+      undefined,
+      undefined,
     ]);
   });
 

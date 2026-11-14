@@ -8,6 +8,7 @@ import {
   isReplaceSendCall,
   type VisibleCore,
 } from "@t3tools/shared/displayModes";
+import * as DateTime from "effect/DateTime";
 
 import type { MessagesTimelineRow } from "../../components/chat/MessagesTimeline.logic";
 import type { TimelineEntry } from "../../session-logic";
@@ -32,7 +33,7 @@ function displayEventFromEntry(entry: TimelineEntry): DisplayEvent | null {
 }
 
 // Entries change on every streamed delta. A reply that keeps its object keeps its row from redrawing,
-// until a rewrite changes its text without changing its entry.
+// until a rewrite changes its text or edit time without changing its entry.
 const repliesInRun = new WeakMap<TimelineEntry, Extract<TimelineEntry, { kind: "message" }>>();
 const repliesOutsideRun = new WeakMap<TimelineEntry, Extract<TimelineEntry, { kind: "message" }>>();
 
@@ -40,10 +41,15 @@ const repliesOutsideRun = new WeakMap<TimelineEntry, Extract<TimelineEntry, { ki
  * A sent message reads as the agent's reply, not as a tool call. The turn fold hides messages of a
  * run before its last one, so a mode that shows every send gives its replies no run.
  */
-function replyEntry(entry: TimelineEntry, text: string, inRun: boolean): TimelineEntry {
+function replyEntry(
+  entry: TimelineEntry,
+  text: string,
+  editedAt: string | undefined,
+  inRun: boolean,
+): TimelineEntry {
   const replies = inRun ? repliesInRun : repliesOutsideRun;
   const known = replies.get(entry);
-  if (known?.message.text === text) return known;
+  if (known?.message.text === text && known.message.editedAt === editedAt) return known;
   const reply: Extract<TimelineEntry, { kind: "message" }> = {
     id: entry.id,
     kind: "message",
@@ -57,6 +63,7 @@ function replyEntry(entry: TimelineEntry, text: string, inRun: boolean): Timelin
       createdBy: "agent",
       createdAt: entry.createdAt,
       updatedAt: entry.createdAt,
+      ...(editedAt === undefined ? {} : { editedAt }),
     },
   };
   replies.set(entry, reply);
@@ -67,6 +74,32 @@ interface FoldedTimeline {
   readonly events: ReadonlyArray<DisplayEvent | null>;
   readonly shown: ReadonlyArray<DisplayEvent>;
   readonly cores: ReadonlyArray<VisibleCore>;
+  /** By core id, when the rewrite that last changed the core's text completed. Edited cores only. */
+  readonly editedAt: ReadonlyMap<string, string>;
+}
+
+const NOT_EDITED: ReadonlyMap<string, string> = new Map();
+
+function editTimes(
+  entries: ReadonlyArray<TimelineEntry>,
+  events: ReadonlyArray<DisplayEvent | null>,
+  cores: ReadonlyArray<VisibleCore>,
+): ReadonlyMap<string, string> {
+  if (!cores.some((core) => core.editedBy !== undefined)) return NOT_EDITED;
+  // An entry's time is its call's start; the user saw the new text when the call completed.
+  const rewriteAt = new Map<string, string>();
+  events.forEach((event, index) => {
+    if (event?.type !== "rewrite") return;
+    const entry = entries[index]!;
+    const completedAt = entry.kind === "work" ? entry.entry.structuredPayload?.completedAt : null;
+    rewriteAt.set(event.id, completedAt ? DateTime.formatIso(completedAt) : entry.createdAt);
+  });
+  return new Map(
+    cores.flatMap((core): [string, string][] => {
+      const at = core.editedBy === undefined ? undefined : rewriteAt.get(core.editedBy);
+      return at === undefined ? [] : [[core.id, at]];
+    }),
+  );
 }
 
 // The rows and the sub-thread summaries of one timeline come from the same fold.
@@ -77,7 +110,8 @@ function foldTimeline(entries: ReadonlyArray<TimelineEntry>): FoldedTimeline {
   if (folded === undefined) {
     const events = entries.map(displayEventFromEntry);
     const shown = events.filter((event) => event !== null);
-    folded = { events, shown, cores: foldCores(shown) };
+    const cores = foldCores(shown);
+    folded = { events, shown, cores, editedAt: editTimes(entries, events, cores) };
     foldedTimelines.set(entries, folded);
   }
   return folded;
@@ -91,7 +125,8 @@ const sameSummary = (a: SubThreadSummary, b: SubThreadSummary) =>
   a.lastFrom === b.lastFrom &&
   a.lastText === b.lastText &&
   a.firstText === b.firstText &&
-  a.agentReplyTimes.length === b.agentReplyTimes.length;
+  a.agentReplyTimes.length === b.agentReplyTimes.length &&
+  a.agentReplyTimes.every((at, index) => at === b.agentReplyTimes[index]);
 
 /**
  * Each sub-thread that the loaded entries show, by the id of its first message, which must be
@@ -105,9 +140,11 @@ export function timelineSubThreads(
   const known = summariesOfTimeline.get(entries);
   if (known !== undefined) return known;
   const createdAt = new Map(entries.map((entry) => [entry.id, entry.createdAt]));
+  const { cores, editedAt } = foldTimeline(entries);
   const summaries = new Map<string, SubThreadSummary>();
-  for (const core of foldTimeline(entries).cores) {
-    const at = createdAt.get(core.id) ?? "";
+  for (const core of cores) {
+    // Only the latest agent message of a sub-thread can be rewritten, so agentReplyTimes stays in order.
+    const at = editedAt.get(core.id) ?? createdAt.get(core.id) ?? "";
     if (!core.reply) {
       summaries.set(core.id, {
         first: core.id,
@@ -123,12 +160,12 @@ export function timelineSubThreads(
     }
     const summary = core.first === null ? undefined : summaries.get(core.first);
     if (summary === undefined) continue;
+    // A reply typed while an edit was delivered comes after the edited message but is older.
+    const latest = !(Date.parse(at) < Date.parse(summary.lastAt));
     summaries.set(summary.first, {
       ...summary,
       replies: summary.replies + 1,
-      lastAt: at,
-      lastFrom: core.from,
-      lastText: core.text,
+      ...(latest && { lastAt: at, lastFrom: core.from, lastText: core.text }),
       agentReplyTimes:
         core.from === "agent" ? [...summary.agentReplyTimes, at] : summary.agentReplyTimes,
     });
@@ -189,7 +226,7 @@ export function applyDisplayMode(
   entries: ReadonlyArray<TimelineEntry>,
   subThread: string | null = null,
 ): ReadonlyArray<TimelineEntry> {
-  const { events, shown, cores } = foldTimeline(entries);
+  const { events, shown, cores, editedAt } = foldTimeline(entries);
   const coreTexts = new Map(cores.map((core) => [core.id, core.text]));
   const shownIds = mode.subThreads
     ? new Set(
@@ -207,7 +244,12 @@ export function applyDisplayMode(
     const event = events[index];
     return [
       event?.type === "sent"
-        ? replyEntry(entry, coreTexts.get(entry.id) ?? event.text, shownIds === null)
+        ? replyEntry(
+            entry,
+            coreTexts.get(entry.id) ?? event.text,
+            editedAt.get(entry.id),
+            shownIds === null,
+          )
         : entry,
     ];
   });
@@ -216,12 +258,22 @@ export function applyDisplayMode(
     : rows;
 }
 
-/** A mode that chooses its replies draws no Working or Thinking row. */
+/**
+ * A mode that chooses its replies draws no Working or Thinking row, and marks an agent message
+ * drawn right after another one, with no user message between, so a rule can part the two.
+ */
 export function displayModeRows(
   rows: MessagesTimelineRow[],
   repliesChosen: boolean,
 ): MessagesTimelineRow[] {
-  return repliesChosen
-    ? rows.filter((row) => row.kind !== "working" && row.kind !== "thinking")
-    : rows;
+  if (!repliesChosen) return rows;
+  let afterAgent = false;
+  return rows.flatMap((row): MessagesTimelineRow[] => {
+    if (row.kind === "working" || row.kind === "thinking") return [];
+    if (row.kind !== "message") return [row];
+    const fromAgent = row.message.role === "assistant";
+    const follows = fromAgent && afterAgent;
+    afterAgent = fromAgent;
+    return [follows ? { ...row, followsAgentMessage: true } : row];
+  });
 }

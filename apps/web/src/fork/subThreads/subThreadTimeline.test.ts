@@ -17,10 +17,12 @@ import {
 import * as DateTime from "effect/DateTime";
 import { describe, expect, it } from "vite-plus/test";
 
+import type { MessagesTimelineRow } from "../../components/chat/MessagesTimeline.logic";
 import { type ComposerThreadDraftState, useComposerDraftStore } from "../../composerDraftStore";
-import { deriveTimelineEntriesFromVisibleTurnItems } from "../../session-logic";
+import { deriveTimelineEntriesFromVisibleTurnItems, type TimelineEntry } from "../../session-logic";
 import {
   applyDisplayMode,
+  displayModeRows,
   rowShownIn,
   subThreadOfReply,
   timelineSubThreads,
@@ -90,6 +92,17 @@ const sent = (id: string, second: number, input: Record<string, unknown>) =>
     output: { ok: true },
   }) satisfies OrchestrationV2TurnItem;
 
+/** A replace call that started at `second` and completed at `done`. */
+const rewrite = (id: string, second: number, done: number, input: Record<string, unknown>) =>
+  ({
+    ...base(id, second),
+    completedAt: DateTime.makeUnsafe(time(done)),
+    type: "dynamic_tool",
+    toolName: "mcp__t3-code__replace_send_to_user",
+    input: { user_message: "x", old_text: "x", ...input },
+    output: { ok: true },
+  }) satisfies OrchestrationV2TurnItem;
+
 const entriesOf = (items: ReadonlyArray<OrchestrationV2TurnItem>) =>
   deriveTimelineEntriesFromVisibleTurnItems({
     visibleTurnItems: items.map((item, position): OrchestrationV2ProjectedTurnItem => ({
@@ -114,6 +127,9 @@ const items = [
 ];
 const entries = entriesOf(items);
 const ids = (rows: ReadonlyArray<{ readonly id: string }>) => rows.map((row) => row.id);
+const editLint = rewrite("w2", 8, 9, { reply_to: shortId("q2"), new_text: "Lint and types pass." });
+const readAt = (at: string | null) =>
+  new Map([["q1", { firstId: "q1", readAt: at, summary: null }]]);
 
 describe("Chat + Replies rows", () => {
   it("draws only the first messages in the main list", () => {
@@ -131,6 +147,28 @@ describe("Chat + Replies rows", () => {
       "news",
       "why",
     ]);
+  });
+
+  it("marks a rewritten message with the time its rewrite completed, a first message too", () => {
+    const editNews = rewrite("w1", 8, 9, {
+      sub_thread: shortId("The deploy is done."),
+      new_text: "The deploy is done and checked.",
+    });
+    const edited = entriesOf([...items, editNews, editLint]);
+    const editedAt = (rows: ReadonlyArray<TimelineEntry>) =>
+      rows.map((row) => (row.kind === "message" ? row.message.editedAt : null));
+    expect(editedAt(applyDisplayMode(CHAT_REPLIES_DISPLAY_MODE, edited))).toEqual([
+      undefined,
+      time(9),
+    ]);
+    expect(editedAt(applyDisplayMode(CHAT_REPLIES_DISPLAY_MODE, edited, "q1"))).toEqual([
+      undefined,
+      undefined,
+      undefined,
+      time(9),
+    ]);
+    // A first message has no unread state: its edit is only marked.
+    expect(timelineSubThreads(edited, null).get("news")?.agentReplyTimes).toEqual([]);
   });
 
   it("stays a flat list in Messages only", () => {
@@ -208,14 +246,83 @@ describe("timelineSubThreads", () => {
 
   it("counts as unread the agent's replies after the user's last read", () => {
     const summary = timelineSubThreads(entries, null).get("q1")!;
-    const readAt = (at: string | null) =>
-      new Map([["q1", { firstId: "q1", readAt: at, summary: null }]]);
     expect(unreadReplies(summary, new Map())).toBe(2);
     expect(unreadReplies(summary, readAt(null))).toBe(2);
     expect(unreadReplies(summary, readAt(time(3)))).toBe(1);
     expect(unreadReplies(summary, readAt(time(6)))).toBe(0);
     // Before the server's first answer, the read times are unknown and nothing shows as new.
     expect(unreadReplies(summary, NO_STATES)).toBe(0);
+  });
+
+  it("counts a reply edited after the user read it as new, from when the edit completed", () => {
+    const before = timelineSubThreads(entries, null);
+    const edited = timelineSubThreads(entriesOf([...items, editLint]), before);
+    const summary = edited.get("q1")!;
+    expect(summary).toMatchObject({
+      replies: 3,
+      lastAt: time(9),
+      lastText: "Lint and types pass.",
+      agentReplyTimes: [time(3), time(9)],
+    });
+    expect(unreadReplies(summary, readAt(time(6)))).toBe(1);
+    expect(edited.get("news")).toBe(before.get("news"));
+    // The user replied while the edit ran: only the reply's time moves, and still makes a new summary.
+    const followUp = typed("q3", 7, "And the types?", "q1");
+    const unedited = timelineSubThreads(entriesOf([...items, followUp]), null);
+    const late = timelineSubThreads(entriesOf([...items, followUp, editLint]), unedited);
+    expect(late.get("q1")).not.toBe(unedited.get("q1"));
+    expect(late.get("q1")).toMatchObject({
+      agentReplyTimes: [time(3), time(9)],
+      lastAt: time(9),
+      lastFrom: "agent",
+      lastText: "Lint and types pass.",
+    });
+  });
+});
+
+describe("displayModeRows", () => {
+  const message = (id: string, role: "user" | "assistant") => ({
+    id: MessageId.make(id),
+    role,
+    text: id,
+    runId: null,
+    streaming: false,
+    createdAt: time(0),
+    updatedAt: time(0),
+  });
+  const row = (id: string, role: "user" | "assistant"): MessagesTimelineRow => ({
+    kind: "message",
+    id,
+    createdAt: time(0),
+    message: message(id, role),
+    showAssistantMeta: false,
+    showAssistantCopyButton: false,
+    assistantCopyStreaming: false,
+  });
+  const meta: MessagesTimelineRow = {
+    kind: "assistant-meta",
+    id: "a1:meta",
+    createdAt: time(0),
+    message: message("a1", "assistant"),
+    showAssistantCopyButton: true,
+    assistantCopyStreaming: false,
+  };
+
+  it("marks an agent message drawn right after another, only in modes that choose replies", () => {
+    const rows = [
+      row("u1", "user"),
+      row("a1", "assistant"),
+      meta,
+      row("a2", "assistant"),
+      row("u2", "user"),
+      row("a3", "assistant"),
+    ];
+    expect(displayModeRows(rows, false)).toBe(rows);
+    const marked = displayModeRows(rows, true);
+    expect(
+      marked.map((each) => each.kind === "message" && each.followsAgentMessage === true),
+    ).toEqual([false, false, false, true, false, false]);
+    expect(marked[1]).toBe(rows[1]);
   });
 });
 
