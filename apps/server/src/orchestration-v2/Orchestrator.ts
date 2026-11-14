@@ -12286,7 +12286,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       yield* Ref.update(input.effects, (effects) => [
         ...effects,
         {
-          id: `effect:checkpoint.capture:${run.id}`,
+          id: `effect:checkpoint.capture:${attempt.id}`,
           commandId: CommandId.make(`command:effect:checkpoint.capture:${run.id}`),
           threadId: input.command.threadId,
           request: {
