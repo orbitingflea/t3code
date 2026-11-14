@@ -9,6 +9,7 @@ import {
   displayEventFromTurnItem,
   foldCores,
   freshFirstPointer,
+  isMainListEvent,
   messagePointer,
   recapLine,
   recapText,
@@ -353,6 +354,63 @@ function answerCalls(
   );
 }
 
+/** Whether a send still running would be shown as a new message: the handler would accept it. */
+function takenAsNewMessage(item: OrchestrationV2TurnItem) {
+  const text = inputField(item, "text");
+  return (
+    inputField(item, "new_sub_thread") === true &&
+    inputField(item, "ack") !== true &&
+    messagePointer(inputField(item, "reply_to")) === undefined &&
+    typeof text === "string" &&
+    text !== "" &&
+    jsonEscapedBytes(text) <= SEND_TO_USER_MAX_BYTES
+  );
+}
+
+/**
+ * The agent's messages in the main list since the user's latest message there: delivered ones, and
+ * with `named`, sends still running that the handler would take as a new message.
+ */
+function mainListSends(items: ReadonlyArray<OrchestrationV2TurnItem>, named: boolean) {
+  const at = items.findLastIndex((item) => {
+    const event = displayEventFromTurnItem(item);
+    return event?.type === "user" && isMainListEvent(event);
+  });
+  return {
+    anchor: items[at]?.id,
+    sends: replyCallsAfter(items, at, named, (item) => {
+      const event = displayEventFromTurnItem(item);
+      return event === null
+        ? takenAsNewMessage(item)
+        : event.type === "sent" && isMainListEvent(event);
+    }),
+  };
+}
+
+/** After a refused new message: how to change the agent's message in the main list, and what to answer. */
+function mainListTakenLines(cores: ReadonlyArray<VisibleCore>): ReadonlyArray<string> {
+  const since = cores
+    .slice(cores.findLastIndex((core) => core.from === "user" && !core.reply) + 1)
+    .filter((core) => core.from === "agent" && !core.reply);
+  const open = since.filter(
+    (core) => !cores.some((reply) => reply.from === "user" && reply.first === core.id),
+  );
+  return [
+    ...(since.length === 0
+      ? [
+          "That message is still being delivered. To change it once it shows, call replace_send_to_user with sub_thread set to the id that its send returned.",
+        ]
+      : open.length === 0
+        ? ["The user has replied under it, so it stays as it is."]
+        : [
+            "To change it, call replace_send_to_user with sub_thread set to its id:",
+            ...open.map(listedLine),
+          ]),
+    ...unansweredLines(cores.slice(-SUB_THREAD_WINDOW_CORES)),
+    DONE,
+  ];
+}
+
 const orchestrationError = (error: { readonly message: string }) =>
   new OrchestratorMcpFailure({ code: "orchestration_error", message: error.message });
 
@@ -400,12 +458,15 @@ export const layerHandlers = McpToolAccess.toLayer(
     const holdKey = (threadId: ThreadId, userMessage: string | undefined) =>
       `${threadId}\n${userMessage ?? ""}`;
 
-    const readThreadCores = Effect.fn("SendToUser.readThreadCores")(function* (threadId: ThreadId) {
+    const readThreadCores = Effect.fn("SendToUser.readThreadCores")(function* (
+      threadId: ThreadId,
+      toMainListMessage: boolean,
+    ) {
       const client = yield* Effect.serviceOption(McpSchema.McpServerClient);
       const named = Option.getOrUndefined(client)?.requestMetadata?.["claudecode/toolUseId"];
       const toolUseId = typeof named === "string" ? named : undefined;
       const shown = yield* (yield* DisplayModeWrap)
-        .latestShownItems(threadId, toolUseId, SUB_THREAD_WINDOW_CORES)
+        .latestShownItems(threadId, toolUseId, SUB_THREAD_WINDOW_CORES, toMainListMessage)
         .pipe(Effect.mapError(orchestrationError));
       const items = itemsBefore(shown, toolUseId);
       // `cores` is what the agent saw when it made the call. `coresNow` has what the user typed since.
@@ -433,8 +494,11 @@ export const layerHandlers = McpToolAccess.toLayer(
         readonly ack?: boolean | null | undefined;
       },
     ) {
-      const { items, cores, named } = yield* readThreadCores(threadId);
       const replyTo = messagePointer(input.reply_to);
+      const { items, cores, named } = yield* readThreadCores(
+        threadId,
+        replyTo === undefined && input.new_sub_thread === true && input.ack !== true,
+      );
       if ((replyTo !== undefined) === (input.new_sub_thread === true)) {
         return yield* subThreadRefusal(
           "invalid_request",
@@ -456,8 +520,22 @@ export const layerHandlers = McpToolAccess.toLayer(
         );
       }
       if (replyTo === undefined) {
-        // Two first messages sent together get two ids: the first id is not in the history yet.
         const now = yield* Clock.currentTimeMillis;
+        const main = mainListSends(items, named);
+        const mainKey = holdKey(threadId, `main\n${main.anchor ?? ""}`);
+        if (main.sends.length > 0 || holds.held(mainKey, named, now) !== "open") {
+          return yield* subThreadRefusal(
+            "invalid_request",
+            [
+              "you already sent a new message to the main list, and the user has not written there since. You may not send two in a row there.",
+            ],
+            [],
+            mainListTakenLines(cores),
+          );
+        }
+        holds.record(mainKey, named, "answer", "answered", now);
+        // A user message to the main list between two first messages can come before the first is
+        // in the history, so the ids given for a while count as taken.
         for (const [id, until] of givenIds) if (until <= now) givenIds.delete(id);
         const id = freshFirstPointer(
           new Set([
@@ -542,7 +620,7 @@ export const layerHandlers = McpToolAccess.toLayer(
         readonly new_text: string;
       },
     ) {
-      const { items, cores, coresNow, named } = yield* readThreadCores(threadId);
+      const { items, cores, coresNow, named } = yield* readThreadCores(threadId, false);
       const replyTo = messagePointer(input.reply_to);
       const subThread = messagePointer(input.sub_thread);
       if ((replyTo === undefined) === (subThread === undefined)) {

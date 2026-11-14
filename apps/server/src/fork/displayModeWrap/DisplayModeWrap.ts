@@ -10,6 +10,7 @@ import {
 import {
   type DisplayMode,
   displayEventFromTurnItem,
+  isMainListEvent,
   isWebTypedMessage,
   type MessageOrigin,
   NORMAL_DISPLAY_MODE,
@@ -90,12 +91,14 @@ export interface DisplayModeWrapShape {
   /**
    * The user messages and send calls that the screen shows, oldest first, in any state. Reads back
    * past the user's last typed message and at least `cores` messages (default WRAPPED_CORE_COUNT),
-   * counted from the item with `ownNativeId` back when given.
+   * counted from the item with `ownNativeId` back when given. With `toMainListMessage`, also past
+   * the latest message of the main list of a thread with sub-threads.
    */
   readonly latestShownItems: (
     threadId: ThreadId,
     ownNativeId?: string,
     cores?: number,
+    toMainListMessage?: boolean,
   ) => Effect.Effect<
     ReadonlyArray<OrchestrationV2TurnItem>,
     SqlError.SqlError | Schema.SchemaError | ProjectionStore.ProjectionStoreV2Error
@@ -198,13 +201,14 @@ export const layer: Layer.Layer<
 
     // Reads newest first from before `before`, or from the end, until `coreCount` messages
     // (not rewrites) and, without `before`, a typed message, counted from `ownNativeId` back when
-    // given. Visibility gets no items: they only decide interrupt results, which never enter the
-    // agent's transcript.
+    // given, and with `toMainListMessage`, a message of the main list. Visibility gets no items:
+    // they only decide interrupt results, which never enter the agent's transcript.
     const shownItems = Effect.fn("DisplayModeWrap.shownItems")(function* (
       threadId: ThreadId,
       before: MessageId | null,
       ownNativeId?: string,
       coreCount: number = WRAPPED_CORE_COUNT,
+      toMainListMessage = false,
     ) {
       const pageRows = Math.max(PAGE_ROWS, Math.min(coreCount, 64));
       let start = { ordinal: Number.MAX_SAFE_INTEGER, itemId: "" };
@@ -256,6 +260,7 @@ export const layer: Layer.Layer<
       let cores = 0;
       let passedTyped = before !== null;
       let passedOwn = ownNativeId === undefined;
+      let passedMainList = !toMainListMessage;
       for (const segment of segments) {
         let { ordinal, itemId } = segment.before;
         while (true) {
@@ -281,7 +286,8 @@ export const layer: Layer.Layer<
             const event = displayEventFromTurnItem(item);
             if (event?.type === "user") passedTyped = true;
             if (event?.type === "user" || event?.type === "sent") cores++;
-            if (passedTyped && cores >= coreCount) return found.reverse();
+            if (event !== null && isMainListEvent(event)) passedMainList = true;
+            if (passedTyped && passedMainList && cores >= coreCount) return found.reverse();
           }
           const last = rows.at(-1);
           if (last === undefined || rows.length < pageRows) break;
@@ -482,7 +488,9 @@ export const layer: Layer.Layer<
 
     const latestShownItems: DisplayModeWrapShape["latestShownItems"] = Effect.fn(
       "DisplayModeWrap.latestShownItems",
-    )((threadId, ownNativeId, cores) => shownItems(threadId, null, ownNativeId, cores));
+    )((threadId, ownNativeId, cores, toMainListMessage) =>
+      shownItems(threadId, null, ownNativeId, cores, toMainListMessage),
+    );
 
     return DisplayModeWrap.of({
       wrapUserText,

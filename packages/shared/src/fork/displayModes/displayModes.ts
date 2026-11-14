@@ -77,6 +77,11 @@ export type DisplayEvent =
    */
   | { readonly type: "other" };
 
+/** Whether `event` is a message of the main list in a thread with sub-threads, not a reply. */
+export const isMainListEvent = (event: DisplayEvent): boolean =>
+  (event.type === "user" && event.under === undefined) ||
+  (event.type === "sent" && event.replyTo === undefined);
+
 /** A core is one message that a display mode shows, from the user or from the agent. */
 export interface VisibleCore {
   readonly id: string;
