@@ -1,11 +1,5 @@
 {
-<<<<<<< origin/main
-  "claudeSystemAppendBytes": 5294,
+  "claudeSystemAppendBytes": 5630,
   "codexAdditionalContextBytes": 7024,
-  "mcpToolListJsonBytes": 52373
-=======
-  "claudeSystemAppendBytes": 5930,
-  "codexAdditionalContextBytes": 7324,
-  "mcpToolListJsonBytes": 49806
->>>>>>> upstream/main
+  "mcpToolListJsonBytes": 54087
 }

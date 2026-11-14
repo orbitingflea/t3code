@@ -4057,22 +4057,14 @@ export default function ChatView(props: ChatViewProps) {
         </ChatRightPanel>
       ) : null}
 
-<<<<<<< origin/main
       {subThreadDraft === null ? (
         <RevertConfirmHost
           threadKey={routeThreadKey}
           checkpoints={serverProjection?.checkpoints}
+          worktreePath={activeThread?.worktreePath ?? null}
           onConfirm={onConfirmRevertStable}
         />
       ) : null}
-=======
-      <RevertConfirmHost
-        threadKey={routeThreadKey}
-        checkpoints={serverProjection?.checkpoints}
-        worktreePath={activeThread?.worktreePath ?? null}
-        onConfirm={onConfirmRevertStable}
-      />
->>>>>>> upstream/main
       {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       {subThreadDraft === null ? <ExpandedImageDialogHost threadKey={routeThreadKey} /> : null}
