@@ -2,10 +2,11 @@ import { useAtomValue } from "@effect/atom-react";
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef, ThreadSubThread } from "@t3tools/contracts";
 import { ArrowLeftIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import ChatView from "../../components/ChatView";
 import { BackgroundThreadContext } from "../../components/chat/backgroundThread";
+import type { ChatComposerHandle } from "../../components/chat/ChatComposer";
 import { RelativeTime } from "../../components/RelativeTime";
 import { ComposerHandleContext } from "../../composerHandleContext";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
@@ -14,6 +15,7 @@ import { useQuietThreadProjection, useThreadHistory } from "../../state/entities
 import { environmentThreadDetails, threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
+import { registerReplyBox } from "./subThreadCite";
 import {
   markSubThreadRead,
   type SubThreadSummary,
@@ -202,6 +204,10 @@ function SubThreadView(props: {
       input: { threadId: threadRef.threadId, firstId: first, readAt: latestReply },
     });
   }, [props.visible, unread, latestReply, markRead, threadRef, first]);
+  const composer = useRef<ChatComposerHandle | null>(null);
+  const threadKey = scopedThreadKey(threadRef);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells a Cite in the main list which reply box is mounted
+  useEffect(() => registerReplyBox(threadKey, first, composer), [threadKey, first]);
   return (
     <div data-side-chat-pane data-sub-thread-view={first} className="flex h-full min-h-0 flex-col">
       <div className="flex h-9 shrink-0 items-center gap-1 border-border border-b pr-3 pl-1">
@@ -219,7 +225,7 @@ function SubThreadView(props: {
       </div>
       <SubThreadViewContext value={first}>
         <BackgroundThreadContext value>
-          <ComposerHandleContext value={null}>
+          <ComposerHandleContext value={composer}>
             <ChatView
               environmentId={threadRef.environmentId}
               threadId={threadRef.threadId}

@@ -63,7 +63,6 @@ import {
   AuthSourceControlWriteScope,
   AuthPreviewOperateScope,
   AuthTerminalOperateScope,
-  type AssistantCitation,
   type ResponseContextRecord,
   type ChatFileAttachment,
   isProviderNativeSubagentThread,
@@ -132,7 +131,6 @@ import {
   assistantCitationFromLocation,
   useSideChatCitationReveal,
 } from "../lib/assistantCitationNavigation";
-import type { AssistantCitationSourceAnchor } from "~/lib/assistantTextSelection";
 import { useStore } from "zustand";
 import { shallow } from "zustand/vanilla/shallow";
 import { useShallow } from "zustand/react/shallow";
@@ -368,6 +366,7 @@ import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDashboardSurfaceAdder } from "../fork/dashboard/dashboardSurface";
 import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThreads/subThreadReply";
+import { useSubThreadCite } from "../fork/subThreads/subThreadCite";
 import { SubThreadViewContext } from "../fork/subThreads/subThreadsState";
 import { useThreadShownView } from "../fork/displayMode/threadView";
 import { timelineCitation } from "../fork/dashboard/dashboardCitation";
@@ -644,21 +643,7 @@ export default function ChatView(props: ChatViewProps) {
   const composerFilesRef = useRef<ComposerFileAttachment[]>([]);
   const composerTerminalContextsRef = useRef<TerminalContextDraft[]>([]);
   const branchToolbarRef = useRef<BranchToolbarHandle>(null);
-  const citeAssistantText = (
-    citation: AssistantCitation,
-    sourceAnchor: AssistantCitationSourceAnchor,
-  ) => {
-    const inserted = composerRef.current?.citeAssistantText(citation, sourceAnchor) ?? false;
-    if (!inserted) {
-      toastManager.add({
-        type: "warning",
-        title: "The composer is not ready",
-        description: "Try citing the selection after the connection or pending input is resolved.",
-      });
-    }
-    return inserted;
-  };
-  const citeAssistantTextStable = useStableCallback(citeAssistantText);
+  const citeAssistantTextStable = useSubThreadCite(embedded ? null : routeThreadRef, composerRef);
   const replyToResponseStable = useStableCallback((response: ResponseContextRecord) => {
     const accepted = composerRef.current?.replyToResponse(response) ?? false;
     if (!accepted) {
