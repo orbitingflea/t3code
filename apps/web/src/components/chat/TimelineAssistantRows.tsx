@@ -123,6 +123,7 @@ export function SentMessageTimelineRow({
       <MessageAuthorHeading>T3 Code</MessageAuthorHeading>
       <ChatMarkdown
         text={row.text}
+        assistantReply
         cwd={ctx.markdownCwd}
         threadRef={ctx.threadRef ?? undefined}
         lineBreaks={shouldPreserveAssistantLineBreaks(row.text)}
