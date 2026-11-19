@@ -9,6 +9,7 @@ import {
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
 import { WhiteboardPanelCapability } from "./fork/rightPanelMenu.ts";
+import { ZulipPanelCapability } from "./fork/zulipPanel.ts";
 import { SourceControlProviderKind } from "./sourceControl.ts";
 
 export const ORCHESTRATION_PROTOCOL_VERSION = 2;
@@ -218,6 +219,8 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   linkedThreadRefreshes: Schema.optionalKey(Schema.Boolean),
   /** Sent only by a whiteboard board host: the panel board and the machine's menu defaults. */
   whiteboardPanel: Schema.optionalKey(WhiteboardPanelCapability),
+  /** Sent only by a machine that sets a Zulip page for the right panel's Zulip tab. */
+  zulipPanel: Schema.optionalKey(ZulipPanelCapability),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

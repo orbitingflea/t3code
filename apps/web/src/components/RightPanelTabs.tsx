@@ -641,6 +641,7 @@ function surfaceTitle(
     case "dashboard":
     case "replies":
     case "whiteboard":
+    case "zulip":
       return modeSurfaceLabel(surface.kind);
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
@@ -737,6 +738,7 @@ function SurfaceIcon({
     case "dashboard":
     case "replies":
     case "whiteboard":
+    case "zulip":
       return <ModeSurfaceIcon kind={surface.kind} />;
     case "device":
       return surface.target?.platform === "ios" ? (
