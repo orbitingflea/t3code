@@ -17,6 +17,7 @@ import { ThreadDashboardPanel } from "../../fork/dashboard/ThreadDashboardPanel"
 import type { CiteAssistantText } from "../../fork/dashboard/dashboardCitation";
 import { SubThreadsPanel } from "../../fork/subThreads/SubThreadsPanel";
 import { WhiteboardPanel } from "../../fork/whiteboard/WhiteboardPanel";
+import { ZulipPanel } from "../../fork/zulip/ZulipPanel";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
 import type { ShortcutMatchContext } from "../../keybindings";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
@@ -236,6 +237,8 @@ export function RightPanelSurfaceContent(props: {
       );
     case "whiteboard":
       return <WhiteboardPanel threadRef={threadRef} />;
+    case "zulip":
+      return <ZulipPanel />;
     case "side-chat":
       // Not lazy: revealing a suspended tiptap editor tears down its view and crashes the composer.
       return (

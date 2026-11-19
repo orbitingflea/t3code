@@ -13,6 +13,7 @@ export const RIGHT_PANEL_MENU_ITEM_IDS = [
   "replies",
   "dashboard",
   "whiteboard",
+  "zulip",
 ] as const;
 export type RightPanelMenuItemId = (typeof RIGHT_PANEL_MENU_ITEM_IDS)[number];
 

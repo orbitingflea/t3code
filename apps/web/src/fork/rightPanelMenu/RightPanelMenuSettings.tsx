@@ -26,6 +26,7 @@ import {
 import { FORK_SURFACES } from "../dashboard/dashboardSurface";
 import { RIGHT_PANEL_SETTINGS_COPY as COPY } from "../forkCopy";
 import { isBoardHost, useBoardHostRole } from "../whiteboard/role";
+import { isZulipPanelOffered, useZulipPanelRole } from "../zulip/zulipPanel";
 import {
   parseMenuLayer,
   RIGHT_PANEL_MENU_ITEM_IDS,
@@ -60,6 +61,7 @@ const MENU_ITEM_ROWS = {
   replies: forkRow("replies"),
   dashboard: forkRow("dashboard"),
   whiteboard: forkRow("whiteboard"),
+  zulip: forkRow("zulip"),
 } satisfies Record<RightPanelMenuItemId, Omit<MenuItemRow, "id">>;
 
 const MENU_ITEMS: ReadonlyArray<MenuItemRow> = RIGHT_PANEL_MENU_ITEM_IDS.map((id) => ({
@@ -174,6 +176,7 @@ function MenuItemSettingsRow(props: {
 
 export function RightPanelMenuSettingsPanel() {
   const role = useBoardHostRole();
+  const zulipOffered = isZulipPanelOffered(useZulipPanelRole());
   const overrides = useClientSettings((settings) => settings.rightPanelMenuOverrides);
   if (role === "unknown") return null;
   if (!isBoardHost(role)) return <Navigate to="/settings/general" replace />;
@@ -196,7 +199,7 @@ export function RightPanelMenuSettingsPanel() {
           </Button>
         }
       >
-        {MENU_ITEMS.map((item) => (
+        {MENU_ITEMS.filter((item) => item.id !== "zulip" || zulipOffered).map((item) => (
           <MenuItemSettingsRow
             key={item.id}
             item={item}

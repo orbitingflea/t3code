@@ -1,5 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { LayoutDashboard, MessageSquareReply, Presentation } from "lucide-react";
+import { LayoutDashboard, MessageSquareReply, MessageSquareText, Presentation } from "lucide-react";
 import { createElement } from "react";
 
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -19,13 +19,15 @@ import {
   useBoardOfferedFor,
   useThreadProjectRoot,
 } from "../whiteboard/role";
+import { isZulipPanelOffered, readZulipPanelOffered, useZulipPanelRole } from "../zulip/zulipPanel";
 
 /** The fork's right-panel tabs. `shortcut` is the built-in menu letter; "" is none. */
 export const FORK_SURFACES = {
   dashboard: { label: "Dashboard", icon: LayoutDashboard, shortcut: "" },
   replies: { label: "Replies", icon: MessageSquareReply, shortcut: "" },
   whiteboard: { label: "Whiteboard", icon: Presentation, shortcut: "W" },
-} as const satisfies Record<ModeSurfaceKind | "whiteboard", unknown>;
+  zulip: { label: "Zulip", icon: MessageSquareText, shortcut: "Z" },
+} as const satisfies Record<ModeSurfaceKind | "whiteboard" | "zulip", unknown>;
 
 type ForkSurfaceKind = keyof typeof FORK_SURFACES;
 
@@ -50,11 +52,12 @@ export const ModeSurfaceIcon = (props: { readonly kind: ForkSurfaceKind }) =>
 /** Whether the thread offers the tab `kind`, read outside React. Upstream tabs always pass. */
 export function threadHasModeSurface(threadRef: ScopedThreadRef, kind: string): boolean {
   if (kind === "whiteboard") return boardOfferedFor(threadRef, readThreadProjectRoot(threadRef));
+  if (kind === "zulip") return readZulipPanelOffered();
   if (!(kind in FORK_SURFACES)) return true;
   return modeSurfaces(readThreadDisplay(threadRef)).some((surface) => surface === kind);
 }
 
-/** The fork's "+" items: the display's Replies and Dashboard, then Whiteboard on a board host. */
+/** The fork's "+" items: the display's Replies and Dashboard, then Whiteboard and Zulip where offered. */
 export function useModeSurfaceActions(
   threadRef: ScopedThreadRef | null,
 ): ReadonlyArray<ModeSurfaceAction> {
@@ -62,6 +65,7 @@ export function useModeSurfaceActions(
   const boardPanel = isBoardHost(useBoardHostRole()) && isTopWindow();
   const projectRoot = useThreadProjectRoot(boardPanel ? threadRef : null);
   const boardOffered = useBoardOfferedFor(threadRef, projectRoot);
+  const zulipOffered = isZulipPanelOffered(useZulipPanelRole());
   const open = useStableCallback((kind: ForkSurfaceKind) => {
     if (threadRef !== null) useRightPanelStore.getState().open(threadRef, kind);
   });
@@ -70,5 +74,6 @@ export function useModeSurfaceActions(
     ...(boardPanel
       ? [forkSurfaceAction("whiteboard", boardOffered, () => open("whiteboard"))]
       : []),
+    ...(zulipOffered ? [forkSurfaceAction("zulip", true, () => open("zulip"))] : []),
   ];
 }
