@@ -203,7 +203,7 @@ vi.mock("./useSettings", () => ({
 import { useThreadActions } from "./useThreadActions";
 
 function seedThreadPanelState(ref: ScopedThreadRef) {
-  useRightPanelStore.getState().show(ref);
+  useRightPanelStore.getState().open(ref, "diff");
   useDiffPanelStore.getState().selectGitScope(ref, "branch");
   usePreviewMiniPlayerStore.getState().open(ref, browserMiniPlayerSource("tab"));
 }

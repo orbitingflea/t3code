@@ -120,6 +120,7 @@ import { AdvancedSettings } from "./AdvancedSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
 import { PreviewBrowserModeSetting } from "~/fork/PreviewBrowserModeSetting";
+import { WORK_AREA_COPY } from "~/fork/forkCopy";
 import type { ImportOutcome } from "./browserImportWizard.logic";
 
 const FILL_VALUE = "fill";
@@ -1144,7 +1145,6 @@ function AgentBrowserAccessSetting() {
 
 function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled: boolean }) {
   const searchableSetting = useSearchableSetting();
-  const gt = useGT();
   const autoShow = useClientSettings((settings) => settings.browserAutoShowFloatingPreview);
   const updateSettings = useUpdateScopedSettings();
 
@@ -1152,13 +1152,11 @@ function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled
     <SettingsRow
       {...searchableSetting("browser-auto-show-floating-preview")}
       devicePreference
-      description={gt(
-        "Show the floating preview when an agent opens a browser or device unless the agent says otherwise.",
-      )}
+      description={WORK_AREA_COPY.agentPreviewSetting}
       resetAction={
         !disabled && autoShow !== DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW ? (
           <SettingResetButton
-            ariaLabel={gt("Reset auto-show floating preview to default")}
+            ariaLabel={WORK_AREA_COPY.agentPreviewReset}
             onClick={() =>
               updateSettings({
                 browserAutoShowFloatingPreview: DEFAULT_BROWSER_AUTO_SHOW_FLOATING_PREVIEW,
@@ -1174,7 +1172,7 @@ function BrowserAutoShowFloatingPreviewSetting({ disabled }: { readonly disabled
           onCheckedChange={(checked) =>
             updateSettings({ browserAutoShowFloatingPreview: Boolean(checked) })
           }
-          aria-label={gt("Auto-show floating preview")}
+          aria-label={WORK_AREA_COPY.agentPreviewTitle}
         />
       }
     />

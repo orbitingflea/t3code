@@ -176,7 +176,8 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { hostEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { cn } from "../lib/utils";
 import { resolveRemoteOpenState, useRemoteOpenResolution } from "../remoteOpen";
-import { rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
+import { useRightPanelStore } from "../rightPanelStore";
+import { useChatFileOpener } from "../fork/workArea/chatFileOpener";
 import { useOpenIssueLink } from "../lib/openIssueLink";
 import { issueTrackerEnvironment } from "../state/issueTrackers";
 import { useEnvironmentQuery } from "../state/query";
@@ -616,6 +617,7 @@ function useChatMarkdownState({
     reportFailure: false,
   });
   const pullRequestLinking = usePullRequestLinking(threadRef?.environmentId);
+  const fileOpener = useChatFileOpener(threadRef);
   const environmentId = threadRef?.environmentId ?? explicitEnvironmentId ?? null;
   const canOperateHost = useEnvironmentScope(environmentId, AuthOrchestrationOperateScope);
   const canOperatePreview = useEnvironmentScope(environmentId, AuthPreviewOperateScope);
@@ -630,6 +632,7 @@ function useChatMarkdownState({
     clickedImage?: HTMLImageElement | null,
   ) => {
     const requestId = ++mediaRequestId.current;
+    const fileTarget = fileOpener?.();
     void resolveMarkdownMediaPreview({
       source,
       resolvedFilePath,
@@ -640,9 +643,7 @@ function useChatMarkdownState({
       httpBaseUrl:
         environmentId === null ? undefined : readPreparedConnection(environmentId)?.httpBaseUrl,
       createAssetUrl,
-      onOpenFile: threadRef
-        ? (path) => useRightPanelStore.getState().openFile(threadRef, path)
-        : undefined,
+      onOpenFile: fileTarget ? (path) => fileTarget.openFile(path) : undefined,
     }).then(
       (preview) => {
         if (preview && mediaRequestId.current === requestId) {
@@ -915,9 +916,9 @@ function useChatMarkdownState({
     return findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot);
   };
   const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
-    const openAt = (path: string) =>
-      useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line);
+    const fileTarget = fileOpener?.();
+    if (!threadRef || !fileTarget) return;
+    const openAt = (path: string) => fileTarget.openFile(path, fileLinkMeta.line);
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
@@ -927,13 +928,13 @@ function useChatMarkdownState({
       return;
     }
     // Anything the user opens in this panel meanwhile, such as a file from the picker, wins.
-    const panelRef = rightPanelHostRef(threadRef);
+    const panelRef = fileTarget.panel();
     const panelKey = scopedThreadKey(panelRef);
     const userActionRevision = useRightPanelStore.getState().markUserAction(panelRef);
     void (async () => {
       const match = await findWorkspaceFileMatch(fileLinkMeta);
       if (
-        scopedThreadKey(rightPanelHostRef(threadRef)) !== panelKey ||
+        scopedThreadKey(fileTarget.panel()) !== panelKey ||
         useRightPanelStore.getState().getUserActionRevision(panelRef) !== userActionRevision
       )
         return;
@@ -1078,6 +1079,7 @@ function useChatMarkdownState({
     issuesEnabled,
     skills,
     threadRef,
+    fileOpener,
     updateThreadPullRequestLink,
   };
   return {
@@ -1235,6 +1237,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       imageBaseDir,
       markdownFileLinkMetaByHref,
       threadRef,
+      fileOpener,
       openMarkdownMedia,
       openChangeRequestLink,
       openIssueLink,
@@ -1350,7 +1353,8 @@ const CHAT_MARKDOWN_COMPONENTS = {
             onClick?.(event);
             if (isWhiteboardLink && href) {
               event.preventDefault();
-              showBoardRef(href, threadRef);
+              if (fileOpener) fileOpener().openBoardRef(href);
+              else showBoardRef(href, threadRef);
               return;
             }
             if (isSameDocumentLink && href) {
@@ -1615,6 +1619,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       sourceControlMediaRepository,
       imageBaseDir,
       threadRef,
+      fileOpener,
       workspaceMutationId,
       renderContextReference,
       fileLinkChip,
@@ -1663,7 +1668,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
                   threadId: threadRef.threadId,
                   path: filePath,
                 },
-                onOpen: () => useRightPanelStore.getState().openFile(threadRef, filePath),
+                onOpen: () => fileOpener?.().openFile(filePath),
               }
             : imageSource._tag === "Direct"
               ? { src: resolveProtocolRelativeMediaUrl(imageSource.uri) }

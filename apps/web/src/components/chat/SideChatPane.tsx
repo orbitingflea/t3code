@@ -31,6 +31,7 @@ import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { BackgroundThreadContext } from "./backgroundThread";
+import { OpenOriginContext, sideChatOrigin } from "../../fork/workArea/chatFileOpener";
 
 /** A side chat tab: its title, Add to chat, Delete and Close, over the side chat's own chat. */
 export default function SideChatPane(props: {
@@ -152,12 +153,14 @@ export default function SideChatPane(props: {
       ) : (
         <BackgroundThreadContext value>
           <ComposerHandleContext value={null}>
-            <ChatView
-              environmentId={parentRef.environmentId}
-              threadId={threadId}
-              routeKind="server"
-              embedded={props.parentPanel}
-            />
+            <OpenOriginContext value={sideChatOrigin(threadId)}>
+              <ChatView
+                environmentId={parentRef.environmentId}
+                threadId={threadId}
+                routeKind="server"
+                embedded={props.parentPanel}
+              />
+            </OpenOriginContext>
           </ComposerHandleContext>
         </BackgroundThreadContext>
       )}

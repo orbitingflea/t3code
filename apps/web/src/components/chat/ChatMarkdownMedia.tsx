@@ -1,3 +1,4 @@
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { mediaFileReference, mediaUrlReference } from "@t3tools/client-runtime/media-reference";
 import type { AssetResource, EnvironmentId, SOURCE_CONTROL_MEDIA_ASSET } from "@t3tools/contracts";
 import { msg, useGT, useMessages } from "gt-react";
@@ -17,6 +18,7 @@ import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import type { MessageResolver } from "../../i18n/messages";
 import { cn } from "../../lib/utils";
 import { useRightPanelStore } from "../../rightPanelStore";
+import { type ChatFileOpener, useChatFileOpener } from "../../fork/workArea/chatFileOpener";
 import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
@@ -356,6 +358,7 @@ export function assetMediaActionsSource(input: {
   readonly workspaceRoot?: string | undefined;
   readonly originalUrl?: string | undefined;
   readonly downloadable?: boolean | undefined;
+  readonly fileOpener?: ChatFileOpener | null | undefined;
 }): MediaActionSource {
   const { environmentId, resource } = input;
   const path =
@@ -378,10 +381,11 @@ export function assetMediaActionsSource(input: {
     ...(reference ? { reference } : {}),
     ...(relativePath && (resource._tag === "media-file" || resource._tag === "workspace-file")
       ? {
-          onOpenFile: () =>
-            useRightPanelStore
-              .getState()
-              .openFile({ environmentId, threadId: resource.threadId }, relativePath),
+          onOpenFile: () => {
+            const thread = scopeThreadRef(environmentId, resource.threadId);
+            if (input.fileOpener) input.fileOpener(thread).openFile(relativePath);
+            else useRightPanelStore.getState().openFile(thread, relativePath);
+          },
         }
       : {}),
   };
@@ -410,6 +414,11 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
 }) {
   const gt = useGT();
   const resource = props.resource;
+  const fileOpener = useChatFileOpener(
+    resource._tag === "media-file" || resource._tag === "workspace-file"
+      ? scopeThreadRef(props.environmentId, resource.threadId)
+      : null,
+  );
   const threadWorkspaceMutationId = use(WorkspaceMutationIdContext);
   const workspaceMutationId = props.workspaceMutationId ?? threadWorkspaceMutationId;
   const assetUrl = useAssetUrlState(
@@ -454,6 +463,7 @@ export const ChatMarkdownAssetImage = memo(function ChatMarkdownAssetImage(props
     workspaceRoot: props.workspaceRoot,
     originalUrl: props.originalUrl,
     downloadable: fallbackSrc === undefined,
+    fileOpener,
   });
 
   if (props.kind === "video") {

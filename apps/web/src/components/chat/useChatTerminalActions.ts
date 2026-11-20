@@ -55,6 +55,7 @@ import { previewEnvironment } from "../../state/preview";
 import { readEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
+import { showTerminalTab } from "../../fork/workArea/workAreaCommands";
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -79,6 +80,8 @@ interface ChatTerminalActionsInput {
   readonly panelTerminalIds: ReadonlySet<string>;
   readonly canReuseTerminal: boolean;
   readonly gitCwd: string | null;
+  /** False while the work area hides the primary chat column, and with it the drawer. */
+  readonly primaryChatShown: boolean;
   readonly setTerminalUiLaunchContext: Dispatch<SetStateAction<TerminalLaunchContext | null>>;
   readonly setThreadError: ReturnType<typeof makeThreadErrorSetter>;
 }
@@ -103,6 +106,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     panelTerminalIds,
     canReuseTerminal,
     gitCwd,
+    primaryChatShown,
     setTerminalUiLaunchContext,
     setThreadError,
   } = input;
@@ -422,6 +426,14 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   // A focused right-panel terminal takes the split/new/close chords; otherwise they act on the drawer.
   const shortcuts = {
     "terminal.toggle": () => {
+      if (!primaryChatShown && activeThreadRef) {
+        const canOperate = hasTerminalWriteAccess();
+        if (!canOperate && !readEnvironmentScope(environmentId, AuthTerminalReadScope))
+          return false;
+        return showTerminalTab(activeThreadRef, canOperate ? addTerminalSurface : null)
+          ? undefined
+          : false;
+      }
       if (
         !terminalUiState.terminalOpen &&
         !readEnvironmentScope(environmentId, AuthTerminalReadScope) &&
@@ -452,7 +464,9 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
     },
     "terminal.new": ({ terminalFocusOwner }) => {
       if (!hasTerminalWriteAccess()) return false;
-      if (terminalFocusOwner === "right-panel") return void addTerminalSurface();
+      if (terminalFocusOwner === "right-panel" || !primaryChatShown) {
+        return void addTerminalSurface();
+      }
       openTerminalIfClosed();
       createNewTerminal();
     },

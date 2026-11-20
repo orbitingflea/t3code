@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef } from "react";
 
 import { acquireBrowserSurface } from "./browserSurfaceStore";
 import { observeResize } from "../lib/observeResize";
+import { WORK_AREA_LAYOUT_EVENT } from "../fork/workArea/workAreaView";
 
 export function BrowserSurfaceSlot(props: {
   readonly tabId: string;
@@ -68,10 +69,12 @@ export function BrowserSurfaceSlot(props: {
     const stopObserving = observeResize(observed, update);
     window.addEventListener("resize", update);
     window.addEventListener("scroll", update, true);
+    window.addEventListener(WORK_AREA_LAYOUT_EVENT, update);
     return () => {
       stopObserving();
       window.removeEventListener("resize", update);
       window.removeEventListener("scroll", update, true);
+      window.removeEventListener(WORK_AREA_LAYOUT_EVENT, update);
       if (updateRef.current === update) updateRef.current = null;
       lease.release();
     };

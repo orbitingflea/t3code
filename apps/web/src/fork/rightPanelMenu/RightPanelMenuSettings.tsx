@@ -46,7 +46,8 @@ const forkRow = (kind: keyof typeof FORK_SURFACES) => ({
   builtInKey: FORK_SURFACES[kind].shortcut as string,
 });
 
-// One row per menu id (the type fails without one). The launchers read upstream letters from
+// One row per menu id but Chat (the type fails without one): Chat is the way back to a closed
+// primary Chat, so it has no row and cannot be hidden. The launchers read upstream letters from
 // their own items; these copies only name this page's defaults, so keep them equal.
 const MENU_ITEM_ROWS = {
   browser: { label: "Browser", icon: Globe2, builtInKey: "B" },
@@ -60,12 +61,11 @@ const MENU_ITEM_ROWS = {
   replies: forkRow("replies"),
   dashboard: forkRow("dashboard"),
   whiteboard: forkRow("whiteboard"),
-} satisfies Record<RightPanelMenuItemId, Omit<MenuItemRow, "id">>;
+} satisfies Record<Exclude<RightPanelMenuItemId, "chat">, Omit<MenuItemRow, "id">>;
 
-const MENU_ITEMS: ReadonlyArray<MenuItemRow> = RIGHT_PANEL_MENU_ITEM_IDS.map((id) => ({
-  id,
-  ...MENU_ITEM_ROWS[id],
-}));
+const MENU_ITEMS: ReadonlyArray<MenuItemRow> = RIGHT_PANEL_MENU_ITEM_IDS.flatMap((id) =>
+  id === "chat" ? [] : [{ id, ...MENU_ITEM_ROWS[id] }],
+);
 
 const LETTERS = [..."ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"];
 

@@ -354,7 +354,7 @@ function parseReceiptKey(key: string) {
   }
 }
 
-type FileSurface = Extract<RightPanelSurface, { kind: "file" }>;
+export type FileSurface = Extract<RightPanelSurface, { kind: "file" }>;
 export type RevealVerdict = "none" | "pending" | "shown";
 
 export function liveFileSurface(

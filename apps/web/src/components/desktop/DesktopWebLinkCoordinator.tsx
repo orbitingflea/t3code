@@ -26,7 +26,10 @@ import { useNewThreadHandler } from "../../hooks/useHandleNewThread";
 import { useScratchProject } from "../../hooks/useScratchProject";
 import { useClientSettings } from "../../hooks/useSettings";
 import { useOpenChangeRequestLink } from "../../lib/openPullRequestLink";
-import { selectActiveRightPanelSurface, useRightPanelStore } from "../../rightPanelStore";
+import { armFocusedPane } from "../../fork/workArea/workAreaCommands";
+import { shownSurfaces } from "../../fork/workArea/workAreaGeometry.logic";
+import { currentWorkAreaView } from "../../fork/workArea/workAreaView";
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { resolveThreadRouteTarget } from "../../threadRoutes";
 import { assetEnvironment } from "../../state/assets";
@@ -74,11 +77,10 @@ function threadShowingBrowser(
   }
   if (threadRef === null || !isPreviewAvailableFor(threadRef.environmentId)) return null;
   if (fileEnvironmentId !== null && threadRef.environmentId !== fileEnvironmentId) return null;
-  const surface = selectActiveRightPanelSurface(
-    useRightPanelStore.getState().byThreadKey,
-    threadRef,
-  );
-  return surface?.kind === "preview" ? threadRef : null;
+  const record = selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
+  return shownSurfaces(record, currentWorkAreaView()).some((surface) => surface.kind === "preview")
+    ? threadRef
+    : null;
 }
 
 export function DesktopWebLinkCoordinator() {
@@ -165,7 +167,7 @@ export function DesktopWebLinkCoordinator() {
       return null;
     }
     const threadRef = scopeThreadRef(project.environmentId, opened.threadId);
-    useRightPanelStore.getState().requestMaximize(threadRef);
+    armFocusedPane(threadRef, "preview");
     return threadRef;
   };
 

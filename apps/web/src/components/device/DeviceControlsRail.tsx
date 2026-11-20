@@ -45,7 +45,7 @@ export function DeviceControlsRail(props: {
   onScreenshot: () => void;
   toolsOpen: boolean;
   onTools: () => void;
-  onFloat: () => void;
+  onFloat?: (() => void) | undefined;
   onClose: () => void;
   onPowerOff: () => void;
 }) {
@@ -225,10 +225,12 @@ export function DeviceControlsRail(props: {
             <MoreHorizontal />
           </MenuTrigger>
           <MenuPopup side={popupSide} align="end">
-            <MenuItem onClick={props.onFloat}>
-              <PictureInPicture2 />
-              <T>Float device over chat</T>
-            </MenuItem>
+            {props.onFloat ? (
+              <MenuItem onClick={props.onFloat}>
+                <PictureInPicture2 />
+                <T>Float device over chat</T>
+              </MenuItem>
+            ) : null}
             <MenuItem onClick={props.onClose}>
               <X />
               <T>Close device panel</T>

@@ -12,6 +12,7 @@ import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily, and its first transform takes seconds; see ChatView.browser.test.tsx.
 import "~/components/ChatView";
 import { useComposerDraftStore } from "~/composerDraftStore";
+import stylesheet from "~/index.css?inline";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
 import {
@@ -96,6 +97,11 @@ it.each(Object.keys(layouts) as Array<keyof typeof layouts>)(
     const threadRef = scopeThreadRef(ENVIRONMENT_ID, thread.id);
     const replyDraft = subThreadDraftId(scopedThreadKey(threadRef), first)!;
     using _environment = installFakeEnvironment(threads, { settings });
+    // The work area places the reply box by its laid-out size.
+    const style = document.createElement("style");
+    style.textContent = stylesheet;
+    document.head.append(style);
+    using _style = { [Symbol.dispose]: () => style.remove() };
     __setClientSettingsForTests({
       ...DEFAULT_CLIENT_SETTINGS,
       onboardingCompletedAt: "2026-01-01T00:00:00.000Z",

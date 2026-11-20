@@ -14,6 +14,8 @@ import {
 } from "@t3tools/shared/keybindings";
 import { msg } from "gt-react";
 
+import { WORK_AREA_COPY } from "~/fork/forkCopy";
+
 import { m, type MessageResolver } from "../../i18n/messages";
 import { shortcutConflictKey, shortcutKeyFromEvent } from "../../keybindings";
 import { isMacPlatform } from "../../lib/utils";
@@ -489,6 +491,8 @@ const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
 };
 
 export function commandLabel(command: KeybindingCommand, resolve: MessageResolver = m): string {
+  const forkLabel = WORK_AREA_COPY.commandLabels[command];
+  if (forkLabel) return forkLabel;
   const label = COMMAND_LABELS[command];
   if (label) return resolve(label);
   const usageLabel = USAGE_COMMAND_LABELS[command as keyof typeof USAGE_COMMAND_LABELS];
