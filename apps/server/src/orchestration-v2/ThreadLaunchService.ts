@@ -51,6 +51,7 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
+import { resolvePoolTarget } from "../fork/providerPools/poolPlacement.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as CommandReceiptStore from "./CommandReceiptStore.ts";
@@ -1250,11 +1251,30 @@ const make = Effect.gen(function* () {
     function* (request) {
       // Scratch has no Git repository. Normalize before folder allocation so
       // durable preparation and retries use the thread's own Scratch folder.
-      const input: ThreadLaunchInput =
+      const normalized: ThreadLaunchInput =
         request.workspaceStrategy.type === "worktree" &&
         (yield* managedFolders.isScratchProject(request.projectId))
           ? { ...request, workspaceStrategy: { type: "root" } }
           : request;
+      const launchReceipt = yield* readReceipt(normalized, normalized.commandId);
+      const instanceId = yield* resolvePoolTarget({
+        requestedInstanceId: normalized.modelSelection.instanceId,
+        projectId: normalized.projectId,
+        model: normalized.modelSelection.model,
+        seedKey: normalized.commandId,
+        getSettings: serverSettings.getSettings,
+        providers: providerRegistry.getProviders,
+        committedInstanceId: Option.isSome(launchReceipt)
+          ? threads.getThreadShell(launchReceipt.value.threadId).pipe(
+              Effect.map((shell) => shell?.providerInstanceId ?? null),
+              Effect.orElseSucceed(() => null),
+            )
+          : undefined,
+      }).pipe(Effect.mapError(mapError(normalized, "create-thread")));
+      const input: ThreadLaunchInput = {
+        ...normalized,
+        modelSelection: { ...normalized.modelSelection, instanceId },
+      };
       yield* ProjectCloneTracker.rejectCommandsDuringClone(cloneTracker, {
         type: "thread.create",
         projectId: input.projectId,
@@ -1275,7 +1295,6 @@ const make = Effect.gen(function* () {
         )("Reusing an existing thread requires a thread id.");
       }
 
-      const launchReceipt = yield* readReceipt(input, input.commandId);
       yield* threads.assertProviderInstanceEnabled({
         projectId: input.projectId,
         commandId: input.commandId,

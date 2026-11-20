@@ -215,6 +215,7 @@ import {
 import { planThreadDeletion } from "./ThreadDeletion.ts";
 import type * as ProviderAdapter from "@t3tools/provider-core/server/ProviderAdapter";
 import * as ServerSettings from "../serverSettings.ts";
+import { wrapOrchestratorDispatch } from "../fork/providerPools/poolPlacement.ts";
 
 const isMessageQuestionAnswer = Schema.is(
   Schema.Union([TrimmedNonEmptyString, Schema.NonEmptyArray(TrimmedNonEmptyString)]),
@@ -16893,7 +16894,18 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     awaitRestartContinuation: Effect.fn("OrchestratorV2.awaitRestartContinuation")(function (run) {
       return effectOutbox.awaitSettled(`effect:restart-continuation:${run.id}`).pipe(Effect.ignore);
     }),
-    dispatch: dispatchWithReceipt,
+    dispatch: yield* wrapOrchestratorDispatch(dispatchWithReceipt, {
+      serverSettings,
+      projectionStore,
+      providerAdapters,
+      commandReceipts,
+      mapError: (command, cause) =>
+        new OrchestratorDispatchError({
+          commandId: command.commandId,
+          commandType: command.type,
+          cause,
+        }),
+    }),
     autoArmLimitRecovery: Effect.fn("OrchestratorV2.autoArmLimitRecovery")(function (input) {
       return threadDispatch.withLock(
         input.threadId,

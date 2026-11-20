@@ -41,6 +41,8 @@ export * from "./fork/threadSubThreads.ts";
 export * from "./fork/threadUserView.ts";
 export * from "./fork/fyi.ts";
 export * from "./fork/rightPanelMenu.ts";
+export * from "./fork/providerPools.ts";
+export * from "./fork/homeProvisioner.ts";
 export * from "./managedPolicy.ts";
 export * from "./git.ts";
 export * from "./vcs.ts";

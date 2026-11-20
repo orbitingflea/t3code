@@ -31,8 +31,15 @@ const KNOWN_SHARED_DIRECTORIES = [
 
 // auth.lock guards the shadow home's private auth.json.
 const PRIVATE_ENTRY_NAMES = new Set(["auth.json", "auth.lock", "models_cache.json"]);
-// Finder maintains metadata separately for each directory, including shadow homes.
-const SHADOW_LOCAL_ENTRY_NAMES = new Set(["log", "memories", "tmp", ".DS_Store"]);
+// Finder maintains metadata separately for each directory, including shadow homes. A shared
+// app-server-control would connect a shadow home's clients to a daemon on the shared account.
+const SHADOW_LOCAL_ENTRY_NAMES = new Set([
+  "log",
+  "memories",
+  "tmp",
+  ".DS_Store",
+  "app-server-control",
+]);
 // Shadow homes may create local runtime locks first; replace them with shared links because they guard shared state.
 const REPLACEABLE_SHARED_RUNTIME_ENTRIES = new Set([
   "mcp-oauth-locks",
@@ -436,6 +443,13 @@ export const materializeCodexShadowHome = Effect.fn("materializeCodexShadowHome"
           }),
     { discard: true },
   );
+  // Older shadow homes linked app-server-control to a shared home; only a local one isolates.
+  yield* removePrivateSymlink({
+    fileSystem,
+    sharedHomePath: layout.sharedHomePath,
+    effectiveHomePath,
+    entryName: "app-server-control",
+  });
 
   yield* Effect.forEach(
     entries,

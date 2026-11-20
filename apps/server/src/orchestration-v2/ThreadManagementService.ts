@@ -71,6 +71,7 @@ import { projectTurnItemForDetail } from "./WireProjection.ts";
 import { cancelledBeforeStart } from "./RestartBackgroundNote.ts";
 import * as LegacyV1ThreadImporter from "./legacy/LegacyV1ThreadImporter.ts";
 import * as ServerSettings from "../serverSettings.ts";
+import { commandNamesPool } from "../fork/providerPools/poolPlacement.ts";
 import { ThreadWorktreeRestore } from "../workspace/restoreMissingWorktree.ts";
 
 export type ThreadManagementSendMode = "auto" | "queue" | "steer" | "restart";
@@ -828,7 +829,8 @@ const make = Effect.gen(function* () {
 
   const dispatch: ThreadManagementServiceShape["dispatch"] = (command) =>
     ensureCommandTranscripts(command).pipe(
-      Effect.andThen(assertDispatchTargetEnabled(command)),
+      Effect.andThen(commandNamesPool(command, serverSettings.getSettings)),
+      Effect.flatMap((pool) => (pool ? Effect.void : assertDispatchTargetEnabled(command))),
       Effect.andThen(orchestrator.dispatch(command)),
     );
 

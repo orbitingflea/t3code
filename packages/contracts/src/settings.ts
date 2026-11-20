@@ -33,6 +33,8 @@ import {
   CompactWhenIdleSettingsPatch,
 } from "./fork/idleCompactionLevels.ts";
 import { RightPanelMenuOverrides } from "./fork/rightPanelMenu.ts";
+import { HomeProvisionerSetting } from "./fork/homeProvisioner.ts";
+import { ProviderPoolsSetting } from "./fork/providerPools.ts";
 import {
   CustomModelSetting,
   DEFAULT_TEXT_GENERATION_MODEL,
@@ -1595,6 +1597,8 @@ export const ServerSettings = Schema.Struct({
   providerInstances: Schema.Record(ProviderInstanceId, ProviderInstanceConfig).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
   ),
+  providerPools: ProviderPoolsSetting,
+  homeProvisioner: HomeProvisionerSetting,
   observability: ObservabilitySettings.pipe(Schema.withDecodingDefault(Effect.succeed({}))),
   sourceControlHosts: Schema.Record(Schema.String, SourceControlHostSettings).pipe(
     Schema.withDecodingDefault(Effect.succeed({})),
