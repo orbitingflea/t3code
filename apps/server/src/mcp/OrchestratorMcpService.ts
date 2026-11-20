@@ -120,6 +120,10 @@ import * as ProviderRegistry from "../provider/ProviderRegistry.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
+  refreshRequestedInstances,
+  resolvePoolTarget,
+} from "../fork/providerPools/poolPlacement.ts";
+import {
   clientModeCeiling,
   type McpInvocationScope,
   type McpThreadInvocationScope,
@@ -1635,12 +1639,16 @@ const make = Effect.gen(function* () {
       Effect.catchIf(
         (error) => error.code === "provider_unavailable" || error.code === "model_unavailable",
         () =>
-          (input.cwd === undefined
-            ? providerRegistry.refreshInstance(instanceId)
-            : providerRegistry
-                .refreshInstance(instanceId)
-                .pipe(Effect.andThen(scanWorkspace(instanceId, input.cwd)))
-          ).pipe(
+          refreshRequestedInstances({
+            requestedInstanceId: instanceId,
+            getSettings: serverSettings.getSettings,
+            refreshInstance: (id) =>
+              input.cwd === undefined
+                ? providerRegistry.refreshInstance(id)
+                : providerRegistry
+                    .refreshInstance(id)
+                    .pipe(Effect.andThen(scanWorkspace(id, input.cwd))),
+          }).pipe(
             Effect.flatMap((providers) =>
               resolveTarget({ ...input, providers: withWorkspaceModels(providers, input.cwd) }),
             ),
@@ -1655,10 +1663,28 @@ const make = Effect.gen(function* () {
     readonly providers: ReadonlyArray<ServerProvider>;
     /** Receipt replays bypass current settings because they start no work. Dispatch must reuse the checked command ID. */
     readonly skipProjectEnablementFilter?: boolean;
+    readonly seedKey: string;
   }): Effect.fn.Return<ResolvedTarget, OrchestratorMcpFailure> {
-    const requestedInstanceId = input.target?.providerInstanceId;
     const requestedDriver = input.target?.driverKind;
     const orchestrationCapableInstanceIds = yield* loadOrchestrationCapableInstanceIds();
+    const requestedInstanceId =
+      input.target?.providerInstanceId === undefined
+        ? undefined
+        : yield* resolvePoolTarget({
+            requestedInstanceId: input.target.providerInstanceId,
+            projectId: input.parent.thread.projectId,
+            driver: requestedDriver,
+            model: input.target.model,
+            seedKey: input.seedKey,
+            getSettings: serverSettings.getSettings,
+            providers: Effect.succeed(input.providers),
+            skipProjectEnablementFilter: input.skipProjectEnablementFilter,
+            unusableReason: (provider) =>
+              providerConstraints(
+                provider,
+                orchestrationCapableInstanceIds.has(provider.instanceId),
+              ).join(" ") || null,
+          }).pipe(Effect.mapError((error) => failure("provider_unavailable", error.message)));
     let instanceId = requestedInstanceId;
 
     if (instanceId === undefined && requestedDriver !== undefined) {
@@ -2850,6 +2876,7 @@ const make = Effect.gen(function* () {
         providers,
         cwd: yield* parentWorkspaceCwd(parent),
         skipProjectEnablementFilter: isRetryOfAcceptedDelegation,
+        seedKey: commandId,
       });
       const runtimeMode = yield* resolveRuntimeMode(
         parent.thread.runtimeMode,
@@ -3225,6 +3252,7 @@ const make = Effect.gen(function* () {
                 providers,
                 cwd,
                 skipProjectEnablementFilter: isRetryOfAcceptedCreation,
+                seedKey: commandId,
               });
               const runtimeMode = yield* resolveRuntimeMode(
                 parent.thread.runtimeMode,

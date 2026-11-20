@@ -32,6 +32,8 @@ import type * as ProviderHost from "@t3tools/provider-core/server/ProviderHost";
 import type * as BackgroundPolicy from "../background/BackgroundPolicy.ts";
 import * as ServerConfig from "../config.ts";
 import type * as PortScanner from "../preview/PortScanner.ts";
+import * as HomeProvisioner from "../fork/homeProvisioner/homeProvisionerLayer.ts";
+import { withProviderProcessIdentity } from "../fork/instanceIdentity.ts";
 
 type ProviderInstanceRegistryHydrationEnv =
   | Exclude<
@@ -200,7 +202,10 @@ export const layer: Layer.Layer<
     // Instances of drivers the policy leaves out stay listed, as unavailable, so their threads
     // explain why instead of losing their provider.
     const layerMutable = ProviderInstanceRegistry.layer({
-      drivers: BUILT_IN_DRIVERS,
+      drivers: withProviderProcessIdentity(
+        BUILT_IN_DRIVERS,
+        (yield* ServerConfig.ServerConfig).dbPath,
+      ),
       configMap: initialConfigMap,
       blockedReason: (driver) =>
         ManagedProviders.disallowedDriverReason(serverSettings.managedPolicy, driver),
@@ -212,9 +217,10 @@ export const layer: Layer.Layer<
       Layer.provide(SecretResolver.layer),
     );
 
-    return layerSettingsWatcher(settingsChanges, initialSettings).pipe(
-      Layer.provideMerge(layerMutable),
-    );
+    return Layer.merge(
+      layerSettingsWatcher(settingsChanges, initialSettings),
+      HomeProvisioner.layer(deriveProviderInstanceConfigMap),
+    ).pipe(Layer.provideMerge(layerMutable));
   }),
 ) as Layer.Layer<
   | ProviderInstanceRegistry.ProviderInstanceRegistry
