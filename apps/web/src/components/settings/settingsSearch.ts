@@ -12,7 +12,7 @@ import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import * as Schema from "effect/Schema";
 import { decodeMsg, msg, useMessages } from "gt-react";
 import { TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "../../appearanceFonts";
-import { FORK_SETTING_TITLES } from "../../fork/forkCopy";
+import { FORK_SETTING_TITLES, WORK_AREA_COPY } from "../../fork/forkCopy";
 import { writeLocalStorageValue } from "../../hooks/useLocalStorage";
 import type { MessageResolver } from "../../i18n/messages";
 import { commandLabel } from "./KeybindingsSettings.logic";
@@ -1219,7 +1219,7 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "browser-auto-show-floating-preview",
-    title: msg("Auto-show floating preview"),
+    title: WORK_AREA_COPY.agentPreviewTitle,
     to: "/settings/browser",
     searchTerms: [msg("agent opens browser device simulator pop into view hide")],
   },

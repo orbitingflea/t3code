@@ -5,7 +5,7 @@ import { T, useGT } from "gt-react";
 import { Children, cloneElement, isValidElement, type ReactNode } from "react";
 import { matchInlineSkills } from "@t3tools/shared/inlineSkills";
 
-import { useRightPanelStore } from "~/rightPanelStore";
+import { type ChatFileOpener, useChatFileOpener } from "~/fork/workArea/chatFileOpener";
 import { SKILL_CHIP_ICON_SVG } from "../composerInlineChip";
 import { ContextChipPopover } from "../contextChipParts";
 import { Button } from "../ui/button";
@@ -18,6 +18,7 @@ function SkillInlineText(props: {
   threadRef: ScopedThreadRef | undefined;
   environmentId: EnvironmentId | null;
 }) {
+  const fileOpener = useChatFileOpener(props.threadRef);
   const chips: Array<{ start: number; end: number; node: ReactNode }> = [];
   for (const { start, end, skill, rawText } of matchInlineSkills(props.text, props.skills)) {
     chips.push({
@@ -29,7 +30,7 @@ function SkillInlineText(props: {
           label={formatProviderSkillDisplayName(skill)}
           description={skillPopoverDescription(skill)}
           copyMarkdown={rawText}
-          onViewInstructions={skillInstructionsOpener(props.threadRef, skill)}
+          onViewInstructions={skillInstructionsOpener(fileOpener, skill)}
         />
       ),
     });
@@ -112,11 +113,11 @@ export function skillPopoverDescription(
 }
 
 export function skillInstructionsOpener(
-  threadRef: ScopedThreadRef | null | undefined,
+  fileOpener: ChatFileOpener | null,
   skill: Pick<ServerProviderSkill, "path"> | undefined,
 ) {
-  if (!threadRef || !skill?.path) return undefined;
-  return () => useRightPanelStore.getState().openFile(threadRef, skill.path);
+  if (!fileOpener || !skill?.path) return undefined;
+  return () => fileOpener().openFile(skill.path);
 }
 
 export function SkillChipPopover(props: {

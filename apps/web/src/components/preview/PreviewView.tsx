@@ -113,6 +113,7 @@ import {
 import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 import { observeResize } from "~/lib/observeResize";
+import { useRightPanelPane } from "~/fork/workArea/tabStrip";
 
 interface Props {
   threadRef: ScopedThreadRef;
@@ -203,6 +204,8 @@ export function PreviewView({
   const miniPlayerTabId = usePreviewMiniPlayerStore((state) =>
     selectThreadPreviewMiniPlayerTabId(state.byThreadKey, threadRef),
   );
+  // A work-area pane hides the browser's mini player, so floating from a pane shows nothing.
+  const inWorkArea = useRightPanelPane() !== null;
   const addPreviewAnnotation = useComposerDraftStore((store) => store.addPreviewAnnotation);
   const addImage = useComposerDraftStore((store) => store.addImage);
   const environmentHttpBaseUrl = useEnvironmentHttpBaseUrl(threadRef.environmentId);
@@ -1025,7 +1028,9 @@ export function PreviewView({
         captureDisabled={!desktopOverlay || isUnreachable}
         recording={recordingRuntimeTabId !== null}
         onPictureInPicture={
-          tabId && (isServerTab || previewBridge) ? handlePictureInPicture : undefined
+          tabId && (isServerTab || previewBridge) && !inWorkArea
+            ? handlePictureInPicture
+            : undefined
         }
         pictureInPicture={miniPlayerTabId === tabId}
         pictureInPictureDisabled={

@@ -12,9 +12,9 @@ import type {
 } from "@t3tools/contracts";
 import { AsyncResult } from "effect/reactivity";
 
+import { revealServerTabs } from "../../fork/workArea/agentBrowserReveal";
 import { getClientSettings } from "../../hooks/useSettings";
 import {
-  browserMiniPlayerSource,
   type PreviewMiniPlayerSource,
   usePreviewMiniPlayerStore,
 } from "../../previewMiniPlayerStore";
@@ -29,32 +29,6 @@ import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { deviceEnvironment } from "../../state/device";
 import { readEnvironmentSupportsServerBrowser } from "../../state/entities";
 import { environmentSummaries } from "../../state/presentation";
-
-/**
- * Shows browsers an agent or another client revealed for a thread: floating
- * over chat, or focusing an existing panel tab when the reveal is forced.
- */
-export function revealServerTabs(
-  threadRef: ScopedThreadRef,
-  sessions: ReadonlyArray<PreviewSessionSnapshot>,
-  options: { readonly autoShowFloatingPreview: boolean },
-): void {
-  if (!readEnvironmentSupportsServerBrowser(threadRef.environmentId)) return;
-  for (const session of sessions) {
-    const force = session.revealRequest?.force === true;
-    if (!options.autoShowFloatingPreview && !force) continue;
-    const surface = useRightPanelStore
-      .getState()
-      .byThreadKey[scopedThreadKey(threadRef)]?.surfaces.find(
-        (surface) => surface.kind === "preview" && surface.resourceId === session.tabId,
-      );
-    if (surface && force) {
-      useRightPanelStore.getState().revealSurface(threadRef, surface.id);
-    } else if (!surface) {
-      usePreviewMiniPlayerStore.getState().open(threadRef, browserMiniPlayerSource(session.tabId));
-    }
-  }
-}
 
 /**
  * Keeps a thread's browser panel tabs and floating browser in step with its
@@ -104,7 +78,7 @@ function followThread(threadKey: string, threadRef: ScopedThreadRef): () => void
   return appAtomRegistry.subscribe(atom, (next) => {
     const before = previous;
     previous = next;
-    // Reveals run first so a revealed tab floats before it gains a panel tab.
+    // Reveals run first so a revealed browser is shown before the list adds it in the background.
     const revealed = freshlyRevealedServerTabs(before, next);
     if (revealed.length > 0) {
       revealServerTabs(threadRef, revealed, {

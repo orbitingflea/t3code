@@ -27,6 +27,7 @@ const SIDE_CHAT_PANE_COMMANDS: ReadonlySet<KeybindingCommand> = new Set([
   "rightPanel.toggle",
   "rightPanel.close",
   "rightPanel.toggleMaximized",
+  "terminal.toggle",
 ]);
 
 interface ChatShortcutsInput {

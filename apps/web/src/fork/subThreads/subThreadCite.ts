@@ -7,10 +7,11 @@ import type { ChatComposerHandle } from "../../components/chat/ChatComposer";
 import { toastManager } from "../../components/ui/toast";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelection";
-import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../../rightPanelLayout";
-import { selectActiveRightPanel, useRightPanelStore } from "../../rightPanelStore";
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import type { CiteAssistantText } from "../dashboard/dashboardCitation";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
+import { shownSurfaces } from "../workArea/workAreaGeometry.logic";
+import { currentWorkAreaView } from "../workArea/workAreaView";
 import { openSubThread, type SubThreadSummary, useSubThreadSummaries } from "./subThreadsState";
 
 type CiteComposer = RefObject<Pick<
@@ -23,8 +24,6 @@ interface ReplyBox {
   readonly composer: CiteComposer;
 }
 
-// Set while a Cite opens the Replies sheet; the sheet's next initial focus takes it.
-let sheetLeavesFocusToCite = false;
 const replyBoxByThreadKey = new Map<string, ReplyBox>();
 
 export function registerReplyBox(
@@ -58,17 +57,6 @@ function citeInto(
   return inserted;
 }
 
-/**
- * Opens as the user's own panel choice, so a waiting automatic Diff cannot replace it, and with no
- * focus request, so focus stays with the quote's comment box.
- */
-function openReplyBoxBesideMainList(threadRef: ScopedThreadRef, first: string): void {
-  const panel = useRightPanelStore.getState();
-  panel.markUserAction(threadRef);
-  panel.setMaximized(threadRef, false);
-  openSubThread(threadRef, first, true);
-}
-
 export function citeInThread(
   threadRef: ScopedThreadRef,
   cited: string,
@@ -78,24 +66,24 @@ export function citeInThread(
 ): boolean {
   if (hasText(own)) return citeInto(own, citation, sourceAnchor);
   const threadKey = scopedThreadKey(threadRef);
-  const repliesOnScreen =
-    selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, threadRef) === "replies";
+  // Any drawn pane: a Cite from the chat leaves Replies in a pane the user is not working in.
+  const repliesOnScreen = shownSurfaces(
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef),
+    currentWorkAreaView(),
+  ).some((surface) => surface.kind === "replies");
   const shown = repliesOnScreen ? replyBoxByThreadKey.get(threadKey) : undefined;
   if (shown && hasText(shown.composer)) return citeInto(shown.composer, citation, sourceAnchor);
   if (shown?.first !== cited) {
-    sheetLeavesFocusToCite = window.matchMedia(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY).matches;
-    // A sync commit runs its passive effects before returning, so the box has loaded its draft.
-    flushSync(() => openReplyBoxBesideMainList(threadRef, cited));
+    // A user open, so a waiting automatic Diff cannot replace it. A sync commit runs its passive
+    // effects before returning, so the box has loaded its draft.
+    flushSync(() => openSubThread(threadRef, cited));
   }
   const box = replyBoxByThreadKey.get(threadKey);
   if (box?.first !== cited) {
-    sheetLeavesFocusToCite = false;
     toastManager.add({ type: "warning", title: "Could not open the reply box" });
     return false;
   }
-  const inserted = citeInto(box.composer, citation, sourceAnchor);
-  if (!inserted) sheetLeavesFocusToCite = false;
-  return inserted;
+  return citeInto(box.composer, citation, sourceAnchor);
 }
 
 /** A main-list Cite goes to a message's Replies only once it has replies; else it stays in the main box. */
@@ -113,14 +101,4 @@ export function useSubThreadCite(
       ? citeInThread(routingThreadRef, citation.messageId, composer, citation, sourceAnchor)
       : citeInto(composer, citation, sourceAnchor),
   );
-}
-
-/**
- * The right panel sheet's initial focus. When a Cite opened the sheet, focus is left to the
- * quote's comment box; otherwise the sheet focuses as usual.
- */
-export function sheetInitialFocus(): boolean {
-  const leave = sheetLeavesFocusToCite;
-  sheetLeavesFocusToCite = false;
-  return !leave;
 }

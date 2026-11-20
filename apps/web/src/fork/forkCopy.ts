@@ -27,3 +27,22 @@ export const RIGHT_PANEL_SETTINGS_COPY = {
   visibilityOf: (label: string) => `${label}: shown or hidden`,
   letterOf: (label: string) => `${label}: menu letter`,
 };
+
+// Keybinding labels for commands that act only on the pull request and issue pages.
+const COMMAND_LABELS: Readonly<Partial<Record<string, string>>> = {
+  "rightPanel.toggle": "Right Panel: Toggle (Pull Requests and Issues)",
+  "rightPanel.toggleMaximized": "Right Panel: Toggle Maximized (Pull Requests and Issues)",
+};
+
+export const WORK_AREA_COPY = {
+  chat: "Chat",
+  splitRight: "Split right",
+  splitDown: "Split down",
+  missingThread: "This thread was archived or deleted.",
+  resizePanes: "Resize panes",
+  agentPreviewSetting:
+    "Show a browser an agent opens as a tab, and a device as a floating preview, unless the agent says otherwise.",
+  agentPreviewTitle: "Auto-show agent browsers and devices",
+  agentPreviewReset: "Reset auto-show agent browsers and devices to default",
+  commandLabels: COMMAND_LABELS,
+};

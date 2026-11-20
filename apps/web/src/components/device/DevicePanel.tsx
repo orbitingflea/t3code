@@ -41,6 +41,7 @@ import {
 } from "./DeviceSetup";
 import { DeviceWorkspace } from "./DeviceWorkspace";
 import { PreviewPanelShell, type PreviewPanelMode } from "../preview/PreviewPanelShell";
+import { useRightPanelPane } from "../../fork/workArea/tabStrip";
 
 const deviceKey = (device: Pick<DeviceSummary, "hostId" | "id">) =>
   `${device.hostId}\u0000${device.id}`;
@@ -54,6 +55,8 @@ export function DevicePanel(props: {
 }) {
   const { environmentId, threadId } = props.threadRef;
   const gt = useGT();
+  // A work-area pane hides the device's mini player, so floating from a pane shows nothing.
+  const inWorkArea = useRightPanelPane() !== null;
   const { state, loaded, error: stateError, refresh: refreshState } = useDeviceState(environmentId);
   const list = useAtomCommand(deviceEnvironment.list, { reportFailure: false });
   const open = useAtomCommand(deviceEnvironment.open);
@@ -259,7 +262,7 @@ export function DevicePanel(props: {
                 diagnostics.find(({ hostId }) => hostId === activeDevice.hostId)?.detail
               }
               visible={props.visible}
-              onFloat={floatActive}
+              onFloat={inWorkArea ? undefined : floatActive}
               onClose={() => closeActive(false)}
               onPowerOff={() => closeActive(true)}
             />

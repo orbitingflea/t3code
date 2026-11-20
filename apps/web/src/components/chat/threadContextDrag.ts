@@ -2,6 +2,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { type RefObject, useEffect, useEffectEvent, useSyncExternalStore } from "react";
 
 import type { ThreadContextDropRef } from "./threadContextDrop.logic";
+import * as workAreaDrag from "../../fork/workArea/threadDragFallback";
 
 export const THREAD_CONTEXT_DROP_EVENT = "t3-thread-context-drop";
 
@@ -66,8 +67,8 @@ let overTarget: HTMLElement | null = null;
 
 function findDropTarget(point: { x: number; y: number }): HTMLElement | null {
   return (
-    document
-      .elementFromPoint(point.x, point.y)
+    workAreaDrag
+      .elementFromPointUnderShield(point)
       ?.closest<HTMLElement>(`[${DROP_TARGET_ATTRIBUTE}]`) ?? null
   );
 }
@@ -82,12 +83,14 @@ export function moveThreadContextDrag(
     target?.setAttribute(DROP_OVER_ATTRIBUTE, "true");
     overTarget = target;
   }
+  workAreaDrag.moveThreadDragFallback(target ? null : point);
   setGhost({ x: point.x, y: point.y, ...label });
 }
 
 export function endThreadContextDrag() {
   overTarget?.removeAttribute(DROP_OVER_ATTRIBUTE);
   overTarget = null;
+  workAreaDrag.endThreadDragFallback();
   setGhost(null);
 }
 
@@ -96,7 +99,8 @@ export function dropThreadContext(
   threads: ReadonlyArray<ThreadContextDropRef>,
 ): boolean {
   const target = findDropTarget(point);
-  if (!target || threads.length === 0) return false;
+  if (threads.length === 0) return false;
+  if (!target) return workAreaDrag.dropOnThreadDragFallback(point, threads);
   target.dispatchEvent(new CustomEvent(THREAD_CONTEXT_DROP_EVENT, { detail: threads }));
   return true;
 }

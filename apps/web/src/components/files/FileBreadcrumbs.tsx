@@ -34,8 +34,8 @@ import { useProjectEntriesQuery } from "./projectFilesQueryState";
 interface FileBreadcrumbsProps {
   readonly cwd: string;
   readonly environmentId: EnvironmentId;
-  /** Navigates to a folder; an empty path is the workspace root. */
-  readonly onNavigateFolder: (relativePath: string) => void;
+  /** Navigates to a folder; an empty path is the workspace root. Absent, folders are plain text. */
+  readonly onNavigateFolder: ((relativePath: string) => void) | undefined;
   readonly onOpenFile: (relativePath: string) => void;
   readonly projectName: string;
   /** Current path; an empty path is the workspace root. */
@@ -334,7 +334,7 @@ export function FileBreadcrumbs(props: FileBreadcrumbsProps) {
                     pathLabel={crumb.path || props.projectName}
                   />
                 </span>
-              ) : hostPath && !isListableHostFolder(crumb.path) ? (
+              ) : (hostPath && !isListableHostFolder(crumb.path)) || !props.onNavigateFolder ? (
                 <BreadcrumbLabel label={crumb.label} pathLabel={crumb.path} />
               ) : (
                 <FolderBreadcrumb

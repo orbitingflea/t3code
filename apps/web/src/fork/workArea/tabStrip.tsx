@@ -21,27 +21,30 @@ import type { PreviewPanelShell } from "~/components/preview/PreviewPanelShell";
 import { workspaceAreaProps } from "~/lib/workspaceFocus";
 import type { RightPanelSurface } from "~/rightPanelStore";
 
-import type { PaneSide, SplitMenuAction } from "./splitLayout.logic";
+import type { PaneId } from "./workArea.logic";
+import type { PaneEdges } from "./workAreaGeometry.logic";
+
+export type PaneMenuAction = "split-right" | "split-down";
 
 /** Split entries for a tab's context menu. */
 export interface RightPanelTabMenu {
-  readonly items: (surface: RightPanelSurface) => ContextMenuItem<SplitMenuAction>[];
-  readonly select: (action: SplitMenuAction, surface: RightPanelSurface) => void;
+  readonly items: (surface: RightPanelSurface) => ContextMenuItem<PaneMenuAction>[];
+  readonly select: (action: PaneMenuAction, surface: RightPanelSurface) => void;
 }
 
-export interface TabDragData {
+interface TabDragData {
   readonly kind: "tab";
   readonly title: string;
-  readonly pane: PaneSide | null;
 }
 
 /**
- * What a `RightPanelTabs` inside ChatView's split view knows about its pane. Absent on the Pull
- * requests page. Inside it, one drag context spans every strip, so a tab can leave its strip.
+ * What a `RightPanelTabs` inside the work area knows about its pane. Absent on the Pull requests
+ * page. Inside it, one drag context spans every strip, so a tab can leave its strip.
  */
-export interface RightPanelPane {
-  /** Null for the only pane. */
-  readonly side: PaneSide | null;
+interface RightPanelPane {
+  readonly id: PaneId;
+  /** Which window edges the pane touches: title-bar ownership and corner insets follow them. */
+  readonly edges: PaneEdges;
   readonly focused: boolean;
   readonly tabMenu: RightPanelTabMenu;
   /** Runs before a press activates its tab, so a drop can give the pane back what it showed. */
@@ -54,8 +57,34 @@ export function useRightPanelPane(): RightPanelPane | null {
   return useContext(RightPanelPaneContext);
 }
 
-export function useTabDragData(title: string): TabDragData {
-  return { kind: "tab", title, pane: useRightPanelPane()?.side ?? null };
+export function tabDragData(title: string): TabDragData {
+  return { kind: "tab", title };
+}
+
+/**
+ * A strip's close entries for the work area's Chat tabs: the last Chat never closes, and bulk closes
+ * skip Chats, so an entry that would close only Chats is off. Without Chats the entries are as given.
+ */
+export function withChatClosing<T extends string>(
+  items: readonly ContextMenuItem<T>[],
+  surface: RightPanelSurface,
+  strip: readonly RightPanelSurface[],
+): ContextMenuItem<T>[] {
+  const index = strip.findIndex((entry) => entry.id === surface.id);
+  const bulk = new Map<string, readonly RightPanelSurface[]>([
+    ["close-others", strip.filter((entry) => entry.id !== surface.id)],
+    ["close-to-right", strip.slice(index + 1)],
+    ["close-all", strip],
+  ]);
+  return items.map((item) => {
+    if (item.id === "close") {
+      return surface.kind === "chat" && !surface.closable ? { ...item, disabled: true } : item;
+    }
+    const closing = bulk.get(item.id);
+    return closing === undefined
+      ? item
+      : { ...item, disabled: !closing.some((entry) => entry.kind !== "chat") };
+  });
 }
 
 /** Close, mute and the rename input: a press on them neither activates nor drags. */
@@ -141,23 +170,19 @@ export function useTabDragSensors() {
   );
 }
 
-const PANE_LABELS: Record<PaneSide, string> = { left: "Left pane", right: "Right pane" };
-
 /**
- * What a split view's `RightPanelTabs` renders instead of its own `PreviewPanelShell`; the split
- * view owns the one shell. Only the focused pane is a workspace area, so programmatic focus never
- * lands in the other one.
+ * What a work-area pane's `RightPanelTabs` renders instead of its own `PreviewPanelShell`. Only the
+ * focused pane is the "panel" area, so programmatic focus lands there; F6 visits the others too.
  */
 export function SplitPaneFrame(props: ComponentProps<typeof PreviewPanelShell>) {
   const pane = useRightPanelPane();
-  const label = pane?.side ? PANE_LABELS[pane.side] : (props.workspaceLabel ?? "Workspace panel");
-  const area =
-    props.workspaceArea && pane?.focused !== false
-      ? {
-          ...workspaceAreaProps("panel", 4, label),
-          "data-workspace-focus-key": props.workspaceFocusKey,
-        }
-      : { role: "region", "aria-label": label };
+  const label = props.workspaceLabel ?? "Workspace panel";
+  const area = props.workspaceArea
+    ? {
+        ...workspaceAreaProps(pane?.focused === false ? "pane" : "panel", 4, label),
+        "data-workspace-focus-key": props.workspaceFocusKey,
+      }
+    : { role: "region", "aria-label": label };
   return (
     <div
       {...area}

@@ -130,8 +130,12 @@ export function useRightPanelSurfaceClose(input: {
   };
   const labelFor = (terminalId: string) =>
     terminalLabelsById.get(terminalId) ?? getTerminalLabel(terminalId, m);
-  const closeSurfaces = (toClose: readonly RightPanelSurface[]) => {
+  const closeSurfaces = (toClose: readonly RightPanelSurface[], afterClose?: () => void) => {
     if (!threadRef) return;
+    const finish = () => {
+      finishClose(toClose);
+      afterClose?.();
+    };
     closeAfterAgentBrowserConfirmation(toClose, () => {
       const labels = readEnvironmentScope(threadRef.environmentId, AuthTerminalOperateScope)
         ? toClose.flatMap((surface) =>
@@ -140,11 +144,11 @@ export function useRightPanelSurfaceClose(input: {
         : [];
       const [first, ...rest] = labels;
       if (first === undefined) {
-        finishClose(toClose);
+        finish();
         return;
       }
       void confirmTerminalClose([first, ...rest]).then((confirmed) => {
-        if (confirmed) finishClose(toClose);
+        if (confirmed) finish();
       });
     });
   };
@@ -183,8 +187,9 @@ export function useRightPanelSurfaceClose(input: {
       closeSurfaces(strip.slice(surfaceIndex + 1));
     },
   );
-  const closeAllSurfaces = useStableCallback((strip: readonly RightPanelSurface[] = surfaces) =>
-    closeSurfaces(strip),
+  const closeAllSurfaces = useStableCallback(
+    (strip: readonly RightPanelSurface[] = surfaces, afterClose?: () => void) =>
+      closeSurfaces(strip, afterClose),
   );
 
   return { closeSurface, closeOtherSurfaces, closeSurfacesToRight, closeAllSurfaces };

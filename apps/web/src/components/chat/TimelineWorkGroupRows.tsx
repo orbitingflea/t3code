@@ -18,6 +18,7 @@ import { LegendList, type LegendListRef } from "@legendapp/list/react";
 import { workEntryDisplayIndicatesToolFailure } from "../../session-logic";
 import ChatMarkdown from "../ChatMarkdown";
 import { assetMediaActionsSource } from "./ChatMarkdownMedia";
+import { useChatFileOpener } from "../../fork/workArea/chatFileOpener";
 import { Minimize2Icon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { getVirtualizedScrollFadeClassName } from "../ui/scroll-area";
@@ -145,6 +146,7 @@ function useWorkGroupViewedImages(
   groupedEntries: ReadonlyArray<TimelineWorkEntry>,
 ): ReadonlyArray<WorkGroupViewedImage> {
   const { threadRef, workspaceRoot, activeThreadEnvironmentId } = use(TimelineRowCtx);
+  const fileOpener = useChatFileOpener(threadRef);
   const gt = useGT();
   const fallbackName = gt("image", { $context: "fallback name of an image without alt text" });
   const viewed = threadRef
@@ -178,6 +180,7 @@ function useWorkGroupViewedImages(
           name: asset.alt || fallbackName,
           src,
           workspaceRoot,
+          fileOpener,
         }),
       },
     };

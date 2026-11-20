@@ -1,7 +1,6 @@
 import { T } from "gt-react";
 import { type ReactNode } from "react";
 
-import { sheetInitialFocus } from "../fork/subThreads/subThreadCite";
 import { Sheet, SheetHeader, SheetPopup, SheetTitle } from "./ui/sheet";
 
 export function RightPanelSheet(props: {
@@ -24,7 +23,6 @@ export function RightPanelSheet(props: {
         side="right"
         showCloseButton={false}
         keepMounted
-        initialFocus={sheetInitialFocus}
         className="w-[min(42vw,28rem)] min-w-80 max-w-[28rem] max-[760px]:w-[min(88vw,24rem)] max-[760px]:min-w-0 wco:mt-(--workspace-topbar-height) wco:h-[calc(100%-var(--workspace-topbar-height))] wco:max-h-[calc(100%-var(--workspace-topbar-height))]"
       >
         <SheetHeader className="sr-only">

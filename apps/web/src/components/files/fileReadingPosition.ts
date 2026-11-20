@@ -12,6 +12,7 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import {
   createRevealLedger,
   fileReadingId,
+  type FileSurface,
   liveFileSurface,
   type FileReadingKey,
   type ReadingPositionOf,
@@ -156,10 +157,12 @@ export function useFileReadingPosition(input: {
     | { readonly id: string; readonly name: string; readonly mimeType: string }
     | undefined;
   readonly revealLine: number | null;
+  /** The tab when the store holds no surface for it; its object keys the line reveal. */
+  readonly surface?: FileSurface | undefined;
 }) {
   const threadKey = scopedThreadKey(input.threadRef);
-  const surface = useRightPanelStore((state) =>
-    liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
+  const surface = useRightPanelStore(
+    (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );
   const verdict = ledger.verdict(surface);
   const file =

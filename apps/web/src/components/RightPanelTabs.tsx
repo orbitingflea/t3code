@@ -36,14 +36,15 @@ import {
   AllMenuItemsHidden,
   useArrangedSurfaceActions,
 } from "~/fork/rightPanelMenu/rightPanelMenu";
-import type { SplitMenuAction } from "~/fork/rightPanelSplit/splitLayout.logic";
 import {
+  type PaneMenuAction,
   SplitPaneFrame,
+  tabDragData,
   useRightPanelPane,
-  useTabDragData,
   useTabDragSensors,
   useTabPress,
-} from "~/fork/rightPanelSplit/tabStrip";
+  withChatClosing,
+} from "~/fork/workArea/tabStrip";
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { restrictToFirstScrollableAncestor, restrictToHorizontalAxis } from "@dnd-kit/modifiers";
 import { horizontalListSortingStrategy, SortableContext, useSortable } from "@dnd-kit/sortable";
@@ -56,6 +57,7 @@ import {
   ChevronRight,
   FileDiff,
   Files,
+  MessageSquare,
   Globe2,
   MessagesSquare,
   Plus,
@@ -148,7 +150,8 @@ export interface RightPanelTabsProps {
   /** `strip` is the strip that opened the menu: one pane of a split, or every tab. */
   onCloseOtherSurfaces: (surface: RightPanelSurface, strip: readonly RightPanelSurface[]) => void;
   onCloseSurfacesToRight: (surface: RightPanelSurface, strip: readonly RightPanelSurface[]) => void;
-  onCloseAllSurfaces: (strip: readonly RightPanelSurface[]) => void;
+  /** `afterClose` runs once the strip is closed, after any confirmation. */
+  onCloseAllSurfaces: (strip: readonly RightPanelSurface[], afterClose?: () => void) => void;
   onMoveSurface?: (surfaceId: string, toIndex: number) => void;
   onCopyFilePath: (relativePath: string) => void;
   onAddBrowser: () => void;
@@ -642,6 +645,8 @@ function surfaceTitle(
     case "replies":
     case "whiteboard":
       return modeSurfaceLabel(surface.kind);
+    case "chat":
+      return surface.title;
     case "preview": {
       const snapshot = surface.resourceId ? sessions[surface.resourceId] : null;
       if (!snapshot || snapshot.navStatus._tag === "Idle") return resolve(msg("Browser"));
@@ -738,6 +743,8 @@ function SurfaceIcon({
     case "replies":
     case "whiteboard":
       return <ModeSurfaceIcon kind={surface.kind} />;
+    case "chat":
+      return <MessageSquare className="size-3 shrink-0" />;
     case "device":
       return surface.target?.platform === "ios" ? (
         <AppleIcon className="size-3 shrink-0" />
@@ -995,7 +1002,7 @@ function RightPanelTab(
   } = props;
   const press = useTabPress(surface, onActivate);
   const inDragScope = useRightPanelPane() !== null;
-  const dragData = useTabDragData(props.title);
+  const dragData = tabDragData(props.title);
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: surface.id,
     disabled: props.dragDisabled,
@@ -1004,28 +1011,42 @@ function RightPanelTab(
   const sideChatShell = useQuietThreadShell(
     surface.kind === "side-chat" && props.environmentId !== null
       ? scopeThreadRef(props.environmentId, surface.threadId)
-      : null,
+      : surface.kind === "chat"
+        ? (surface.thread ?? null)
+        : null,
   );
   const title = sideChatShell?.title ?? props.title;
   const sideChatState = sideChatTabState(sideChatShell);
+  const icon = (
+    <>
+      <SurfaceIcon
+        surface={surface}
+        previewUrl={props.previewUrl}
+        previewCapturedUrl={props.previewCapturedUrl}
+        theme={props.theme}
+        environmentId={props.environmentId}
+        pullRequestStatusSeed={props.pullRequestStatusSeed}
+      />
+      {props.pending ? (
+        <span
+          className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
+          aria-hidden
+        />
+      ) : null}
+    </>
+  );
   const content = (
     <>
-      <PanelTabCloseButton label={gt("Close {title}", { title })} onClick={() => onClose(surface)}>
-        <SurfaceIcon
-          surface={surface}
-          previewUrl={props.previewUrl}
-          previewCapturedUrl={props.previewCapturedUrl}
-          theme={props.theme}
-          environmentId={props.environmentId}
-          pullRequestStatusSeed={props.pullRequestStatusSeed}
-        />
-        {props.pending ? (
-          <span
-            className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-current"
-            aria-hidden
-          />
-        ) : null}
-      </PanelTabCloseButton>
+      {surface.kind === "chat" && !surface.closable ? (
+        <span className="relative flex size-4 shrink-0 items-center justify-center">{icon}</span>
+      ) : (
+        <PanelTabCloseButton
+          label={gt("Close {title}", { title })}
+          onClick={() => onClose(surface)}
+        >
+          {icon}
+        </PanelTabCloseButton>
+      )}
       {audio === "none" || !audioRuntimeTabId ? null : (
         <Tooltip>
           <TooltipTrigger
@@ -1118,6 +1139,7 @@ function RightPanelTab(
   return (
     <div
       data-active-tab={props.active}
+      data-tab-id={surface.id}
       onMouseDown={(event) => {
         preventTabMiddleButtonDefault(event);
         press.onMouseDown(event);
@@ -1151,7 +1173,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const gt = useGT();
   const messages = useMessages();
   const focusedSurface = props.surfaces.find((surface) => surface.id === props.activeSurfaceId);
-  const ownsDesktopTitleBar = isElectron && props.mode === "inline";
+  const pane = useRightPanelPane();
+  const ownsDesktopTitleBar = isElectron && props.mode === "inline" && pane?.edges.top !== false;
   const browserProfiles = useBrowserDefaults().profiles;
   const { resolvedTheme } = useTheme();
   const tabListRef = useRef<HTMLDivElement>(null);
@@ -1182,8 +1205,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       setAddSurfaceMenuOpen(true);
     }
   });
-  // Inside ChatView's split view, which owns the shell and the split menu entries.
-  const pane = useRightPanelPane();
   const takesNewSurfaceShortcut = props.open !== false && pane?.focused !== false;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes a document keydown listener for the new surface shortcut while the panel is open
   useEffect(() => {
@@ -1320,10 +1341,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     const surfaceIndex = props.surfaces.findIndex((entry) => entry.id === surface.id);
     if (surfaceIndex < 0) return;
 
-    const items: ContextMenuItem<TabContextMenuAction | SplitMenuAction>[] = [];
+    const items: ContextMenuItem<TabContextMenuAction | PaneMenuAction>[] = [];
     if (surface.kind === "device" && props.onRenameDevice)
       items.push({ id: "rename", label: gt("Rename") });
-    if (surface.kind === "file" && surface.attachment === undefined) {
+    if (surface.kind === "file" && surface.attachment === undefined && !surface.source) {
       items.push({ id: "copy-path", label: gt("Copy path") });
     }
     const menuPreviewTabId = previewTabIdOf(surface, props.previewSessions);
@@ -1361,7 +1382,10 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       ...(pane?.tabMenu.items(surface) ?? []),
     );
 
-    const action = await api.contextMenu.show(items, { x: event.clientX, y: event.clientY });
+    const action = await api.contextMenu.show(withChatClosing(items, surface, props.surfaces), {
+      x: event.clientX,
+      y: event.clientY,
+    });
     switch (action) {
       case "rename":
         setRenamingDevice(surface.id);
@@ -1463,8 +1487,8 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   };
 
   const Frame = pane ? SplitPaneFrame : PreviewPanelShell;
-  const atLeftEdge = pane?.side !== "right";
-  const atRightEdge = pane?.side !== "left";
+  const atLeftEdge = pane?.edges.left !== false;
+  const atRightEdge = pane?.edges.right !== false;
   return (
     <Frame
       workspaceArea
@@ -1498,11 +1522,13 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
       <div
         className={cn(
           "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center gap-1 pl-2",
-          props.mode === "inline" && !props.layoutControls && atRightEdge ? "pr-28" : "pr-3",
+          props.mode === "inline" && !props.layoutControls && !pane && atRightEdge
+            ? "pr-28"
+            : "pr-3",
           ownsDesktopTitleBar && "drag-region",
           ownsDesktopTitleBar && atRightEdge && "wco:pr-(--workspace-native-controls-inset)",
           props.mode === "inline" &&
-            props.maximized &&
+            (pane ? pane.edges.top : props.maximized) &&
             atLeftEdge &&
             COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
         )}
@@ -1696,7 +1722,7 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
         {ownsDesktopTitleBar && !props.layoutControls && atRightEdge ? (
           <span aria-hidden className="hidden w-24 shrink-0 wco:block" />
         ) : null}
-        {ownsDesktopTitleBar && atRightEdge ? (
+        {ownsDesktopTitleBar && atRightEdge && !pane ? (
           <span
             aria-hidden
             className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"

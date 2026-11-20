@@ -25,10 +25,8 @@ import { requestWorkspaceContentFocus, requestWorkspaceFocus } from "../../lib/w
 import { setActivePreviewTab } from "../../previewStateStore";
 import { isBrowserSettingsReadError } from "../../browser/openFileInPreview";
 import { addBrowserSurface } from "../preview/addBrowserSurface";
-import { focusActivePanelTerminal, focusTerminal } from "../../lib/terminalFocus";
+import { focusTerminal } from "../../lib/terminalFocus";
 import { subscribePreviewAction } from "../preview/previewActionBus";
-import { floatDeviceSurface } from "../preview/agentOpenedPreviews";
-import { browserMiniPlayerSource, usePreviewMiniPlayerStore } from "../../previewMiniPlayerStore";
 import type { threadPullRequestPanelTarget } from "../pullRequest/pullRequestDetail.logic";
 import type { useDeviceState } from "../../state/device";
 import { stackedThreadToast, toastManager } from "../ui/toast";
@@ -36,13 +34,13 @@ import { openDeviceSetupDialog } from "./ChatOverlayHosts";
 import { previewEnvironment } from "../../state/preview";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
+import { closeFocusedTab } from "../../fork/workArea/workAreaCommands";
+import { fromPrimaryChat } from "../../fork/workArea/chatFileOpener";
 interface RightPanelActionsInput {
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeProject: EnvironmentProject | null;
-  readonly activeRightPanelSurface: RightPanelSurface | null;
   readonly activePreviewState: ThreadPreviewState;
   readonly deviceState: ReturnType<typeof useDeviceState>["state"];
-  readonly deviceStateLoaded: boolean;
   readonly pullRequestPanelTarget: ReturnType<typeof threadPullRequestPanelTarget> | null;
   readonly threadPanelPresentation: ThreadPanelPresentation;
   readonly isServerThread: boolean;
@@ -52,10 +50,6 @@ interface RightPanelActionsInput {
   readonly browserAvailable: boolean;
   readonly canOperatePreview: boolean;
   readonly diffOpen: boolean;
-  readonly previewPanelOpen: boolean;
-  readonly rightPanelOpen: boolean;
-  readonly canMaximizeRightPanel: boolean;
-  readonly rightPanelMaximized: boolean;
   readonly supportsPullRequests: boolean;
   readonly pullRequestsSurfaceAvailable: boolean;
   readonly gitCwd: string | null;
@@ -73,10 +67,8 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     closeRightPanelSurface,
     activeThreadRef,
     activeProject,
-    activeRightPanelSurface,
     activePreviewState,
     deviceState,
-    deviceStateLoaded,
     pullRequestPanelTarget,
     threadPanelPresentation,
     isServerThread,
@@ -85,10 +77,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     browserAvailable,
     canOperatePreview,
     diffOpen,
-    previewPanelOpen,
-    rightPanelOpen,
-    canMaximizeRightPanel,
-    rightPanelMaximized,
     supportsPullRequests,
     pullRequestsSurfaceAvailable,
     gitCwd,
@@ -105,7 +93,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
       onDiffPanelOpen?.();
     }
     if (activeThreadRef) {
-      useRightPanelStore.getState().toggle(activeThreadRef, "diff");
+      useRightPanelStore.getState().open(activeThreadRef, "diff");
     }
   };
   const onToggleDiffStable = useStableCallback(onToggleDiff);
@@ -165,31 +153,8 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
   };
   const openFileSurfaceStable = useStableCallback(openFileSurface);
-  const closePreviewPanel = () => {
-    if (activeThreadRef) {
-      if (activeRightPanelSurface?.kind === "preview" && activeRightPanelSurface.resourceId) {
-        usePreviewMiniPlayerStore
-          .getState()
-          .open(activeThreadRef, browserMiniPlayerSource(activeRightPanelSurface.resourceId));
-      } else if (activeRightPanelSurface?.kind === "device" && activeRightPanelSurface.target) {
-        floatDeviceSurface(
-          activeThreadRef,
-          { kind: "device", ...activeRightPanelSurface.target },
-          deviceStateLoaded ? deviceState : null,
-        );
-      }
-      useRightPanelStore.getState().setMaximized(activeThreadRef, false);
-      useRightPanelStore.getState().close(activeThreadRef);
-    }
-  };
-  const closePreviewPanelStable = useStableCallback(closePreviewPanel);
   const togglePreviewPanel = () => {
-    if (!activeThreadRef || !browserAvailable) return;
-    if (previewPanelOpen) {
-      closePreviewPanel();
-      return;
-    }
-    if (!canOperatePreview) return;
+    if (!activeThreadRef || !browserAvailable || !canOperatePreview) return;
     const activeTabId = activePreviewState.activeTabId;
     if (activeTabId) {
       useRightPanelStore.getState().openBrowser(activeThreadRef, activeTabId);
@@ -218,16 +183,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     }
   };
   const activateRightPanelSurfaceStable = useStableCallback(activateRightPanelSurface);
-  const toggleRightPanel = () => {
-    if (!activeThreadRef) return;
-    if (rightPanelOpen) {
-      closePreviewPanel();
-      return;
-    }
-    useRightPanelStore.getState().toggleVisibility(activeThreadRef);
-    focusActivePanelTerminal(activeThreadRef);
-  };
-  const toggleRightPanelStable = useStableCallback(toggleRightPanel);
   const toggleThreadPanel = () => {
     if (!activeThreadRef) return;
     const store = useRightPanelStore.getState();
@@ -244,17 +199,6 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     store.toggleThreadPanel(activeThreadRef, threadPanelPresentation);
   };
   const toggleThreadPanelStable = useStableCallback(toggleThreadPanel);
-  const toggleRightPanelMaximized = () => {
-    if (!canMaximizeRightPanel || !activeThreadRef) return;
-    if (!rightPanelMaximized) requestWorkspaceFocus({ area: "panel" });
-    useRightPanelStore.getState().setMaximized(activeThreadRef, !rightPanelMaximized);
-  };
-  const toggleRightPanelMaximizedStable = useStableCallback(toggleRightPanelMaximized);
-  const moveRightPanelSurface = (surfaceId: string, toIndex: number) => {
-    if (activeThreadRef)
-      useRightPanelStore.getState().moveSurface(activeThreadRef, surfaceId, toIndex);
-  };
-  const moveRightPanelSurfaceStable = useStableCallback(moveRightPanelSurface);
   const copyRightPanelFilePath = (relativePath: string) => {
     if (typeof window === "undefined" || !navigator.clipboard?.writeText) {
       toastManager.add(
@@ -291,13 +235,17 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
     if (!isServerThread || !activeThreadRef) return;
     useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    fromPrimaryChat(activeThreadRef, () =>
+      useRightPanelStore.getState().open(activeThreadRef, "diff"),
+    );
     onDiffPanelOpen?.();
   };
   const onOpenToolDiffStable = useStableCallback((target: ToolCallDiffTarget) => {
     if (!isServerThread || !activeThreadRef) return;
     useDiffPanelStore.getState().selectToolCall(activeThreadRef, target);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    fromPrimaryChat(activeThreadRef, () =>
+      useRightPanelStore.getState().open(activeThreadRef, "diff"),
+    );
     onDiffPanelOpen?.();
   });
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
@@ -312,15 +260,13 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     [embedded, togglePreviewPanelStable],
   );
 
+  // The work area has no panel to hide or maximize, so those two commands stay unbound here.
   const shortcuts = {
-    "rightPanel.toggle": () => toggleRightPanel(),
-    "rightPanel.toggleMaximized": ({ event }) => {
-      if (!event.repeat) toggleRightPanelMaximized();
-    },
     "threadPanel.toggle": () => toggleThreadPanel(),
     "rightPanel.close": ({ event }) => {
-      if (!activeRightPanelSurface) return false;
-      if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
+      if (!activeThreadRef) return false;
+      if (event.repeat) return;
+      return closeFocusedTab(activeThreadRef, closeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
   } satisfies ChatShortcutCommands;
@@ -333,18 +279,14 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
-    closePreviewPanelStable,
     copyRightPanelFilePathStable,
     createBrowserSurface,
     createBrowserSurfaceStable,
-    moveRightPanelSurfaceStable,
     onOpenToolDiffStable,
     onOpenTurnDiffStable,
     onToggleDiffStable,
     openChangesFromThreadPanelStable,
     openFileSurfaceStable,
-    toggleRightPanelMaximizedStable,
-    toggleRightPanelStable,
     toggleThreadPanelStable,
   };
 }

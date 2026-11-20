@@ -13,7 +13,6 @@ import { __setClientSettingsForTests } from "./hooks/useSettings";
 import { readThreadPreviewState, resetPreviewStateForTests } from "./previewStateStore";
 import { planNextReopen, type ReopenOwnerState, reopenClosedView } from "./reopenClosedView";
 import {
-  hostRightPanel,
   selectThreadRightPanelState,
   type ThreadRightPanelState,
   useRightPanelStore,
@@ -95,64 +94,6 @@ describe("reopenClosedView", () => {
       expect(state.activeSurfaceId).toBe(expected.id);
       expect(state.surfaces).toEqual([expected]);
       expect(openPreview).not.toHaveBeenCalled();
-    },
-  );
-
-  it.each([
-    { hosted: false, folderTrail: "packages/contracts/src" },
-    { hosted: false, folderTrail: undefined },
-    { hosted: true, folderTrail: "packages/contracts/src" },
-    { hosted: true, folderTrail: undefined },
-  ])(
-    "preserves a hidden root tab with trail $folderTrail (hosted: $hosted)",
-    async ({ hosted, folderTrail }) => {
-      const panels = useRightPanelStore.getState();
-      panels.openFile(threadRef, "apps/web/src");
-      panels.navigateFolder(threadRef, "file:apps/web/src", "", "apps/web/src");
-      panels.closeSurface(threadRef, "files");
-      const entry = useClosedViewStore.getState().entries[0]!;
-      const hostRef = hosted
-        ? { ...threadRef, threadId: "host" as ScopedThreadRef["threadId"] }
-        : threadRef;
-      const unhost = hosted ? hostRightPanel(threadRef, hostRef) : undefined;
-      try {
-        if (folderTrail === undefined) panels.open(threadRef, "files");
-        else {
-          panels.openFile(threadRef, folderTrail);
-          panels.navigateFolder(threadRef, `file:${folderTrail}`, "", folderTrail);
-        }
-        panels.close(threadRef);
-        const before = selectThreadRightPanelState(
-          useRightPanelStore.getState().byThreadKey,
-          hostRef,
-        );
-        expect(before.isOpen).toBe(false);
-        const plan = planNextReopen([entry], () => ({
-          environmentKnown: true,
-          catalogReady: true,
-          ownerExists: true,
-          sideChatExists: true,
-          shellLive: true,
-          panel: before,
-        }));
-        expect(plan.restore).toBe(entry);
-        const openPreview = vi.fn();
-        expect(
-          await reopenClosedView(plan.restore!, { openPreview, workspaceAvailable: true }),
-        ).toBe(true);
-        const after = selectThreadRightPanelState(
-          useRightPanelStore.getState().byThreadKey,
-          hostRef,
-        );
-        expect(after.isOpen).toBe(true);
-        expect(after.activeSurfaceId).toBe("files");
-        expect(after.surfaces).toEqual([
-          { kind: "files", id: "files", ...(folderTrail === undefined ? {} : { folderTrail }) },
-        ]);
-        expect(openPreview).not.toHaveBeenCalled();
-      } finally {
-        unhost?.();
-      }
     },
   );
 
