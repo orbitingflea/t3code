@@ -4,7 +4,7 @@ import { THREAD_FIND_BLOCK_TAGS } from "@t3tools/shared/threadFindText";
 
 import { observeResize } from "~/lib/observeResize";
 
-import { useFindHighlightNames } from "../../fork/subThreads/useSubThreadReveal";
+import { sharedHighlight, useFindHighlightNames } from "../../fork/subThreads/useSubThreadReveal";
 
 const THREAD_FIND_TEXT_SELECTOR = "[data-thread-find-text]";
 const THREAD_FIND_IGNORE_SELECTOR = "[data-thread-find-ignore]";
@@ -130,14 +130,9 @@ export function useThreadFindHighlights(input: {
       readSelection().onActiveRange(null);
       return;
     }
-    const clearHighlights = () => {
-      CSS.highlights.delete(names.all);
-      CSS.highlights.delete(names.active);
-    };
     rangesRef.current = [];
     if (!container || query.length === 0) {
       readSelection().onActiveRange(null);
-      clearHighlights();
       return;
     }
 
@@ -219,7 +214,7 @@ export function useThreadFindHighlights(input: {
       cache.clear();
       paintRef.current = null;
       rangesRef.current = [];
-      clearHighlights();
+      paint.release();
     };
   }, [container, query, names]);
 
@@ -356,14 +351,12 @@ function makeThreadFindHighlightPainter(
   container: HTMLElement,
   names: ReturnType<typeof useFindHighlightNames>,
 ) {
-  const inactive = new Highlight();
-  const active = new Highlight();
+  const inactive = sharedHighlight(names.all);
+  const active = sharedHighlight(names.active);
   const zoned = new Set<Range>();
   const windows = new Map<Element, Set<Range>>();
   const rangesByRow = new Map<string, Range[]>();
   let selected: Range | null = null;
-  CSS.highlights.set(names.all, inactive);
-  CSS.highlights.set(names.active, active);
   const show = (range: Range) => {
     zoned.add(range);
     if (range !== selected && foldsHiding(range, container).length === 0) inactive.add(range);
@@ -421,5 +414,9 @@ function makeThreadFindHighlightPainter(
     place(rows);
     select(selection);
   };
-  return { update, place, select };
+  const release = () => {
+    inactive.clear();
+    active.clear();
+  };
+  return { update, place, select, release };
 }

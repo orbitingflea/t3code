@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { useRef } from "react";
 
+import { captureOpenOrigin } from "~/fork/workArea/workAreaView";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useComposerDraftStore } from "../../composerDraftStore";
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -58,6 +59,7 @@ export function useSideChat(input: {
   };
   const start = async (threadRef: ScopedThreadRef, message: SideChatMessage | undefined) => {
     const { runtimeMode, modelSelection } = input.readSettings();
+    const fromOrigin = captureOpenOrigin();
     const targetThreadId = newThreadId();
     const fork = await forkSideChat({
       environmentId: threadRef.environmentId,
@@ -120,7 +122,7 @@ export function useSideChat(input: {
     } else if (modelSelection !== undefined) {
       useComposerDraftStore.getState().setModelSelection(targetRef, modelSelection);
     }
-    useRightPanelStore.getState().openThread(threadRef, targetThreadId);
+    fromOrigin(() => useRightPanelStore.getState().openThread(threadRef, targetThreadId));
     return true;
   };
   const open = async (message?: SideChatMessage) => {

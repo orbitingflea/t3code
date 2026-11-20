@@ -28,6 +28,7 @@ import { environmentAtomList } from "./environmentAtomList";
 import { primaryEnvironmentIdAtom, localEnvironmentIdAtom } from "./primaryEnvironment";
 import { environmentSession } from "./session";
 import { reuseProvidersIgnoringCheckedAt } from "./serverProviders.logic";
+import { withoutUnusedCommands } from "../fork/workArea/retiredCommands";
 
 // Subscribe to every environment's themes; primary can change without reconnecting or updating the subscription.
 export const serverEnvironment = createServerEnvironmentAtoms(connectionAtomRuntime, {
@@ -131,7 +132,7 @@ export function createShortcutKeybindingsAtom(input: {
     return environments.find(isConnectedWithConfig)?.serverConfig?.keybindings ?? null;
   });
   return Atom.make((get): ServerConfig["keybindings"] =>
-    mergeWithDefaultKeybindings(get(customAtom) ?? []),
+    withoutUnusedCommands(mergeWithDefaultKeybindings(get(customAtom) ?? [])),
   );
 }
 

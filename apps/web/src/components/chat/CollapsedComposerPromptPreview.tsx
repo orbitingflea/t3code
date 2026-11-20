@@ -25,6 +25,8 @@ import { ContextChip, ContextChipLabel } from "../ContextChip";
 import { ContextChipShell } from "../contextChipParts";
 import { PierreEntryIcon } from "./PierreEntryIcon";
 import { SkillChipIcon } from "./SkillInlineText";
+import { BoardMentionIcon } from "../../fork/whiteboard/BoardMentionChip";
+import { boardMentionParts } from "../../fork/whiteboard/markdown-whiteboard";
 
 type Theme = "light" | "dark";
 
@@ -88,8 +90,14 @@ export function CollapsedComposerPromptPreview(props: {
           <ContextChipShell
             key={key}
             kind="mention"
-            icon={<PierreEntryIcon pathValue={segment.path} kind="file" theme={props.theme} />}
-            label={fileDisplayName(segment.path)}
+            icon={
+              boardMentionParts(segment.path) ? (
+                <BoardMentionIcon />
+              ) : (
+                <PierreEntryIcon pathValue={segment.path} kind="file" theme={props.theme} />
+              )
+            }
+            label={boardMentionParts(segment.path)?.label ?? fileDisplayName(segment.path)}
           />
         );
       case "context-reference": {

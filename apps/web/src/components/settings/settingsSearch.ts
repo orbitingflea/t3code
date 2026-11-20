@@ -16,6 +16,7 @@ import { FORK_SETTING_TITLES } from "../../fork/forkCopy";
 import { writeLocalStorageValue } from "../../hooks/useLocalStorage";
 import type { MessageResolver } from "../../i18n/messages";
 import { commandLabel } from "./KeybindingsSettings.logic";
+import { isWorkAreaCommand } from "../../fork/workArea/retiredCommands";
 import type { ResolvedSettingsScope } from "./settingsScope";
 
 export type SettingsPath =
@@ -201,7 +202,8 @@ export function keybindingSearchAnchorId<Command extends KeybindingCommand>(comm
 
 const untranslated = ((message) => message) as MessageResolver;
 
-const KEYBINDING_SEARCH_ITEMS = STATIC_KEYBINDING_COMMANDS.toSorted((left, right) =>
+const SEARCHABLE_COMMANDS = STATIC_KEYBINDING_COMMANDS.filter(isWorkAreaCommand);
+const KEYBINDING_SEARCH_ITEMS = SEARCHABLE_COMMANDS.toSorted((left, right) =>
   commandLabel(left).localeCompare(commandLabel(right)),
 ).map((command) => {
   const defaultKeys = DEFAULT_KEYBINDINGS.filter((binding) => binding.command === command).map(

@@ -27,7 +27,7 @@ export function startPaletteThreadDrag(
     onStart: () => {
       flushSync(() => dispatchCommandPalette({ _tag: "SetOpen", open: false }));
     },
-    onMove: (point) => moveThreadContextDrag(point, { title, count: 1 }),
+    onMove: (point) => moveThreadContextDrag(point, { title, count: 1 }, [{ ...thread, title }]),
     onPending: () => {},
     onAbort: () => {},
     onCancel: () => {},

@@ -39,6 +39,8 @@ import { openDeviceSetupDialog } from "./ChatOverlayHosts";
 import { previewEnvironment } from "../../state/preview";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
+import { closeFocusedTab, toggleDiff, togglePreview } from "../../fork/workArea/workAreaCommands";
+import { fromPrimaryChat } from "../../fork/workArea/chatFileOpener";
 interface RightPanelActionsInput {
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeProject: EnvironmentProject | null;
@@ -108,9 +110,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     if (!diffOpen) {
       onDiffPanelOpen?.();
     }
-    if (activeThreadRef) {
-      useRightPanelStore.getState().toggle(activeThreadRef, "diff");
-    }
+    if (activeThreadRef) toggleDiff(activeThreadRef);
   };
   const onToggleDiffStable = useStableCallback(onToggleDiff);
   const createBrowserSurface = (profileId?: string, duplicateFrom?: PreviewSessionSnapshot) => {
@@ -196,6 +196,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const closePreviewPanelStable = useStableCallback(closePreviewPanel);
   const togglePreviewPanel = () => {
     if (!activeThreadRef || !browserAvailable) return;
+    if (togglePreview(activeThreadRef)) return;
     if (previewPanelOpen) {
       closePreviewPanel();
       return;
@@ -310,13 +311,17 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const onOpenTurnDiff = (runId: RunId, filePath?: string) => {
     if (!isServerThread || !activeThreadRef) return;
     useDiffPanelStore.getState().selectTurn(activeThreadRef, runId, filePath);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    fromPrimaryChat(activeThreadRef, () =>
+      useRightPanelStore.getState().open(activeThreadRef, "diff"),
+    );
     onDiffPanelOpen?.();
   };
   const onOpenToolDiffStable = useStableCallback((target: ToolCallDiffTarget) => {
     if (!isServerThread || !activeThreadRef) return;
     useDiffPanelStore.getState().selectToolCall(activeThreadRef, target);
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    fromPrimaryChat(activeThreadRef, () =>
+      useRightPanelStore.getState().open(activeThreadRef, "diff"),
+    );
     onDiffPanelOpen?.();
   });
   const onOpenTurnDiffStable = useStableCallback(onOpenTurnDiff);
@@ -331,15 +336,13 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     [embedded, togglePreviewPanelStable],
   );
 
+  // The work area has no panel to hide or maximize, so those two commands stay unbound here.
   const shortcuts = {
-    "rightPanel.toggle": () => toggleRightPanel(),
-    "rightPanel.toggleMaximized": ({ event }) => {
-      if (!event.repeat) toggleRightPanelMaximized();
-    },
     "threadPanel.toggle": () => toggleThreadPanel(),
     "rightPanel.close": ({ event }) => {
-      if (!activeRightPanelSurface) return false;
-      if (!event.repeat) closeRightPanelSurface(activeRightPanelSurface);
+      if (!activeThreadRef) return false;
+      if (event.repeat) return;
+      return closeFocusedTab(activeThreadRef, closeRightPanelSurface);
     },
     "diff.toggle": () => onToggleDiff(),
   } satisfies ChatShortcutCommands;

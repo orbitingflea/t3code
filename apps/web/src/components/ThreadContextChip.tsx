@@ -3,8 +3,9 @@ import type { ThreadContextRecord, ProjectId } from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import { useGT } from "gt-react";
-import type { DragEventHandler } from "react";
+import { type DragEventHandler, use } from "react";
 
+import { ChatOpenerContext, openThreadTabOnClick } from "~/fork/workArea/chatOpenerContext";
 import { resolveThreadOpenRoute } from "~/lib/sideChatPane";
 import { buildThreadRouteParams } from "~/threadRoutes";
 import { useProject, useThreadShell } from "~/state/entities";
@@ -40,6 +41,7 @@ export function ThreadContextChip(props: {
   const project = useProject(projectId ? scopeProjectRef(environmentId, projectId) : null);
   const title = shell?.title?.trim() || metadata?.title.trim() || props.record.title;
   const navigate = useNavigate();
+  const opener = use(ChatOpenerContext);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -52,6 +54,7 @@ export function ThreadContextChip(props: {
                 to="/$environmentId/$threadId"
                 params={{ environmentId, threadId }}
                 onClick={(event) => {
+                  if (openThreadTabOnClick(event, opener, { environmentId, threadId })) return;
                   if (shell?.lineage.sideChat !== true || event.button !== 0) return;
                   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
                   // A side chat opens as a tab beside its parent, not as its own page.

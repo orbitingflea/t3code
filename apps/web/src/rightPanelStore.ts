@@ -19,17 +19,28 @@ import {
 } from "./linkedThreadSurface";
 import type { ThreadPanelPresentation } from "./rightPanelLayout";
 import type { ChatFileAttachment } from "./types";
+import { resolveLayout, type WorkAreaLayout } from "./fork/workArea/workArea.logic";
+import { shownSurfaces } from "./fork/workArea/workAreaGeometry.logic";
 import {
-  applySplitChange,
-  isUserSplitChange,
-  mergePersistedRightPanelState,
-  persistedSplitFields,
-  reconcileSplit,
-  shownPanelKinds,
-  type RightPanelSplit,
-  type SplitChange,
-  type SplitWriteKind,
-} from "./fork/rightPanelSplit/splitLayout.logic";
+  applyWorkAreaChange,
+  type LayoutWriteKind,
+  reconcileWorkArea,
+  type WorkAreaChange,
+  writeKindOf,
+} from "./fork/workArea/workAreaPlacement.logic";
+import {
+  mergePersistedWorkArea,
+  migratedWorkArea,
+  persistedRecord,
+} from "./fork/workArea/workAreaStorage.logic";
+import {
+  addPanelHost,
+  currentOpenOrigin,
+  currentWorkAreaView,
+  panelHostOf,
+} from "./fork/workArea/workAreaView";
+import { followMiniPlayers, playingTab } from "./fork/workArea/miniPlayerFollow";
+import { closedLinkedFiles, reopenedLinkedFile } from "./fork/workArea/closedLinkedFiles";
 
 const RIGHT_PANEL_KINDS = [
   "diff",
@@ -174,7 +185,7 @@ export interface ThreadRightPanelState {
   dismissedDeviceSurfaceIds?: string[];
   maximized?: true;
   proactiveDiffTurnId?: RunId;
-  split?: RightPanelSplit;
+  workArea?: WorkAreaLayout;
 }
 
 export interface ThreadPanelVisibility {
@@ -259,7 +270,7 @@ interface RightPanelStoreState {
   ) => void;
   /** Clears the surface's pending link only while it is still `revealUrl`. */
   settlePullRequestReveal: (ref: ScopedThreadRef, surfaceId: string, revealUrl: string) => void;
-  openTerminal: (ref: ScopedThreadRef, terminalId: string) => void;
+  openTerminal: (ref: ScopedThreadRef, terminalId: string, automatic?: boolean) => void;
   splitTerminal: (
     ref: ScopedThreadRef,
     surfaceId: string,
@@ -276,7 +287,7 @@ interface RightPanelStoreState {
   closeSurfacesToRight: (ref: ScopedThreadRef, surfaceId: string) => void;
   closeAllSurfaces: (ref: ScopedThreadRef) => void;
   moveSurface: (ref: ScopedThreadRef, surfaceId: string, toIndex: number) => void;
-  updateSplit: (ref: ScopedThreadRef, change: SplitChange) => void;
+  updateWorkArea: (ref: ScopedThreadRef, change: WorkAreaChange) => void;
   reconcileBrowserSurfaces: (
     ref: ScopedThreadRef,
     tabIds: readonly string[],
@@ -466,16 +477,27 @@ const updateThreadStateMap = (
   byThreadKey: Record<string, ThreadRightPanelState>,
   threadKey: string,
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
-  kind: SplitWriteKind,
+  kind: LayoutWriteKind,
 ): Record<string, ThreadRightPanelState> => {
   const current = byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
-  const next = reconcileSplit(current, updater(current), kind);
+  const written = updater(current);
+  const next = isPullRequestsPanelKey(threadKey)
+    ? written
+    : reconcileWorkArea(
+        current,
+        written,
+        kind,
+        currentWorkAreaView(),
+        currentOpenOrigin(threadKey),
+        playingTab(threadKey),
+      );
   if (
     !next.isOpen &&
     next.activeSurfaceId === null &&
     next.surfaces.length === 0 &&
     !next.dismissedDeviceSurfaceIds?.length &&
-    next.proactiveDiffTurnId === undefined
+    next.proactiveDiffTurnId === undefined &&
+    next.workArea === undefined
   ) {
     if (!(threadKey in byThreadKey)) return byThreadKey;
     const { [threadKey]: _removed, ...rest } = byThreadKey;
@@ -509,7 +531,7 @@ type RightPanelStoreData = Pick<
 const updateThread = (
   state: RightPanelStoreData,
   threadKey: string,
-  kind: SplitWriteKind,
+  kind: LayoutWriteKind,
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
 ): RightPanelStoreData => {
   const current = state.byThreadKey[threadKey] ?? EMPTY_THREAD_STATE;
@@ -546,40 +568,50 @@ const automaticUpdate = (
 });
 
 // A side chat pane has no panel of its own, so its panel actions open in its parent's panel.
-const panelHosts = new Map<string, ScopedThreadRef>();
-
 /** Routes `guest`'s panel actions to `host`'s panel until the returned cleanup runs. */
 export function hostRightPanel(guest: ScopedThreadRef, host: ScopedThreadRef): () => void {
-  const guestKey = scopedThreadKey(guest);
-  panelHosts.set(guestKey, host);
-  return () => {
-    if (panelHosts.get(guestKey) === host) panelHosts.delete(guestKey);
-  };
+  return addPanelHost(guest, host);
 }
 
 /** The thread whose panel shows `ref`'s panel actions, so it also owns their browser tabs. */
 export function rightPanelHostRef(ref: ScopedThreadRef): ScopedThreadRef {
-  return panelHosts.get(scopedThreadKey(ref)) ?? ref;
+  return panelHostOf(scopedThreadKey(ref)) ?? ref;
 }
+
+const withWorkAreaChange = (
+  current: ThreadRightPanelState,
+  change: WorkAreaChange,
+  ref: ScopedThreadRef,
+): ThreadRightPanelState => {
+  const layout = resolveLayout(current);
+  const next = applyWorkAreaChange(
+    layout,
+    change,
+    ref,
+    currentWorkAreaView(),
+    currentOpenOrigin(scopedThreadKey(ref)),
+  );
+  return next === layout ? current : { ...current, workArea: next };
+};
 
 const userAction = (
   state: RightPanelStoreState,
   guestKey: string,
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
-  closesView = false,
+  kind: LayoutWriteKind = "user",
 ): Partial<RightPanelStoreState> => {
-  const host = panelHosts.get(guestKey);
+  const host = panelHostOf(guestKey);
   const threadKey = host === undefined ? guestKey : scopedThreadKey(host);
-  return userActionOnThread(state, threadKey, updater, closesView);
+  return userActionOnThread(state, threadKey, updater, kind);
 };
 
 const userActionOnThread = (
   state: RightPanelStoreState,
   threadKey: string,
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
-  closesView: boolean,
+  kind: LayoutWriteKind,
 ): Partial<RightPanelStoreState> => ({
-  ...updateThread(state, threadKey, closesView ? "close" : "user", (current) => {
+  ...updateThread(state, threadKey, kind, (current) => {
     const next = updater(current);
     if (next === current) return current;
     const removedDevices = current.surfaces.filter(
@@ -601,7 +633,7 @@ const userActionOnThread = (
     ...state.userActionRevisionByThreadKey,
     [threadKey]: (state.userActionRevisionByThreadKey[threadKey] ?? 0) + 1,
   },
-  ...(closesView
+  ...(kind === "close"
     ? {
         closeRevisionByThreadKey: {
           ...state.closeRevisionByThreadKey,
@@ -620,7 +652,7 @@ const closeAction = (
   state: RightPanelStoreState,
   threadKey: string,
   updater: (current: ThreadRightPanelState) => ThreadRightPanelState,
-): Partial<RightPanelStoreState> => userAction(state, threadKey, updater, true);
+): Partial<RightPanelStoreState> => userAction(state, threadKey, updater, "close");
 
 function normalizeRevealLine(line: number | undefined): number | null {
   if (line === undefined || !Number.isFinite(line)) return null;
@@ -788,7 +820,7 @@ export function migratePersistedRightPanelState(persistedState: unknown): {
                       }
                     : {}),
                   ...(validThreadState?.maximized === true ? { maximized: true as const } : {}),
-                  ...persistedSplitFields({ surfaces, activeSurfaceId }, validThreadState?.split),
+                  ...migratedWorkArea(validThreadState),
                 },
               ];
             }),
@@ -845,7 +877,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
           if (request.kind === "diff") {
             const current = selectThreadRightPanelState(state.byThreadKey, ref);
             if (current.proactiveDiffTurnId === request.turnId) return state;
-            const shownPanels = shownPanelKinds(current);
+            const shownPanels = shownSurfaces(current, currentWorkAreaView()).map(
+              (surface) => surface.kind,
+            );
             const pullRequestActive =
               shownPanels.includes("pull-request") || shownPanels.includes("pull-requests");
             opened =
@@ -1045,6 +1079,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
       openFile: (ref, requestedPath, line, options) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
+            const linked = reopenedLinkedFile(requestedPath, line);
+            if (linked) return withWorkAreaChange(current, linked, rightPanelHostRef(ref));
             if (requestedPath === ".") {
               return upsertSurface(current, singletonSurface("files"));
             }
@@ -1113,10 +1149,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             );
           }),
         ),
-      openTerminal: (ref, terminalId) =>
+      openTerminal: (ref, terminalId, automatic = false) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) =>
-            upsertSurface(current, terminalSurface(terminalId)),
+          (automatic ? automaticUpdate : userAction)(state, scopedThreadKey(ref), (current) =>
+            upsertSurface(current, terminalSurface(terminalId), !automatic),
           ),
         ),
       splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal") =>
@@ -1194,11 +1230,18 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       activateSurface: (ref, surfaceId) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) => activated(current, surfaceId)),
+          userAction(
+            state,
+            scopedThreadKey(ref),
+            (current) => activated(current, surfaceId),
+            "activate",
+          ),
         ),
       revealSurface: (ref, surfaceId) =>
         set((state) =>
-          automaticUpdate(state, scopedThreadKey(ref), (current) => activated(current, surfaceId)),
+          updateThread(state, scopedThreadKey(ref), "reveal", (current) =>
+            activated(current, surfaceId),
+          ),
         ),
       closeSurface: (ref, surfaceId) =>
         set((state) =>
@@ -1268,14 +1311,16 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             return { ...current, surfaces };
           }),
         ),
-      updateSplit: (ref, change) =>
-        set((state) =>
-          (isUserSplitChange(change) ? userAction : automaticUpdate)(
-            state,
-            scopedThreadKey(ref),
-            (current) => applySplitChange(current, change),
-          ),
-        ),
+      updateWorkArea: (ref, change) =>
+        set((state) => {
+          const threadKey = scopedThreadKey(ref);
+          const write = writeKindOf(change);
+          const updater = (current: ThreadRightPanelState) =>
+            withWorkAreaChange(current, change, ref);
+          return write === "automatic"
+            ? updateThread(state, threadKey, write, updater)
+            : userActionOnThread(state, threadKey, updater, write);
+        }),
       reconcileBrowserSurfaces: (ref, tabIds, hiddenTabIds) =>
         set((state) =>
           automaticUpdate(state, scopedThreadKey(ref), (current) => {
@@ -1290,9 +1335,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               .filter((tabId) => !knownIds.has(`browser:${tabId}`) && !hiddenTabIds?.has(tabId))
               .map((tabId) => browserSurface(tabId));
             const surfaces = [...kept, ...added];
-            const activeStillExists = surfaces.some(
-              (surface) => surface.id === current.activeSurfaceId,
-            );
+            // A null active is a focused Chat in the work area; a list update must not pick a tab.
+            const activeStillExists =
+              current.activeSurfaceId === null ||
+              surfaces.some((surface) => surface.id === current.activeSurfaceId);
             const fallbackBrowser = surfaces.find((surface) => surface.kind === "preview");
             // A closed session tab was the last surface: hide the panel rather than leave it on
             // the empty picker, as a user close would. A dropped `browser:new` placeholder does not count.
@@ -1319,9 +1365,9 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
                 (surface.kind !== "file" || surface.attachment !== undefined),
             );
             if (surfaces.length === current.surfaces.length) return current;
-            const activeStillExists = surfaces.some(
-              (surface) => surface.id === current.activeSurfaceId,
-            );
+            const activeStillExists =
+              current.activeSurfaceId === null ||
+              surfaces.some((surface) => surface.id === current.activeSurfaceId);
             return {
               ...current,
               isOpen: surfaces.length > 0 ? current.isOpen : false,
@@ -1437,7 +1483,10 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               : [
                   [
                     threadKey,
-                    { ...threadState, surfaces: threadState.surfaces.map(withoutReveal) },
+                    persistedRecord({
+                      ...threadState,
+                      surfaces: threadState.surfaces.map(withoutReveal),
+                    }),
                   ],
                 ],
           ),
@@ -1450,7 +1499,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
         ),
       }),
       migrate: migratePersistedRightPanelState,
-      merge: mergePersistedRightPanelState,
+      merge: mergePersistedWorkArea,
     },
   ),
 );
@@ -1477,6 +1526,9 @@ useRightPanelStore.subscribe((next, previous) => {
       )
         continue;
       useClosedViewStore.getState().remember({ kind: "panel-tab", threadRef, surface });
+    }
+    for (const view of closedLinkedFiles(threadRef, before, after)) {
+      useClosedViewStore.getState().remember(view);
     }
   }
 });
@@ -1531,3 +1583,5 @@ export function selectSelectedRightPanelSurface(
   const state = selectThreadRightPanelState(byThreadKey, ref);
   return state.surfaces.find((surface) => surface.id === state.activeSurfaceId) ?? null;
 }
+
+followMiniPlayers();

@@ -21,7 +21,9 @@ const state = vi.hoisted(() => ({
   linked: new Map<string, string>(),
   connected: [] as Array<string>,
 }));
-vi.mock(import("../../state/entities"), () => ({
+// The work area's chat openers read the rest of these modules.
+vi.mock(import("../../state/entities"), async (importOriginal) => ({
+  ...(await importOriginal()),
   useThreadShell: ((ref: { environmentId: string } | null) =>
     ref?.environmentId === "remote"
       ? state.remote
@@ -35,7 +37,8 @@ vi.mock(import("../../state/entities"), () => ({
   useProject: (ref: { projectId: string } | null) =>
     ref?.projectId === "essay-project" ? ({ title: "Essays" } as never) : null,
 }));
-vi.mock(import("../../state/environments"), () => ({
+vi.mock(import("../../state/environments"), async (importOriginal) => ({
+  ...(await importOriginal()),
   // The click rule reads the client setting, whose module asks for these.
   useEnvironments: (() => []) as never,
   usePrimaryEnvironment: (() => null) as never,

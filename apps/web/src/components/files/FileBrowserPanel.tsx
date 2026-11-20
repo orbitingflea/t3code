@@ -25,8 +25,8 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { useTheme } from "~/hooks/useTheme";
 import { useWorkspaceMutationRefresh } from "~/hooks/useWorkspaceMutationRefresh";
 import { useFileContextMenu, type FileContextMenuAction } from "~/fileContextMenu";
-import { fileRowPanelLink } from "~/fork/rightPanelSplit/linkSources";
-import { startPanelLinkDrag, usePanelLinkOwner } from "~/fork/rightPanelSplit/panelLinkDrag";
+import { fileRowPanelLink } from "~/fork/workArea/linkSources";
+import { startPanelLinkDrag, usePanelLinkOwner } from "~/fork/workArea/panelLinkDrag";
 import { readLocalApi } from "~/localApi";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
 import {

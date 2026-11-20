@@ -28,10 +28,11 @@ export function isInSideChatPane(target: EventTarget | null): boolean {
  * the parent through `hostRightPanel`; diff selection and the drawer are not panel state.
  */
 export interface SideChatParentPanel {
-  /** The thread whose panel shows the embedded one. */
-  readonly hostRef: ScopedThreadRef;
-  readonly openToolDiff: (target: ToolCallDiffTarget) => void;
-  readonly runShellCommand: (command: string) => void;
+  /** The thread whose panel shows the embedded one; absent in a work-area secondary Chat. */
+  readonly hostRef?: ScopedThreadRef;
+  /** Absent hides tool diff links and code-block Run, as in a work-area secondary Chat. */
+  readonly openToolDiff?: (target: ToolCallDiffTarget) => void;
+  readonly runShellCommand?: (command: string) => void;
 }
 
 /**

@@ -232,7 +232,7 @@ import {
   useEnvironmentSettings,
 } from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
-import { usePanelAnimationSettings, usePanelPresence } from "../panelAnimations";
+import { usePanelAnimationSettings } from "../panelAnimations";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useWorktreeRepositoryChoices } from "../hooks/useWorktreeRepositoryChoices";
 import { useRememberedWorktreeRepositories } from "../worktreeRepositoryChoiceStore";
@@ -318,13 +318,7 @@ import { useOpenSurfaceInMainView } from "../hooks/useOpenSurfaceInMainView";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
 import { useOpenFavoriteEditorShortcut } from "./chat/OpenInPickerShortcut";
-import {
-  PanelLayoutControls,
-  type PanelLayoutControlsProps,
-  RightPanelMaximizeControl,
-  ThreadPanelHeaderControl,
-  WorkspaceTitlebarControls,
-} from "./chat/PanelLayoutControls";
+import { PanelLayoutControls, type PanelLayoutControlsProps } from "./chat/PanelLayoutControls";
 import type { ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel } from "./chat/ThreadDetailsPanel";
 import { NoActiveThreadState } from "./NoActiveThreadState";
@@ -369,7 +363,6 @@ import {
   deriveCommittedServerUserMessageIds,
   deriveTimelineWorking,
   dismissBranchMismatchForSession,
-  shouldRenderPreviewMiniPlayer,
   deriveLockedProvider,
   resolveFileAttachmentUrl,
   resolveComposerProviderSelection,
@@ -392,9 +385,14 @@ import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
-import { ChatRightPanel } from "./chat/ChatRightPanel";
-import { useSplitRendered } from "../fork/rightPanelSplit/renderedSplit";
-import { unfocusedPaneSurface } from "../fork/rightPanelSplit/splitLayout.logic";
+import { WorkArea } from "../fork/workArea/WorkArea";
+import { openInFileTab } from "../fork/workArea/workArea.logic";
+import { useWorkAreaChat } from "../fork/workArea/useWorkAreaChat";
+import { terminalTabShown } from "../fork/workArea/drawerTerminals";
+import { closeFocusedTab } from "../fork/workArea/workAreaCommands";
+import { useChatViewOpener } from "../fork/workArea/chatFileOpener";
+import { ChatOpenScope } from "../fork/workArea/ChatOpenScope";
+import { openThreadTab } from "../fork/workArea/chatOpenerContext";
 import { useModeSurfaceActions } from "../fork/dashboard/dashboardSurface";
 import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThreads/subThreadReply";
 import { useSubThreadCite } from "../fork/subThreads/subThreadCite";
@@ -474,7 +472,6 @@ export default function ChatView(props: ChatViewProps) {
     threadId,
     routeKind,
     onDiffPanelOpen,
-    reserveTitleBarControlInset = true,
     forceExpandedMobileComposer = false,
     embedded: parentPanel,
   } = props;
@@ -938,6 +935,8 @@ export default function ChatView(props: ChatViewProps) {
       ? scopeThreadRef(activeThread.environmentId, activeThread.lineage.parentThreadId)
       : null;
   const sideChatParent = useQuietThreadShell(sideChatParentRef);
+  const activeThreadRef = useActiveThreadRef(activeThread);
+  const { origin: openOrigin, opener: fileOpener } = useChatViewOpener(activeThreadRef, embedded);
   const parentThreadLink = (() => {
     if (sideChatParentRef !== null) {
       const title = sideChatParent?.title ?? gt("Parent thread");
@@ -947,6 +946,7 @@ export default function ChatView(props: ChatViewProps) {
         title,
         sideChat: true,
         open: (): void => {
+          if (openThreadTab(fileOpener, sideChatParentRef)) return;
           void navigate({
             to: "/$environmentId/$threadId",
             params: buildThreadRouteParams(sideChatParentRef),
@@ -958,7 +958,7 @@ export default function ChatView(props: ChatViewProps) {
       const title = parentSubagentThread?.title ?? gt("Parent thread");
       // Embedded in its parent's panel, the parent is the view around it.
       if (
-        parentPanel !== undefined &&
+        parentPanel?.hostRef !== undefined &&
         scopedThreadKey(parentPanel.hostRef) === scopedThreadKey(parentSubagentThreadRef)
       ) {
         return { title };
@@ -966,11 +966,11 @@ export default function ChatView(props: ChatViewProps) {
       return {
         title,
         open: (): void => {
+          const route = resolveThreadOpenRoute(parentSubagentThreadRef, parentSubagentThread);
+          if (route === parentSubagentThreadRef && openThreadTab(fileOpener, route)) return;
           void navigate({
             to: "/$environmentId/$threadId",
-            params: buildThreadRouteParams(
-              resolveThreadOpenRoute(parentSubagentThreadRef, parentSubagentThread),
-            ),
+            params: buildThreadRouteParams(route),
           });
         },
       };
@@ -985,6 +985,7 @@ export default function ChatView(props: ChatViewProps) {
         ? {}
         : {
             open: (): void => {
+              if (openThreadTab(fileOpener, parentRef)) return;
               void navigate({
                 to: "/$environmentId/$threadId",
                 params: buildThreadRouteParams(parentRef),
@@ -1068,7 +1069,6 @@ export default function ChatView(props: ChatViewProps) {
     }
     return labels;
   })();
-  const activeThreadRef = useActiveThreadRef(activeThread);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
@@ -1146,39 +1146,17 @@ export default function ChatView(props: ChatViewProps) {
   const rightPanelOpen = rightPanelState.isOpen;
   const { active: panelAnimationsActive, durationMs: panelAnimationDurationMs } =
     usePanelAnimationSettings();
-  const rightPanelPresenceValue = {
-    activeSurface: activeRightPanelSurface,
-    surfaces: rightPanelState.surfaces,
-    split: rightPanelState.split,
-  };
-  const rightPanelPresence = usePanelPresence(
-    rightPanelOpen && activeThreadRef !== null,
-    rightPanelPresenceValue,
-    panelAnimationsActive,
-    activeThreadKey,
-    panelAnimationDurationMs,
+  const workAreaChat = useWorkAreaChat(
+    rightPanelState,
+    embedded,
+    activeThreadRef,
+    activePreviewMiniPlayer?.source ?? null,
   );
-  const rightPanelPresent = rightPanelPresence.present;
-  const rightPanelControlsInPanel =
-    shouldUsePlanSidebarSheet && rightPanelPresent && rightPanelOpen;
-  const rightPanelControlsAtRoot = rightPanelPresent && !shouldUsePlanSidebarSheet;
-  const renderedRightPanelSurface = rightPanelPresence.value?.activeSurface ?? null;
-  const renderedRightPanelSurfaces = rightPanelPresence.value?.surfaces ?? [];
-  const rightPanelSplitRendered = useSplitRendered(activeThreadKey);
-  const previewMiniPlayerVisible =
-    shouldRenderPreviewMiniPlayer(
-      activePreviewMiniPlayer?.source ?? null,
-      renderedRightPanelSurface,
-    ) &&
-    shouldRenderPreviewMiniPlayer(
-      activePreviewMiniPlayer?.source ?? null,
-      rightPanelSplitRendered ? unfocusedPaneSurface(rightPanelState) : null,
-    );
+  const previewMiniPlayerVisible = workAreaChat.miniPlayerVisible;
   const canMaximizeRightPanel = rightPanelOpen;
   // An embedded side chat has no panel; a stale maximized flag would hide its own column.
   const rightPanelMaximized =
     !embedded && canMaximizeRightPanel && rightPanelState.maximized === true;
-  const inlineRightPanelOwnsTitleBar = rightPanelOpen && !shouldUsePlanSidebarSheet;
   const [threadPanelPopoverHandle] = useState(PopoverCreateHandle);
   const [chatCanvasStore] = useState(createChatCanvasStore);
 
@@ -1202,11 +1180,10 @@ export default function ChatView(props: ChatViewProps) {
     !isServerThread && draftFallback
       ? draftFallback.selection
       : activeProjectSettings.settings.defaultModelSelection;
-  useWhiteboardProject(activeProject?.workspaceRoot, activeThreadKey);
+  useWhiteboardProject(embedded ? undefined : activeProject?.workspaceRoot, activeThreadKey);
   const handleNewThreadInActiveProject = () => {
     startNewThreadForProject(activeProjectRef, handleNewThread);
   };
-  const handleNewThreadInActiveProjectStable = useStableCallback(handleNewThreadInActiveProject);
   const projectGroupingSettings = selectProjectGroupingSettings(settings);
   const activeDraftLogicalProjectKey =
     !isServerThread && activeProject
@@ -1608,7 +1585,7 @@ export default function ChatView(props: ChatViewProps) {
   const downloadFileAttachmentStable = useStableCallback(downloadFileAttachment);
   const openFileAttachment = (attachment: ChatFileAttachment) => {
     if (activeThreadRef) {
-      useRightPanelStore.getState().openAttachment(activeThreadRef, attachment);
+      fileOpener?.().openAttachment(attachment);
       return;
     }
   };
@@ -2142,13 +2119,6 @@ export default function ChatView(props: ChatViewProps) {
     visiblePullRequestCount,
     onDiffPanelOpen,
   });
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- consumes a pending maximize request from the right panel store once the panel can maximize
-  useEffect(() => {
-    if (!canMaximizeRightPanel) return;
-    if (useRightPanelStore.getState().consumeMaximizeRequest(routeThreadRef)) {
-      useRightPanelStore.getState().setMaximized(routeThreadRef, true);
-    }
-  }, [canMaximizeRightPanel, routeThreadRef]);
   const {
     closeSurface: closeRightPanelSurface,
     closeOtherSurfaces: closeOtherRightPanelSurfacesStable,
@@ -2499,17 +2469,14 @@ export default function ChatView(props: ChatViewProps) {
     addFilesSurfaceStable,
     addPullRequestSurfaceStable,
     addPullRequestsSurfaceStable,
-    closePreviewPanelStable,
     copyRightPanelFilePathStable,
     createBrowserSurface,
     createBrowserSurfaceStable,
     duplicateBrowserSurfaceStable,
-    moveRightPanelSurfaceStable,
     onOpenToolDiffStable,
     onOpenTurnDiffStable,
     openChangesFromThreadPanelStable,
     openFileSurfaceStable,
-    toggleRightPanelMaximizedStable,
     toggleRightPanelStable,
     toggleThreadPanelStable,
     shortcuts: rightPanelShortcuts,
@@ -2558,6 +2525,7 @@ export default function ChatView(props: ChatViewProps) {
     shortcuts: threadLifecycleShortcuts,
   } = useThreadLifecycle({
     environmentId,
+    openThreadTabs: fileOpener,
     routeThreadKey,
     currentRouteThreadKeyRef,
     canOperateThread,
@@ -2838,7 +2806,7 @@ export default function ChatView(props: ChatViewProps) {
 
   const getShortcutContext = (eventTarget: EventTarget | null = document.activeElement) => ({
     terminalFocus: getTerminalFocusOwner() !== null,
-    terminalOpen: Boolean(terminalUiState.terminalOpen),
+    terminalOpen: terminalTabShown(activeThreadRef),
     previewFocus: isPreviewFocused(),
     previewOpen: previewPanelOpen,
     rightPanelOpen,
@@ -2927,26 +2895,18 @@ export default function ChatView(props: ChatViewProps) {
     },
   });
 
-  const closeActiveRightPanelSurfaceStable = useStableCallback(() => {
-    if (activeRightPanelSurface) closeRightPanelSurface(activeRightPanelSurface);
+  const closeFocusedTabStable = useStableCallback(() => {
+    if (activeThreadRef) closeFocusedTab(activeThreadRef, closeRightPanelSurface);
   });
 
-  // A focused desktop browser page forwards these chords as menu actions.
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to desktop bridge menu actions that toggle or close the right panel
+  // A focused desktop browser page forwards this chord as a menu action.
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to the desktop bridge menu action that closes the focused tab
   useEffect(() => {
     if (embedded || backgroundThread) return;
     return window.desktopBridge?.onMenuAction((action) => {
-      if (action === "rightPanel.toggle") toggleRightPanelStable();
-      else if (action === "rightPanel.toggleMaximized") toggleRightPanelMaximizedStable();
-      else if (action === "rightPanel.close") closeActiveRightPanelSurfaceStable();
+      if (action === "rightPanel.close") closeFocusedTabStable();
     });
-  }, [
-    embedded,
-    backgroundThread,
-    toggleRightPanelStable,
-    toggleRightPanelMaximizedStable,
-    closeActiveRightPanelSurfaceStable,
-  ]);
+  }, [embedded, backgroundThread, closeFocusedTabStable]);
 
   usePasteToFocusComposer(embedded ? null : activeThreadId, composerRef);
   // A delegated task is a remote thread's subagent.
@@ -3461,24 +3421,6 @@ export default function ChatView(props: ChatViewProps) {
     onToggleThreadPanel: toggleThreadPanelStable,
     onToggleRightPanel: toggleRightPanelStable,
   } satisfies PanelLayoutControlsProps;
-  const panelToggleControls = (
-    <PanelLayoutControls
-      {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
-    />
-  );
-  const threadPanelHeaderControl = <ThreadPanelHeaderControl {...panelToggleControlProps} />;
-  const panelLayoutControls = (
-    <WorkspaceTitlebarControls
-      showMaximizeControl={!shouldUsePlanSidebarSheet}
-      rightPanelOpen={rightPanelOpen}
-      animationsActive={panelAnimationsActive}
-      maximized={rightPanelMaximized}
-      onToggleMaximized={toggleRightPanelMaximizedStable}
-    >
-      {panelToggleControls}
-    </WorkspaceTitlebarControls>
-  );
   const workspaceFileDropHandlers = makeWorkspaceFileDropHandlers({
     setDragActive: setIsWorkspaceFileDragActive,
     addFiles: addDroppedFilesToComposer,
@@ -3497,15 +3439,16 @@ export default function ChatView(props: ChatViewProps) {
           state={deviceState}
         />
       )}
-      {rightPanelControlsAtRoot && !embedded ? panelLayoutControls : null}
       <div
         className={cn(
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-          rightPanelMaximized ? "w-0 flex-none" : "flex-1",
+          workAreaChat.column.className,
         )}
-        data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
+        style={workAreaChat.column.style}
+        data-chat-column-maximized-away={workAreaChat.column.away ? "true" : "false"}
         data-chat-column
-        inert={rightPanelMaximized}
+        inert={workAreaChat.column.inert}
+        {...workAreaChat.columnFocus}
         onMouseUp={preventMiddleClickPasteOutsideEditable}
       >
         {embedded ? null : (
@@ -3515,24 +3458,11 @@ export default function ChatView(props: ChatViewProps) {
             className={cn(
               "relative bg-background [[data-panel-animations=true]_&]:motion-safe:transition-[padding-left] [[data-panel-animations=true]_&]:motion-safe:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:motion-safe:ease-out",
               isElectron
-                ? cn(
-                    "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5",
-                    reserveTitleBarControlInset &&
-                      !inlineRightPanelOwnsTitleBar &&
-                      "wco:pr-(--workspace-native-controls-inset)",
-                  )
+                ? "drag-region flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center px-3 sm:px-5"
                 : "flex h-[var(--workspace-topbar-height)] min-h-[var(--workspace-topbar-height)] shrink-0 items-center pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)",
               COLLAPSED_SIDEBAR_TITLEBAR_INSET_CLASS,
             )}
           >
-            {isElectron && rightPanelControlsAtRoot ? (
-              <span
-                aria-hidden
-                className="pointer-events-none fixed top-[var(--workspace-controls-top)] right-[var(--workspace-controls-right)] h-[var(--workspace-topbar-height)] w-28 [-webkit-app-region:no-drag]"
-              />
-            ) : null}
-            {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
-            {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
             <ChatHeader
               activeThreadEnvironmentId={activeThread.environmentId}
               activeThreadId={activeThread.id}
@@ -3542,8 +3472,6 @@ export default function ChatView(props: ChatViewProps) {
               activeProject={activeProject ?? null}
               parentThreadLink={headerParentThreadLink}
               onOpenThread={onOpenRelatedThreadStable}
-              rightPanelOpen={inlineRightPanelOwnsTitleBar}
-              onNewThreadInProject={handleNewThreadInActiveProjectStable}
               {...(activeDraftLogicalProjectKey
                 ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
                 : {})}
@@ -3611,7 +3539,9 @@ export default function ChatView(props: ChatViewProps) {
                   citationHistory={citationHistory}
                   onCiteAssistantText={citeAssistantTextStable}
                   onReplyToResponse={replyToResponseStable}
-                  {...(activeProject && !runsOutsideHostCheckout
+                  {...(activeProject &&
+                  !runsOutsideHostCheckout &&
+                  (parentPanel === undefined || parentPanel.runShellCommand)
                     ? { onRunShellCommand: parentPanel?.runShellCommand ?? runShellCommandStable }
                     : {})}
                   isWorking={isWorking}
@@ -3661,7 +3591,9 @@ export default function ChatView(props: ChatViewProps) {
                   routeThreadKey={displayedTimelineKey}
                   displayThreadKey={subThreadDraft ?? displayedTimelineKey}
                   announceTurnStatus={!isProviderSubagent && subThreadDraft === null}
-                  onOpenToolDiff={parentPanel?.openToolDiff ?? onOpenToolDiffStable}
+                  {...(parentPanel === undefined || parentPanel.openToolDiff
+                    ? { onOpenToolDiff: parentPanel?.openToolDiff ?? onOpenToolDiffStable }
+                    : {})}
                   // Side chat runs keep no checkpoints to diff, and a fork would promote the side chat.
                   {...(embedded
                     ? {}
@@ -4094,13 +4026,7 @@ export default function ChatView(props: ChatViewProps) {
                   keybindings={keybindings}
                   availableEditors={availableEditors}
                   showOpenInPicker={showOpenInPicker}
-                  openInShortcutEnabled={
-                    !(
-                      rightPanelOpen &&
-                      renderedRightPanelSurface?.kind === "file" &&
-                      renderedRightPanelSurface.attachment === undefined
-                    )
-                  }
+                  openInShortcutEnabled={openInFileTab(rightPanelState) === null}
                   gitCwd={gitCwd}
                   workspaceMutationId={workspaceRevision.revision}
                   isGitRepo={isGitRepo}
@@ -4176,31 +4102,21 @@ export default function ChatView(props: ChatViewProps) {
         )}
       </div>
 
-      {rightPanelPresent && activeThreadRef && !embedded ? (
-        <ChatRightPanel
-          sheet={shouldUsePlanSidebarSheet}
-          workspaceLayoutElement={workspaceLayoutElement}
-          widthStorageKey={`t3code:preview-panel-width:${activeThreadKey}`}
-          sheetAnimationDurationMs={panelAnimationsActive ? panelAnimationDurationMs : 0}
-          onCloseSheet={closePreviewPanelStable}
-          open={rightPanelOpen}
+      {activeThreadRef && !embedded ? (
+        <WorkArea
+          threadRef={activeThreadRef}
+          renderSurface={renderRightPanelSurface}
+          chatControls={
+            <PanelLayoutControls
+              {...panelToggleControlProps}
+              showTerminalControl={false}
+              showRightPanelControl={false}
+            />
+          }
+          availableEditors={availableEditors}
           keybindings={keybindings}
           getShortcutContext={getShortcutContextStable}
-          maximized={rightPanelMaximized}
-          layoutControls={
-            rightPanelOpen ? (
-              <div className="mr-px flex items-center gap-1">
-                <RightPanelMaximizeControl
-                  maximized={rightPanelMaximized}
-                  onToggle={toggleRightPanelMaximizedStable}
-                />
-                {panelToggleControls}
-              </div>
-            ) : null
-          }
-          surfaces={renderedRightPanelSurfaces}
           environmentId={activeThreadRef.environmentId}
-          activeSurfaceId={renderedRightPanelSurface?.id ?? null}
           pendingSurfaceIds={pendingFileSurfaceIds}
           previewSessions={activePreviewState.sessions}
           desktopByTabId={activePreviewState.desktopByTabId}
@@ -4216,7 +4132,6 @@ export default function ChatView(props: ChatViewProps) {
           onCloseOtherSurfaces={closeOtherRightPanelSurfacesStable}
           onCloseSurfacesToRight={closeRightPanelSurfacesToRightStable}
           onCloseAllSurfaces={closeAllRightPanelSurfacesStable}
-          onMoveSurface={moveRightPanelSurfaceStable}
           onCopyFilePath={copyRightPanelFilePathStable}
           onAddBrowser={() => createBrowserSurface()}
           onAddBrowserInProfile={createBrowserSurfaceStable}
@@ -4238,9 +4153,6 @@ export default function ChatView(props: ChatViewProps) {
           deviceAvailable={activeThreadRef !== null}
           sideChatAvailable={sideChat.available}
           sideChatDisabledReason={sideChatDisabledReason}
-          threadRef={activeThreadRef}
-          split={rightPanelPresence.value?.split}
-          renderSurface={renderRightPanelSurface}
         />
       ) : null}
 
@@ -4266,7 +4178,9 @@ export default function ChatView(props: ChatViewProps) {
       checkpoints={serverProjection?.checkpoints}
       checkpointScopes={serverProjection?.checkpointScopes}
     >
-      {content}
+      <ChatOpenScope origin={openOrigin} opener={fileOpener}>
+        {content}
+      </ChatOpenScope>
     </FileMetadataThreadProvider>
   );
 }

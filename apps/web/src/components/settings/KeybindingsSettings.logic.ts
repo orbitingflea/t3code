@@ -15,6 +15,9 @@ import {
 } from "@t3tools/shared/keybindings";
 import { msg } from "gt-react";
 
+import { WORK_AREA_COPY } from "~/fork/forkCopy";
+import { isWorkAreaCommand } from "~/fork/workArea/retiredCommands";
+
 import { m, type MessageResolver } from "../../i18n/messages";
 import {
   formatShortcutLabel,
@@ -428,9 +431,11 @@ export function buildKeybindingCommandOptions(
   for (const binding of keybindings) {
     commands.add(binding.command);
   }
-  return [...commands].toSorted((left, right) =>
-    compareCommands(left, right, (command) => commandLabel(command, resolve)),
-  );
+  return [...commands]
+    .filter(isWorkAreaCommand)
+    .toSorted((left, right) =>
+      compareCommands(left, right, (command) => commandLabel(command, resolve)),
+    );
 }
 
 const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
@@ -518,6 +523,8 @@ const LATE_COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
 };
 
 export function commandLabel(command: KeybindingCommand, resolve: MessageResolver = m): string {
+  const forkLabel = WORK_AREA_COPY.commandLabels[command];
+  if (forkLabel) return forkLabel;
   const label = COMMAND_LABELS[command];
   if (label) return resolve(label);
   const usageLabel = USAGE_COMMAND_LABELS[command as keyof typeof USAGE_COMMAND_LABELS];

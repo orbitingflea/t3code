@@ -15,6 +15,8 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 
 import { canOpenLinksInApp } from "../browser/browserLinkTarget";
 import { useOpenLink } from "../browser/useOpenLink";
+import { panelHostedElsewhere } from "../fork/workArea/chatFileOpener";
+import { captureOpenOrigin } from "../fork/workArea/workAreaView";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
 import { m } from "../i18n/messages";
@@ -179,6 +181,7 @@ export function useOpenChangeRequestLink(
       parsedCommit !== null &&
       commitThread &&
       resolvedThreadRef &&
+      !panelHostedElsewhere(resolvedThreadRef) &&
       commitProject?.environmentId === resolvedThreadRef.environmentId &&
       identity &&
       identity.provider === parsedCommit.definition.kind &&
@@ -188,6 +191,7 @@ export function useOpenChangeRequestLink(
       event.preventDefault();
       event.stopPropagation();
       const userActionRevision = useRightPanelStore.getState().markUserAction(resolvedThreadRef);
+      const fromOrigin = captureOpenOrigin();
       const baseRef = selectThreadBranchBaseRef(useDiffPanelStore.getState(), resolvedThreadRef);
       const selection = selectThreadDiffPanelSelection(
         useDiffPanelStore.getState().byThreadKey,
@@ -219,10 +223,10 @@ export function useOpenChangeRequestLink(
             )
           ) {
             useDiffPanelStore.getState().selectCommit(resolvedThreadRef, commit.sha);
-            useRightPanelStore.getState().open(resolvedThreadRef, "diff");
+            fromOrigin(() => useRightPanelStore.getState().open(resolvedThreadRef, "diff"));
             return;
           }
-          if (openPullRequest()) return;
+          if (fromOrigin(openPullRequest)) return;
           if (onCommitUnavailable) return onCommitUnavailable();
           // A popup opened after the lookup has lost the click's activation, so browsers block it.
           if (
@@ -244,10 +248,12 @@ export function useOpenChangeRequestLink(
             );
             return;
           }
-          return openLink(targetUrl, {
-            event: { metaKey: event.metaKey, ctrlKey: event.ctrlKey, button: event.button },
-            threadRef: resolvedThreadRef,
-          });
+          return fromOrigin(() =>
+            openLink(targetUrl, {
+              event: { metaKey: event.metaKey, ctrlKey: event.ctrlKey, button: event.button },
+              threadRef: resolvedThreadRef,
+            }),
+          );
         })
         .catch((error: unknown) => console.error(error));
       return true;

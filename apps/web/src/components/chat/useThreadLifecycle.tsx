@@ -81,6 +81,8 @@ import { Atom } from "effect/reactivity";
 import { environmentThreadDetails } from "../../state/threads";
 import { type SideThreadOpenIntent, sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { openSideThread, resolveThreadOpenRoute } from "../../lib/sideChatPane";
+import type { ChatFileOpener } from "../../fork/workArea/chatFileOpener";
+import { openThreadTab } from "../../fork/workArea/chatOpenerContext";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
 const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 
@@ -99,6 +101,8 @@ interface ThreadLifecycleInput {
   readonly routeThreadKey: string;
   readonly currentRouteThreadKeyRef: { readonly current: string | null };
   readonly canOperateThread: boolean;
+  /** Opens a related thread as a work-area Chat tab when allowed, instead of navigating. */
+  readonly openThreadTabs?: ChatFileOpener | null;
   readonly clientSettingsHydrated: boolean;
   readonly activeThread: EnvironmentThreadShell | undefined;
   readonly activeThreadId: ThreadId | null;
@@ -155,6 +159,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     routeThreadKey,
     currentRouteThreadKeyRef,
     canOperateThread,
+    openThreadTabs,
     clientSettingsHydrated,
     activeThread,
     activeThreadId,
@@ -524,6 +529,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
     }
     const routeRef = resolveThreadOpenRoute(threadRef, shell);
     if (scopedThreadKey(routeRef) === routeThreadKey) return;
+    if (routeRef === threadRef && openThreadTab(openThreadTabs ?? null, routeRef)) return;
     void navigate({
       to: "/$environmentId/$threadId",
       params: buildThreadRouteParams(routeRef),

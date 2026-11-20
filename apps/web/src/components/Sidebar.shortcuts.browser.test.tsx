@@ -94,7 +94,8 @@ it("leaves thread shortcuts and their hints to the preview when their rules excl
   await press();
   expect(router.history.location.pathname).toBe(firstPath);
 
-  await act(() => useRightPanelStore.getState().close(firstRef));
+  // The work area hides no tab on close, so the browser tab itself goes.
+  await act(() => useRightPanelStore.getState().closeSurface(firstRef, "browser:new"));
   await press();
   await vi.waitFor(() =>
     expect(router.history.location.pathname).toBe(`/${ENVIRONMENT_ID}/${second.id}`),

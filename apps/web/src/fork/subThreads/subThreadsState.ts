@@ -10,10 +10,8 @@ import {
   type ThreadSubThread,
 } from "@t3tools/contracts";
 import { createContext, use } from "react";
-import { create } from "zustand";
 
 import { connectionAtomRuntime } from "../../connection/runtime";
-import { useRightPanelStore } from "../../rightPanelStore";
 import { deriveTimelineEntriesFromVisibleTurnItems } from "../../session-logic";
 import { useQuietThreadVisibleTurnItems } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";
@@ -48,20 +46,7 @@ export type SubThreadSummaries = ReadonlyMap<string, SubThreadSummary>;
 
 const NO_SUMMARIES: SubThreadSummaries = new Map();
 
-interface SubThreadsStore {
-  /** The sub-thread that each thread's Replies tab shows. Without one, the tab shows the list. */
-  readonly shownByThreadKey: Readonly<Record<string, string>>;
-  readonly show: (threadKey: string, first: string | null) => void;
-}
-
-export const useSubThreadsStore = create<SubThreadsStore>((set) => ({
-  shownByThreadKey: {},
-  show: (threadKey, first) =>
-    set((state) => {
-      const { [threadKey]: _removed, ...rest } = state.shownByThreadKey;
-      return { shownByThreadKey: first === null ? rest : { ...rest, [threadKey]: first } };
-    }),
-}));
+export const firstLine = (text: string) => text.trim().split("\n", 1)[0] ?? "";
 
 type QuietItems = ReturnType<typeof useQuietThreadVisibleTurnItems>;
 // The latest summaries of each thread, so every reader of one thread shares one fold, and a
@@ -98,19 +83,6 @@ export function useSubThreadSummaries(threadRef: ScopedThreadRef | null): SubThr
 }
 
 /**
- * Opens the thread's Replies tab on one sub-thread, or on the list with `first` null. With
- * `automatic`, the user did not ask for the tab, so keyboard focus stays where it is.
- */
-export function openSubThread(
-  threadRef: ScopedThreadRef,
-  first: string | null,
-  automatic = false,
-): void {
-  useSubThreadsStore.getState().show(scopedThreadKey(threadRef), first);
-  useRightPanelStore.getState().open(threadRef, "replies", automatic);
-}
-
-/**
  * The id of the first message of the sub-thread that a chat view shows. A view inside this context
  * lists only that sub-thread, and a message sent from it is a reply there. Null is the main list.
  */
@@ -128,13 +100,21 @@ const statesBySnapshot = new WeakMap<
   ReadonlyMap<string, ThreadSubThread>
 >();
 
-/** The server's read time and summary of each sub-thread, by first message id. Not loaded: NO_STATES. */
+/**
+ * The server's read time and summary of each sub-thread, by first message id. Not loaded, or a
+ * null thread: NO_STATES.
+ */
 export function useSubThreadStates(
-  threadRef: ScopedThreadRef,
+  threadRef: ScopedThreadRef | null,
 ): ReadonlyMap<string, ThreadSubThread> {
-  const { environmentId, threadId } = threadRef;
-  const snapshot = useEnvironmentQuery(threadSubThreads({ environmentId, input: { threadId } }))
-    .data?.subThreads;
+  const snapshot = useEnvironmentQuery(
+    threadRef === null
+      ? null
+      : threadSubThreads({
+          environmentId: threadRef.environmentId,
+          input: { threadId: threadRef.threadId },
+        }),
+  ).data?.subThreads;
   if (snapshot === undefined) return NO_STATES;
   let states = statesBySnapshot.get(snapshot);
   if (states === undefined) {

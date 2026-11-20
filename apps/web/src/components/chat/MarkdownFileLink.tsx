@@ -17,8 +17,8 @@ import {
   leavesFileChipClickToBrowser,
   runHostFileLinkMenuItem,
 } from "../../fork/hostFileLinks";
-import { fileChipPanelLink } from "../../fork/rightPanelSplit/linkSources";
-import { type OpenedSurface, startPanelLinkDrag } from "../../fork/rightPanelSplit/panelLinkDrag";
+import { fileChipPanelLink } from "../../fork/workArea/linkSources";
+import { startPanelLinkDrag } from "../../fork/workArea/panelLinkDrag";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
@@ -52,12 +52,11 @@ interface MarkdownFileLinkProps {
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  /** The surface it opened in the panel, or null. */
   onOpenInPanel: (
     panelPath: string,
     line: number | undefined,
     options?: OpenFileOptions,
-  ) => OpenedSurface | Promise<OpenedSurface>;
+  ) => void | Promise<unknown>;
   resolveDragPath: () => Promise<string>;
   resolveCopyPaths: () => Promise<ReturnType<typeof markdownFileCopyPaths>>;
   openInEditorMenuLabel: string;

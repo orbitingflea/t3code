@@ -1806,7 +1806,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const threads = contextDragThreads();
     const threadRef = parseScopedThreadKey(contextDragKeyRef.current ?? "");
     const title = (threadRef && readThreadShell(threadRef)?.title.trim()) || gt("Thread");
-    moveThreadContextDragGhost(point, { title, count: threads.length });
+    moveThreadContextDragGhost(point, { title, count: threads.length }, threads);
     return true;
   };
   const dropThreadContextDrag = (point: { x: number; y: number }) => {

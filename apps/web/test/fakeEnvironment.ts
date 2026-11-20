@@ -609,6 +609,8 @@ export function installFakeEnvironment(
     readonly holdCommand?: (command: OrchestrationV2Command) => boolean;
     readonly providers?: ReadonlyArray<unknown>;
     readonly settings?: unknown;
+    /** Offers thread Find; its searches are answered with `answerRpc`. */
+    readonly threadFind?: boolean;
   },
 ): Disposable {
   threads = fixtures;
@@ -619,6 +621,7 @@ export function installFakeEnvironment(
       options?.settings,
     ),
     keybindings: options?.keybindings ?? DEFAULT_RESOLVED_KEYBINDINGS,
+    ...(options?.threadFind ? { threadFind: true } : {}),
   };
   dispatched = [];
   acceptCommands = options?.acceptCommands === true;

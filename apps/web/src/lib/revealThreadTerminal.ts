@@ -1,5 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
+import { panelHostedElsewhere } from "../fork/workArea/chatFileOpener";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { focusTerminalOnNavigation } from "./terminalFocus";
@@ -9,7 +10,8 @@ export function revealThreadTerminal(threadRef: ScopedThreadRef, terminalId: str
   const surface = selectThreadRightPanelState(panels.byThreadKey, threadRef).surfaces.find(
     (surface) => surface.kind === "terminal" && surface.terminalIds.includes(terminalId),
   );
-  if (surface) {
+  // A hosted thread's activations route to its host; the drawer follower writes its own record.
+  if (surface && !panelHostedElsewhere(threadRef)) {
     panels.activateTerminal(threadRef, surface.id, terminalId);
     panels.activateSurface(threadRef, surface.id);
     focusTerminalOnNavigation(threadRef, terminalId);

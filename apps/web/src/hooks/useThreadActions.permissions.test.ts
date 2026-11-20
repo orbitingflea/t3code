@@ -66,11 +66,15 @@ vi.mock("@tanstack/react-router", () => ({
     navigate: async () => {},
   }),
 }));
-vi.mock("../state/session", () => ({
-  environmentSession: { sessionStateAtom: "session" },
-  readEnvironmentScope: (environmentId: string, scope: string) =>
-    state.scopes.get(environmentId)?.has(scope) === true,
-}));
+vi.mock("../state/session", async () => {
+  const { Atom } = await import("effect/reactivity");
+  const session = Atom.make(null);
+  return {
+    environmentSession: { sessionStateAtom: () => session },
+    readEnvironmentScope: (environmentId: string, scope: string) =>
+      state.scopes.get(environmentId)?.has(scope) === true,
+  };
+});
 vi.mock("../state/use-atom-command", () => ({
   useAtomCommand:
     (action: string) =>
@@ -203,7 +207,7 @@ vi.mock("./useSettings", () => ({
 import { useThreadActions } from "./useThreadActions";
 
 function seedThreadPanelState(ref: ScopedThreadRef) {
-  useRightPanelStore.getState().show(ref);
+  useRightPanelStore.getState().open(ref, "diff");
   useDiffPanelStore.getState().selectGitScope(ref, "branch");
   usePreviewMiniPlayerStore.getState().open(ref, browserMiniPlayerSource("tab"));
 }

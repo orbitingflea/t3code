@@ -123,6 +123,8 @@ import {
 } from "./fileSurfaceChrome";
 import SourceFilePreview from "./ReadOnlySourcePreview";
 import { pathReadingKey, useFileReadingPosition } from "./fileReadingPosition";
+import type { FileSurface } from "../../fork/workArea/workArea.logic";
+import { inChatOrigin, useChatFileOpener } from "../../fork/workArea/chatFileOpener";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey } from "./fileContentRevision";
@@ -160,8 +162,11 @@ interface FilePreviewPanelProps {
   openInShortcutEnabled: boolean;
   revealLine: number | null;
   revealRequestId: number;
+  /** A tab the right panel store does not hold, such as a work-area linked file. */
+  revealSurface?: FileSurface | undefined;
   onOpenFile: (relativePath: string) => void;
-  onNavigateFolder: (relativePath: string, folderTrail: string, keepSource: boolean) => void;
+  /** Absent shows folder breadcrumbs as plain text. */
+  onNavigateFolder?: (relativePath: string, folderTrail: string, keepSource: boolean) => void;
   /** Retained descendant breadcrumb path after navigating up; see navigateFolder. */
   folderTrail: string | undefined;
   onPendingChange: (relativePath: string, pending: boolean) => void;
@@ -1295,6 +1300,7 @@ export default function FilePreviewPanel({
   openInShortcutEnabled,
   revealLine,
   revealRequestId,
+  revealSurface,
   onOpenFile,
   onNavigateFolder,
   folderTrail,
@@ -1325,6 +1331,7 @@ export default function FilePreviewPanel({
   const openPreview = useAtomCommand(previewEnvironment.open, {
     reportFailure: false,
   });
+  const fileOpener = useChatFileOpener(threadRef);
   const isVideo = relativePath !== null && isWorkspaceVideoPreviewPath(relativePath);
   const isAudio = relativePath !== null && !isVideo && isWorkspaceAudioPreviewPath(relativePath);
   const isImage = relativePath !== null && !isVideo && isWorkspaceImagePreviewPath(relativePath);
@@ -1413,6 +1420,7 @@ export default function FilePreviewPanel({
     relativePath: attachment === undefined ? relativePath : null,
     attachment,
     revealLine,
+    surface: revealSurface,
   });
   const revealHandled =
     revealLine === null ||
@@ -1534,7 +1542,11 @@ export default function FilePreviewPanel({
       breadcrumbTrail !== null && breadcrumbPathOf(breadcrumbTrail) === crumbPath
         ? breadcrumbTrail
         : crumbPath;
-    onNavigateFolder(path, retainedBreadcrumbTrail(breadcrumbTrail ?? undefined, path), !isFolder);
+    onNavigateFolder?.(
+      path,
+      retainedBreadcrumbTrail(breadcrumbTrail ?? undefined, path),
+      !isFolder,
+    );
   };
   const absolutePath =
     breadcrumbPath === ""
@@ -1591,7 +1603,7 @@ export default function FilePreviewPanel({
     });
   };
 
-  const handleOpenInBrowser = () => {
+  const handleOpenInBrowser = inChatOrigin(fileOpener, () => {
     if (!canReadFiles || !canOperatePreview || !absolutePath || !environmentHttpBaseUrl) return;
     void (async () => {
       const result = await openFileInPreview({
@@ -1614,7 +1626,7 @@ export default function FilePreviewPanel({
         }),
       );
     })();
-  };
+  });
 
   if (attachment === undefined && !canReadFiles) {
     if (fileAccess.isPending) {
@@ -1648,7 +1660,7 @@ export default function FilePreviewPanel({
               <FileBreadcrumbs
                 cwd={cwd}
                 environmentId={environmentId}
-                onNavigateFolder={navigateToFolder}
+                onNavigateFolder={onNavigateFolder && navigateToFolder}
                 onOpenFile={onOpenFile}
                 projectName={projectName}
                 relativePath={breadcrumbPath}

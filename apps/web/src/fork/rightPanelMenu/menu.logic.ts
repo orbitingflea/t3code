@@ -13,6 +13,7 @@ export const RIGHT_PANEL_MENU_ITEM_IDS = [
   "replies",
   "dashboard",
   "whiteboard",
+  "chat",
 ] as const;
 export type RightPanelMenuItemId = (typeof RIGHT_PANEL_MENU_ITEM_IDS)[number];
 
@@ -55,14 +56,16 @@ export interface MenuAction {
 /** The action with its letter decided here, so no longer the literal it was built with. */
 export type ArrangedAction<A> = { [K in keyof A]: K extends "shortcut" ? string : A[K] };
 
+// The action that restores the primary Chat; Settings offers no row to show it again.
+const NEVER_HIDDEN: RightPanelMenuItemId = "chat";
+
 const BUILT_IN = 0;
 const MACHINE = 1;
 const BROWSER = 2;
 
 /**
- * Per item and field: browser, else machine, else the action's own letter. Hidden items drop out.
- * A letter goes to available items before disabled ones; within each, the layer that set it wins,
- * then menu order. Items that lose show no letter.
+ * Per item and field: `browser`, else `machine`, else default. Hidden items drop out, except
+ * primary Chat. Letters prefer available items, higher layer, then menu order. Losers show none.
  */
 export function arrangeSurfaceActions<A extends MenuAction>(
   actions: ReadonlyArray<A>,
@@ -70,7 +73,8 @@ export function arrangeSurfaceActions<A extends MenuAction>(
   browser: MenuLayer,
 ): Array<ArrangedAction<A>> {
   const shown = actions.flatMap((action, order) => {
-    if (browser[action.id]?.hidden ?? machine[action.id]?.hidden ?? false) return [];
+    const hidden = browser[action.id]?.hidden ?? machine[action.id]?.hidden ?? false;
+    if (hidden && action.id !== NEVER_HIDDEN) return [];
     const browserKey = browser[action.id]?.key;
     const machineKey = machine[action.id]?.key;
     const [key, layer] =

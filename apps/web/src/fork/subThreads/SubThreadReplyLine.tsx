@@ -6,8 +6,8 @@ import { type TimelineRow, TimelineRowCtx } from "../../components/chat/timeline
 import { RelativeTime } from "../../components/RelativeTime";
 import { cn } from "../../lib/utils";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
+import { useChatFileOpener } from "../workArea/chatFileOpener";
 import {
-  openSubThread,
   type SubThreadSummary,
   SubThreadViewContext,
   unreadReplies,
@@ -51,6 +51,7 @@ function ReplyLine(props: {
   readonly bare: "always" | "wide" | undefined;
 }) {
   const { threadRef, summary } = props;
+  const opener = useChatFileOpener(threadRef);
   const states = useSubThreadStates(threadRef);
   const state = states.get(summary.first);
   const unread = unreadReplies(summary, states);
@@ -66,7 +67,7 @@ function ReplyLine(props: {
     >
       <button
         type="button"
-        onClick={() => openSubThread(threadRef, summary.first)}
+        onClick={() => opener?.().openSubThread(summary.first)}
         data-sub-thread-reply-line={summary.first}
         className="flex min-w-0 max-w-full flex-col items-start gap-0.5 rounded-r-md border-border border-l-2 py-0.5 pr-2 pl-2 text-left text-xs outline-none hover:border-info hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
@@ -110,6 +111,7 @@ export function SubThreadReplyButton(props: {
   readonly row: Extract<TimelineRow, { kind: "message" }>;
 }) {
   const subThread = useRowSubThread(props.row.id);
+  const opener = useChatFileOpener(subThread?.threadRef);
   if (
     subThread === null ||
     props.row.message.role === "user" ||
@@ -117,12 +119,12 @@ export function SubThreadReplyButton(props: {
     subThread.summary.replies > 0
   )
     return null;
-  const { threadRef, summary } = subThread;
+  const { summary } = subThread;
   return (
     <div className={cn("relative flex pointer-coarse:h-auto", fineSlotHeight(props.row))}>
       <button
         type="button"
-        onClick={() => openSubThread(threadRef, summary.first)}
+        onClick={() => opener?.().openSubThread(summary.first)}
         className="absolute top-0 left-0 z-10 inline-flex items-center gap-1 rounded-md bg-background px-1.5 text-muted-foreground text-xs opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset group-hover/assistant:opacity-100 pointer-coarse:static pointer-coarse:py-0.5 pointer-coarse:opacity-100"
       >
         <ReplyIcon className="size-3" />
@@ -139,13 +141,14 @@ export function SubThreadReplyButton(props: {
  */
 export function SubThreadMetaReply(props: { readonly messageId: string }) {
   const subThread = useRowSubThread(props.messageId);
+  const opener = useChatFileOpener(subThread?.threadRef);
   if (subThread === null || subThread.summary.replies > 0) return null;
-  const { threadRef, summary } = subThread;
+  const { summary } = subThread;
   return (
     // As tall as the meta row's xs buttons, in the time's 12px text at every width.
     <button
       type="button"
-      onClick={() => openSubThread(threadRef, summary.first)}
+      onClick={() => opener?.().openSubThread(summary.first)}
       className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-muted-foreground text-xs outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:h-6"
     >
       <ReplyIcon className="size-3" />

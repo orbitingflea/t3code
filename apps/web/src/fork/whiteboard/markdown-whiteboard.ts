@@ -42,3 +42,16 @@ export function remarkWhiteboardLinks() {
     visit(tree);
   };
 }
+
+// The board mentions the composer tokenizer makes: `[label](board://...)` with `\` escapes in the
+// label and any destination it accepts that starts `board://`, and a bare `board://...`.
+const BOARD_MENTION_REGEX = /^(?:\[((?:\\.|[^\]\\])*)\]\((board:\/\/[^)\s]*)\)|(board:\/\/\S*))$/;
+
+/** A composer mention's board reference and the label its chip shows; null for a path. */
+export function boardMentionParts(mention: string): { label: string; href: string } | null {
+  const match = BOARD_MENTION_REGEX.exec(mention);
+  const href = match?.[2] ?? match?.[3];
+  if (match === null || href === undefined) return null;
+  const label = match[1]?.replace(/\\(.)/g, "$1");
+  return { label: label || href, href };
+}

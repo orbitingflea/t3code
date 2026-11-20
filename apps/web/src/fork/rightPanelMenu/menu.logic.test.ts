@@ -38,6 +38,8 @@ describe("arrangeSurfaceActions", () => {
     disabled?: ReadonlyArray<RightPanelMenuItemId>;
     letters?: Partial<Record<RightPanelMenuItemId, string>>;
     hidden?: ReadonlyArray<RightPanelMenuItemId>;
+    // The menu also offers the Chat action, as it does while the primary Chat is closed.
+    chat?: boolean;
   }>([
     { name: "empty layers keep today's letters" },
     {
@@ -100,12 +102,23 @@ describe("arrangeSurfaceActions", () => {
       hidden: ["whiteboard"],
     },
     {
+      name: "the Chat action, which restores the primary Chat, ignores a choice to hide it",
+      chat: true,
+      machine: { chat: { hidden: true } },
+      browser: { chat: { hidden: true } },
+    },
+    {
       name: "every item can be hidden",
       machine: Object.fromEntries(TODAY.map(([id]) => [id, { hidden: true }])),
       hidden: TODAY.map(([id]) => id),
     },
-  ])("$name", ({ machine = {}, browser = {}, disabled = [], letters = {}, hidden = [] }) => {
-    const input = actions(disabled);
+  ])("$name", ({ machine = {}, browser = {}, disabled = [], letters = {}, hidden = [], chat }) => {
+    const input = [
+      ...actions(disabled),
+      ...(chat
+        ? [{ id: "chat" as const, shortcut: "", available: true, label: "chat label" }]
+        : []),
+    ];
     const expected = input
       .filter((action) => !hidden.includes(action.id))
       .map((action) => ({ ...action, shortcut: letters[action.id] ?? action.shortcut }));

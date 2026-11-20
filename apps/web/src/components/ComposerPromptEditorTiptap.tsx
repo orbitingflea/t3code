@@ -126,7 +126,8 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { hasCommandForKeyDown } from "~/shortcuts/dispatcher";
 import { basenameOfPath } from "~/pierre-icons";
 import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
-import { postWhiteboardHover } from "../fork/whiteboard/markdown-whiteboard";
+import { boardMentionParts } from "../fork/whiteboard/markdown-whiteboard";
+import { BoardMentionChip } from "../fork/whiteboard/BoardMentionChip";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipPopover, skillPopoverDescription } from "./chat/SkillInlineText";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";
@@ -295,33 +296,35 @@ const ComposerMentionExtension = Node.create({
 function ComposerMentionNodeView({ node }: NodeViewProps) {
   const gt = useGT();
   const actions = use(ComposerContextActionsContext);
-  const mentionPath = (node.attrs.path as string) ?? "";
-  const boardMatch = /^\[([^\]]+)\]\((board:\/\/[^)]+)\)$/.exec(mentionPath);
-  const path = boardMatch?.[2] ?? mentionPath;
+  const path = (node.attrs.path as string) ?? "";
+  const board = boardMentionParts(path);
   const nativeDrag = useNativeFileDrag(actions.environmentId, () =>
     resolvePathLinkTarget(path, actions.cwd ?? ""),
   );
+  if (board) {
+    return (
+      <NodeViewWrapper as="span" className={CHIP_NODE_SELECTION_CLASS_NAME}>
+        <BoardMentionChip {...board} onOpen={() => actions.openMention(path)} />
+      </NodeViewWrapper>
+    );
+  }
   const chip = (
     <ContextChip
       {...nativeDrag}
       kind={documentChipKindForFileName(path) ?? "mention"}
       dir="ltr"
       render={<button type="button" />}
-      onClick={() => actions.openMention(mentionPath)}
+      onClick={() => actions.openMention(path)}
       aria-label={gt("Preview {path}", { path })}
       contentEditable={false}
       spellCheck={false}
       data-composer-mention-chip="true"
-      onMouseEnter={
-        boardMatch ? (event) => postWhiteboardHover(path, event.currentTarget) : undefined
-      }
-      onMouseLeave={boardMatch ? () => postWhiteboardHover(null) : undefined}
     >
       <FileTagChipContent
         path={path}
         environmentId={actions.environmentId}
         cwd={actions.cwd}
-        label={boardMatch?.[1] ?? basenameOfPath(path).normalize("NFC")}
+        label={basenameOfPath(path).normalize("NFC")}
         theme={resolvedThemeFromDocument()}
       />
     </ContextChip>

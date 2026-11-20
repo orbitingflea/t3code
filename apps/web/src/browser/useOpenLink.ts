@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { recordVisitForThread } from "~/browserHistoryStore";
+import { captureOpenOrigin } from "~/fork/workArea/workAreaView";
 import { readLocalApi } from "~/localApi";
 import { previewEnvironment } from "~/state/preview";
 import { useAtomCommand } from "~/state/use-atom-command";
@@ -34,6 +35,7 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   return async (url, options = {}) => {
     const targetThreadRef = options.threadRef ?? threadRef;
+    const fromOrigin = captureOpenOrigin();
     const target = resolveLinkTarget({
       url,
       event: options.event ?? NO_MODIFIER,
@@ -41,7 +43,9 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
       canOpenInApp: canOpenLinksInApp(targetThreadRef),
     });
     if (target === "app" && targetThreadRef) {
-      const result = await openUrlInPreview({ threadRef: targetThreadRef, url, openPreview });
+      const result = await fromOrigin(() =>
+        openUrlInPreview({ threadRef: targetThreadRef, url, openPreview }),
+      );
       if (isAtomCommandInterrupted(result)) return;
       if (result._tag === "Success") {
         recordVisitForThread(targetThreadRef, url);

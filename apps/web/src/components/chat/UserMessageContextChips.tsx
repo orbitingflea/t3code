@@ -8,7 +8,7 @@ import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipel
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { useChatFileOpener } from "~/fork/workArea/chatFileOpener";
 import { COMPOSER_CONTEXT_KINDS } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
 import { use, type ReactNode } from "react";
@@ -77,6 +77,7 @@ function UserMessageMentionChip(props: {
 }) {
   const gt = useGT();
   const ctx = use(TimelineRowCtx);
+  const fileOpener = useChatFileOpener(ctx.threadRef);
   const nativeDrag = useNativeFileDrag(ctx.activeThreadEnvironmentId, () =>
     resolvePathLinkTarget(props.record.path, ctx.workspaceRoot ?? ""),
   );
@@ -90,10 +91,7 @@ function UserMessageMentionChip(props: {
             render={<button type="button" />}
             aria-label={gt("Preview {name}", { name: props.record.path })}
             data-markdown-copy={props.copyMarkdown}
-            onClick={() => {
-              if (ctx.threadRef)
-                useRightPanelStore.getState().openFile(ctx.threadRef, props.record.path);
-            }}
+            onClick={() => fileOpener?.().openFile(props.record.path)}
           >
             <WorkspaceEntryIcon
               path={props.record.path}
@@ -121,13 +119,14 @@ function UserMessageSkillChip(props: {
   copyMarkdown: string;
 }) {
   const { skills, threadRef } = use(TimelineRowCtx);
+  const fileOpener = useChatFileOpener(threadRef);
   const skill = skills.find((candidate) => candidate.name === props.record.name);
   return (
     <SkillChipPopover
       label={props.record.label || props.record.name}
       description={skill ? skillPopoverDescription(skill) : null}
       copyMarkdown={props.copyMarkdown}
-      onViewInstructions={skillInstructionsOpener(threadRef, skill)}
+      onViewInstructions={skillInstructionsOpener(fileOpener, skill)}
     />
   );
 }

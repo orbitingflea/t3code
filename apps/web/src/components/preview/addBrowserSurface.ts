@@ -5,6 +5,7 @@ import {
 import type { PreviewSessionSnapshot, ScopedThreadRef } from "@t3tools/contracts";
 
 import type { BrowserSettingsReadError, OpenPreviewMutation } from "~/browser/openFileInPreview";
+import { captureOpenOrigin } from "~/fork/workArea/workAreaView";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
 import { openPreviewSession } from "./openPreviewSession";
@@ -16,6 +17,7 @@ export async function addBrowserSurface<E>(input: {
   readonly duplicateFrom?: PreviewSessionSnapshot;
 }): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
   const source = input.duplicateFrom;
+  const fromOrigin = captureOpenOrigin();
   const result = await openPreviewSession({
     openPreview: input.openPreview,
     threadRef: input.threadRef,
@@ -30,7 +32,7 @@ export async function addBrowserSurface<E>(input: {
         }),
   });
   return mapAtomCommandResult(result, (snapshot) => {
-    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
+    fromOrigin(() => useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId));
     if (source) {
       const panels = useRightPanelStore.getState();
       const { surfaces } = selectThreadRightPanelState(panels.byThreadKey, input.threadRef);

@@ -1,5 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { LayoutDashboard, MessageSquareReply, Presentation } from "lucide-react";
+import { LayoutDashboard, MessageSquare, MessageSquareReply, Presentation } from "lucide-react";
 import { createElement } from "react";
 
 import { useStableCallback } from "../../hooks/useStableCallback";
@@ -25,7 +25,8 @@ export const FORK_SURFACES = {
   dashboard: { label: "Dashboard", icon: LayoutDashboard, shortcut: "" },
   replies: { label: "Replies", icon: MessageSquareReply, shortcut: "" },
   whiteboard: { label: "Whiteboard", icon: Presentation, shortcut: "W" },
-} as const satisfies Record<ModeSurfaceKind | "whiteboard", unknown>;
+  chat: { label: "Chat", icon: MessageSquare, shortcut: "" },
+} as const satisfies Record<ModeSurfaceKind | "whiteboard" | "chat", unknown>;
 
 type ForkSurfaceKind = keyof typeof FORK_SURFACES;
 
@@ -41,6 +42,9 @@ const forkSurfaceAction = (kind: ForkSurfaceKind, available: boolean, onClick: (
 });
 
 export type ModeSurfaceAction = ReturnType<typeof forkSurfaceAction>;
+
+/** The work area's "+" item that puts the primary Chat back into a pane. */
+export const chatSurfaceAction = (onClick: () => void) => forkSurfaceAction("chat", true, onClick);
 
 export const modeSurfaceLabel = (kind: ForkSurfaceKind) => FORK_SURFACES[kind].label;
 
@@ -62,7 +66,7 @@ export function useModeSurfaceActions(
   const boardPanel = isBoardHost(useBoardHostRole()) && isTopWindow();
   const projectRoot = useThreadProjectRoot(boardPanel ? threadRef : null);
   const boardOffered = useBoardOfferedFor(threadRef, projectRoot);
-  const open = useStableCallback((kind: ForkSurfaceKind) => {
+  const open = useStableCallback((kind: Exclude<ForkSurfaceKind, "chat">) => {
     if (threadRef !== null) useRightPanelStore.getState().open(threadRef, kind);
   });
   return [

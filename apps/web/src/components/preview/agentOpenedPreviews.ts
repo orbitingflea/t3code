@@ -24,6 +24,7 @@ import {
   type ThreadPreviewState,
 } from "../../previewStateStore";
 import { useRightPanelStore } from "../../rightPanelStore";
+import { deferForcedReveal, revealAddedBrowsers } from "~/fork/workArea/miniPlayerFollow";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../../rightPanelLayout";
 import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { deviceEnvironment } from "../../state/device";
@@ -31,8 +32,8 @@ import { readEnvironmentSupportsServerBrowser } from "../../state/entities";
 import { environmentSummaries } from "../../state/presentation";
 
 /**
- * Shows browsers an agent or another client revealed for a thread: floating
- * over chat, or focusing an existing panel tab when the reveal is forced.
+ * Shows browsers an agent or other client revealed: floating over chat, or in
+ * a pane when forced for an existing tab or with no Chat drawn.
  */
 export function revealServerTabs(
   threadRef: ScopedThreadRef,
@@ -50,7 +51,7 @@ export function revealServerTabs(
       );
     if (surface && force) {
       useRightPanelStore.getState().revealSurface(threadRef, surface.id);
-    } else if (!surface) {
+    } else if (!surface && !(force && deferForcedReveal(threadRef, session.tabId))) {
       usePreviewMiniPlayerStore.getState().open(threadRef, browserMiniPlayerSource(session.tabId));
     }
   }
@@ -73,6 +74,7 @@ export function followPreviewSessions(threadRef: ScopedThreadRef, state: ThreadP
         .map((session) => session.tabId),
     ),
   );
+  revealAddedBrowsers(threadRef);
   const miniPlayer = usePreviewMiniPlayerStore.getState();
   const source = miniPlayer.byThreadKey[scopedThreadKey(threadRef)]?.source;
   if (source?.kind === "browser" && !state.sessions[source.tabId]) miniPlayer.close(threadRef);

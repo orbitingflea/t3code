@@ -99,6 +99,7 @@ import { SettingsPageContainer, SettingsRow, SettingsSection } from "./settingsL
 import { keybindingSearchAnchorId, useSearchableSetting } from "./settingsSearch";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { useAtomCommand } from "../../state/use-atom-command";
+import { withoutUnusedCommands } from "../../fork/workArea/retiredCommands";
 
 function KeybindingPill({ value }: { value: string }) {
   // Keys dedupe repeated parts; a literal "+" in a shortcut splits into empty strings.
@@ -1492,7 +1493,7 @@ function keybindingAnchorIds(rows: ReturnType<typeof buildKeybindingRows>) {
 function useKeybindingCatalog() {
   const sendShortcut = useClientSettings((settings) => settings.sendShortcut);
   const serverKeybindings = useSettingsScope().environment?.serverConfig?.keybindings;
-  const merged = mergeWithDefaultKeybindings(serverKeybindings ?? []);
+  const merged = withoutUnusedCommands(mergeWithDefaultKeybindings(serverKeybindings ?? []));
   const m = useMessages();
   return {
     commandOptions: buildKeybindingCommandOptions(merged, m),

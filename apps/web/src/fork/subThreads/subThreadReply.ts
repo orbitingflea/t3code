@@ -5,7 +5,11 @@ import {
 } from "@t3tools/contracts";
 import { SUB_THREAD_RECORD_KIND } from "@t3tools/shared/displayModes";
 
-import { DraftId, useComposerDraftStore } from "../../composerDraftStore";
+import {
+  composerDraftHasUserContent,
+  DraftId,
+  useComposerDraftStore,
+} from "../../composerDraftStore";
 import { releaseDraftAttachments } from "../../lib/attachmentUploadQueue";
 import { forEachSubThreadDraft, subThreadDraftKey } from "./subThreadDraft";
 
@@ -58,6 +62,11 @@ export const REPLY_BOX_QUEUE_EDIT_BLOCKED = "Edit a queued message from the main
  */
 export const subThreadDraftId = (threadKey: string, first: string | null) =>
   first === null ? null : DraftId.make(subThreadDraftKey(threadKey, first));
+
+export const replyHasDraft = (threadKey: string, first: string): boolean =>
+  composerDraftHasUserContent(
+    useComposerDraftStore.getState().getComposerDraft(subThreadDraftId(threadKey, first)!),
+  );
 
 /** Gives up the uploads that the reply box drafts of the thread `target` hold. */
 export function releaseSubThreadDraftUploads(target: ScopedThreadRef | DraftId): void {

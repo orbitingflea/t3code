@@ -16,6 +16,7 @@ import * as Schema from "effect/Schema";
 import { AsyncResult } from "effect/reactivity";
 
 import { resolveAssetUrl } from "~/assets/assetUrls";
+import { captureOpenOrigin } from "~/fork/workArea/workAreaView";
 import { isPreviewAvailableFor, previewRuntimeFor } from "~/browser/previewRuntime";
 import {
   applyPreviewServerSnapshot,
@@ -64,11 +65,10 @@ export async function openUrlInPreview<E>(input: {
   readonly openPreview: OpenPreviewMutation<E>;
   readonly profileId?: PreviewOpenInput["profileId"];
   readonly background?: boolean;
-  /** Runs right after the panel opens the tab, in the same task as that write. */
-  readonly onOpened?: () => void;
 }): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
   // Read before any await: a side chat pane that unmounts meanwhile drops its host mapping.
   const threadRef = rightPanelHostRef(input.threadRef);
+  const fromOrigin = captureOpenOrigin();
   const defaults = await resolveBrowserDefaults().catch(
     (cause: unknown) => new BrowserSettingsReadError({ cause }),
   );
@@ -109,8 +109,7 @@ export async function openUrlInPreview<E>(input: {
       return;
     }
     applyPreviewServerSnapshot(threadRef, snapshot);
-    useRightPanelStore.getState().openBrowser(threadRef, snapshot.tabId);
-    input.onOpened?.();
+    fromOrigin(() => useRightPanelStore.getState().openBrowser(threadRef, snapshot.tabId));
   });
 }
 
@@ -140,6 +139,7 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
     );
   }
   const hostRef = rightPanelHostRef(input.threadRef);
+  const fromOrigin = captureOpenOrigin();
   const insideWorkspace =
     mediaFileReference(input.filePath, input.workspaceRoot).relativePath !== undefined;
   const assetResult = await input.createAssetUrl({
@@ -161,9 +161,11 @@ export async function openFileInPreview<AssetError, PreviewError>(input: {
       Cause.die(new Error("The environment returned an invalid asset URL.")),
     );
   }
-  return openUrlInPreview({
-    threadRef: hostRef,
-    url: assetUrl,
-    openPreview: input.openPreview,
-  });
+  return fromOrigin(() =>
+    openUrlInPreview({
+      threadRef: hostRef,
+      url: assetUrl,
+      openPreview: input.openPreview,
+    }),
+  );
 }

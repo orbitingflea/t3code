@@ -117,11 +117,16 @@ vi.mock(import("~/rpc/requestLatencyState"), async (original) => ({
   trackRpcRequestSent: () => {},
 }));
 
-it("opens a linked Linear issue from an inactive thread's sidebar badge", async () => {
+/** The app's stylesheet; the work area places tabs by its laid-out size. */
+function appStylesheet(): Disposable {
   const style = document.createElement("style");
   style.textContent = stylesheet;
   document.head.append(style);
-  using _style = { [Symbol.dispose]: () => style.remove() };
+  return { [Symbol.dispose]: () => style.remove() };
+}
+
+it("opens a linked Linear issue from an inactive thread's sidebar badge", async () => {
+  using _style = appStylesheet();
   const first = threadWithHistory("issue-first", 1);
   const linked = threadWithHistory("issue-linked", 1);
   const issueRef = {
@@ -240,7 +245,9 @@ it("opens a linked Linear issue from an inactive thread's sidebar badge", async 
   await userEvent.click(issueRow);
   expect(router.history.location.pathname).toBe(`/${ENVIRONMENT_ID}/${linked.id}`);
   await expect.element(page.getByRole("heading", { name: liveTitle })).toBeVisible();
-  await act(() => useRightPanelStore.getState().close(scopeThreadRef(ENVIRONMENT_ID, linked.id)));
+  await act(() =>
+    useRightPanelStore.getState().closeAllSurfaces(scopeThreadRef(ENVIRONMENT_ID, linked.id)),
+  );
   await expect
     .element(
       page.getByRole("region", { name: "Thread details" }).getByRole("link", {
@@ -724,6 +731,7 @@ it("a mounted thread view lets go of the thread structures it has replaced", asy
 });
 
 it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel", async () => {
+  using _style = appStylesheet();
   await page.viewport(1280, 800);
   const thread = threadWithHistory("thread-panel-shortcut", 1);
   using _environment = installFakeEnvironment([thread], {
@@ -747,14 +755,13 @@ it("a shortcut conditioned on rightPanelOpen sees the thread's open right panel"
     router: false,
   });
   const composer = page.getByTestId("composer-editor");
-  const toggle = page.getByRole("button", { name: "Toggle right panel", exact: true });
-  await expect.element(toggle).toHaveAttribute("aria-pressed", "false");
-  await toggle.click();
-  await page.getByRole("button", { name: /^Files/ }).click();
+  await act(() =>
+    useRightPanelStore.getState().open(scopeThreadRef(ENVIRONMENT_ID, thread.id), "files"),
+  );
+  await expect.element(page.getByRole("button", { name: "Close Files" })).toBeVisible();
   await composer.click();
   await userEvent.keyboard("{Control>}t{/Control}");
   await expect.element(page.getByRole("menuitem", { name: /Files/ })).toBeVisible();
-  await expect.element(toggle).toHaveAttribute("aria-pressed", "true");
 });
 
 it("selecting a side-chat tab focuses that side chat's composer", async () => {
@@ -842,6 +849,7 @@ it("a subagent tab shows its read-only bar under no header of its own", async ()
 });
 
 it("/side sends the draft's attachments and context, and keeps them when it does not start", async () => {
+  using _style = appStylesheet();
   await page.viewport(1400, 900);
   const thread = threadWithHistory("side-attachments", 1);
   let holdFork = false;

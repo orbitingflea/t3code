@@ -7,11 +7,11 @@ import type { ChatComposerHandle } from "../../components/chat/ChatComposer";
 import { toastManager } from "../../components/ui/toast";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelection";
-import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "../../rightPanelLayout";
-import { selectActiveRightPanel, useRightPanelStore } from "../../rightPanelStore";
 import type { CiteAssistantText } from "../dashboard/dashboardCitation";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
-import { openSubThread, type SubThreadSummary, useSubThreadSummaries } from "./subThreadsState";
+import { chatFileTarget } from "../workArea/chatFileOpener";
+import { PRIMARY_CHAT, type ReplyEntry } from "../workArea/workArea.logic";
+import { type SubThreadSummary, useSubThreadSummaries } from "./subThreadsState";
 
 type CiteComposer = RefObject<Pick<
   ChatComposerHandle,
@@ -19,23 +19,30 @@ type CiteComposer = RefObject<Pick<
 > | null>;
 
 interface ReplyBox {
+  readonly threadKey: string;
   readonly first: string;
+  /** The reply tab's strip entry: one per tab from its open until its close. */
+  readonly tab: ReplyEntry;
   readonly composer: CiteComposer;
 }
 
-// Set while a Cite opens the Replies sheet; the sheet's next initial focus takes it.
-let sheetLeavesFocusToCite = false;
-const replyBoxByThreadKey = new Map<string, ReplyBox>();
+/** The reply boxes on screen: a tab's body mounts only while it is drawn. */
+const mountedBoxes = new Set<ReplyBox>();
+/** When each reply tab's box last took focus; a closed and reopened tab starts fresh. */
+const focusedAt = new WeakMap<ReplyEntry, number>();
+let focusCount = 0;
 
 export function registerReplyBox(
+  tab: ReplyEntry,
   threadKey: string,
   first: string,
   composer: CiteComposer,
-): () => void {
-  const box = { first, composer };
-  replyBoxByThreadKey.set(threadKey, box);
-  return () => {
-    if (replyBoxByThreadKey.get(threadKey) === box) replyBoxByThreadKey.delete(threadKey);
+): { readonly focused: () => void; readonly [Symbol.dispose]: () => void } {
+  const box: ReplyBox = { threadKey, first, tab, composer };
+  mountedBoxes.add(box);
+  return {
+    focused: () => focusedAt.set(tab, (focusCount += 1)),
+    [Symbol.dispose]: () => mountedBoxes.delete(box),
   };
 }
 
@@ -59,16 +66,9 @@ function citeInto(
 }
 
 /**
- * Opens as the user's own panel choice, so a waiting automatic Diff cannot replace it, and with no
- * focus request, so focus stays with the quote's comment box.
+ * A main-list Cite: the main box when it has text, else the shown reply box with text whose tab
+ * was focused last, else the cited message's reply tab, opened or shown.
  */
-function openReplyBoxBesideMainList(threadRef: ScopedThreadRef, first: string): void {
-  const panel = useRightPanelStore.getState();
-  panel.markUserAction(threadRef);
-  panel.setMaximized(threadRef, false);
-  openSubThread(threadRef, first, true);
-}
-
 export function citeInThread(
   threadRef: ScopedThreadRef,
   cited: string,
@@ -78,24 +78,26 @@ export function citeInThread(
 ): boolean {
   if (hasText(own)) return citeInto(own, citation, sourceAnchor);
   const threadKey = scopedThreadKey(threadRef);
-  const repliesOnScreen =
-    selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, threadRef) === "replies";
-  const shown = repliesOnScreen ? replyBoxByThreadKey.get(threadKey) : undefined;
-  if (shown && hasText(shown.composer)) return citeInto(shown.composer, citation, sourceAnchor);
-  if (shown?.first !== cited) {
-    sheetLeavesFocusToCite = window.matchMedia(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY).matches;
-    // A sync commit runs its passive effects before returning, so the box has loaded its draft.
-    flushSync(() => openReplyBoxBesideMainList(threadRef, cited));
+  let drafted: ReplyBox | undefined;
+  for (const box of mountedBoxes) {
+    if (box.threadKey !== threadKey || !hasText(box.composer)) continue;
+    if (drafted === undefined || (focusedAt.get(box.tab) ?? 0) >= (focusedAt.get(drafted.tab) ?? 0))
+      drafted = box;
   }
-  const box = replyBoxByThreadKey.get(threadKey);
-  if (box?.first !== cited) {
-    sheetLeavesFocusToCite = false;
+  if (drafted) return citeInto(drafted.composer, citation, sourceAnchor);
+  // A user open, so a waiting automatic Diff cannot replace it. A sync commit runs its passive
+  // effects before returning, so the box has loaded its draft.
+  flushSync(() =>
+    chatFileTarget({ kind: "own", tab: PRIMARY_CHAT }, threadRef).openSubThread(cited),
+  );
+  const box = [...mountedBoxes].findLast(
+    (candidate) => candidate.threadKey === threadKey && candidate.first === cited,
+  );
+  if (!box) {
     toastManager.add({ type: "warning", title: "Could not open the reply box" });
     return false;
   }
-  const inserted = citeInto(box.composer, citation, sourceAnchor);
-  if (!inserted) sheetLeavesFocusToCite = false;
-  return inserted;
+  return citeInto(box.composer, citation, sourceAnchor);
 }
 
 /** A main-list Cite goes to a message's Replies only once it has replies; else it stays in the main box. */
@@ -115,12 +117,5 @@ export function useSubThreadCite(
   );
 }
 
-/**
- * The right panel sheet's initial focus. When a Cite opened the sheet, focus is left to the
- * quote's comment box; otherwise the sheet focuses as usual.
- */
-export function sheetInitialFocus(): boolean {
-  const leave = sheetLeavesFocusToCite;
-  sheetLeavesFocusToCite = false;
-  return !leave;
-}
+/** Kept for `RightPanelSheet`: Cite opens a work-area tab, never the sheet, so focus stays on. */
+export const sheetInitialFocus = (): boolean => true;

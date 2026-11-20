@@ -34,6 +34,8 @@ import { Button } from "../ui/button";
 import { toastManager } from "../ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { BackgroundThreadContext } from "./backgroundThread";
+import { OpenOriginContext } from "../../fork/workArea/chatFileOpener";
+import { useSideThreadEmbedding } from "../../fork/workArea/chatOpenerContext";
 
 /**
  * A side chat or a subagent as a tab: the thread's own chat, which decides its bottom, the
@@ -78,6 +80,12 @@ export default function SideThreadPane(props: {
   // A tab opens for side chats and subagents only, so an unloaded one is still one of them.
   const kind = sideThreadKindOf(thread) ?? "subagent";
   const isSideChat = kind === "side-chat";
+  const embedding = useSideThreadEmbedding(
+    threadId,
+    thread?.lineage.parentThreadId ?? null,
+    parentRef,
+    props.parentPanel,
+  );
   const canOperate = useEnvironmentScope(parentRef.environmentId, AuthOrchestrationOperateScope);
   const deleteThread = useAtomCommand(threadEnvironment.delete, { reportFailure: false });
   const confirmThreadDelete = useClientSettings((settings) => settings.confirmThreadDelete);
@@ -196,12 +204,14 @@ export default function SideThreadPane(props: {
       ) : renderState === "loading" && thread === null ? null : (
         <BackgroundThreadContext value>
           <ComposerHandleContext value={null}>
-            <ChatView
-              environmentId={parentRef.environmentId}
-              threadId={threadId}
-              routeKind="server"
-              embedded={props.parentPanel}
-            />
+            <OpenOriginContext value={embedding.origin}>
+              <ChatView
+                environmentId={parentRef.environmentId}
+                threadId={threadId}
+                routeKind="server"
+                embedded={embedding.parentPanel}
+              />
+            </OpenOriginContext>
           </ComposerHandleContext>
         </BackgroundThreadContext>
       )}

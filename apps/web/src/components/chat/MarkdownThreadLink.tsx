@@ -1,5 +1,6 @@
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
+import { use } from "react";
 import { useGT, useMessages } from "gt-react";
 import { MessagesSquareIcon } from "lucide-react";
 import {
@@ -11,8 +12,9 @@ import {
 import { unknownThreadLinkLabel } from "@t3tools/shared/threadLinksCopy";
 import { resolveLinkedThreadOpen } from "@t3tools/client-runtime/linked-thread";
 
-import { threadChipPanelLink } from "../../fork/rightPanelSplit/linkSources";
-import { startPanelOnlyDrag } from "../../fork/rightPanelSplit/panelLinkDrag";
+import { ChatOpenerContext } from "../../fork/workArea/chatOpenerContext";
+import { threadChipPanelLink } from "../../fork/workArea/linkSources";
+import { startPanelOnlyDrag } from "../../fork/workArea/panelLinkDrag";
 import { configuredHostedAppUrl } from "../../hostedPairing";
 import { useThreadRefs, useThreadShell } from "../../state/entities";
 import { useConnectedEnvironmentIds, useEnvironmentIdentities } from "../../state/environments";
@@ -38,6 +40,7 @@ export function MarkdownThreadLink(props: {
   const messages = useMessages();
   const navigate = useNavigate();
   const trigger = useSideThreadTrigger();
+  const opener = use(ChatOpenerContext);
   const panelRef = props.threadRef ?? null;
   const candidates = threadLinkCandidates(props.link, props.environmentId);
   const writtenRef = candidates[0]!;
@@ -111,6 +114,7 @@ export function MarkdownThreadLink(props: {
                       threadChipPanelLink({
                         threadRef: props.threadRef,
                         target: { kind: "linked", target: linkedTarget },
+                        opener,
                       }),
                     )
                   }
@@ -156,7 +160,11 @@ export function MarkdownThreadLink(props: {
           ? (event) =>
               startPanelOnlyDrag(
                 event,
-                threadChipPanelLink({ threadRef: props.threadRef, target: { kind: "local", ref } }),
+                threadChipPanelLink({
+                  threadRef: props.threadRef,
+                  target: { kind: "local", ref },
+                  opener,
+                }),
               )
           : undefined
       }

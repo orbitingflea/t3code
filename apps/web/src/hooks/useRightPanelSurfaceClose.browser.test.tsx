@@ -29,10 +29,15 @@ vi.mock("../state/primaryEnvironment", async () => {
   const { Atom } = await import("effect/reactivity");
   return { primaryEnvironmentIdAtom: Atom.make(null) };
 });
-vi.mock("../state/session", () => ({
-  useEnvironmentScope: (id: string) => fixture.allowed.has(id),
-  readEnvironmentScope: (id: string) => fixture.allowed.has(id),
-}));
+vi.mock("../state/session", async () => {
+  const { Atom } = await import("effect/reactivity");
+  const session = Atom.make(null);
+  return {
+    environmentSession: { sessionStateAtom: () => session },
+    useEnvironmentScope: (id: string) => fixture.allowed.has(id),
+    readEnvironmentScope: (id: string) => fixture.allowed.has(id),
+  };
+});
 vi.mock("../state/entities", () => ({
   useQuietThreadShell: () => null,
   useProject: () => null,

@@ -4,18 +4,18 @@ import { describe, expect, it, vi } from "vite-plus/test";
 
 import { toastManager } from "../../components/ui/toast";
 import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelection";
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
+import { chatFileTarget } from "../workArea/chatFileOpener";
 import {
-  selectActiveRightPanel,
-  selectThreadRightPanelState,
-  useRightPanelStore,
-} from "../../rightPanelStore";
-import {
-  citeInThread,
-  citeOpensReplies,
-  registerReplyBox,
-  sheetInitialFocus,
-} from "./subThreadCite";
-import { openSubThread, useSubThreadsStore } from "./subThreadsState";
+  isReplyEntry,
+  PRIMARY_CHAT,
+  type ReplyEntry,
+  replyTabId,
+  resolveLayout,
+  stripEntries,
+} from "../workArea/workArea.logic";
+import { drawWorkArea, NO_VIEW } from "../workArea/workAreaGeometry.logic";
+import { citeInThread, citeOpensReplies, registerReplyBox } from "./subThreadCite";
 
 const threadRef = scopeThreadRef(EnvironmentId.make("environment"), ThreadId.make("thread"));
 const threadKey = scopedThreadKey(threadRef);
@@ -43,49 +43,67 @@ function fakeBox(text: string, answer = true) {
 }
 type FakeBox = ReturnType<typeof fakeBox>;
 
-function mainView(ownText = "", layout: "inline" | "sheet" = "inline") {
-  const matchMedia = vi.fn(() => ({ matches: layout === "sheet" }));
-  vi.stubGlobal("window", { matchMedia });
+function mainView(ownText = "") {
   useRightPanelStore.setState(useRightPanelStore.getInitialState());
-  useSubThreadsStore.setState({ shownByThreadKey: {} });
   const toast = vi.spyOn(toastManager, "add").mockReturnValue("toast");
   const own = fakeBox(ownText);
   return {
     toast,
     ownCite: own.cite,
     cite: () => citeInThread(threadRef, "first-b", own.ref, citation, opaqueSourceAnchor),
-    [Symbol.dispose]: () => {
-      toast.mockRestore();
-      vi.unstubAllGlobals();
-      sheetInitialFocus();
-    },
+    [Symbol.dispose]: () => toast.mockRestore(),
   };
 }
 
-const mounted = (first: string, box: FakeBox): Disposable => ({
-  [Symbol.dispose]: registerReplyBox(threadKey, first, box.ref),
-});
+const replyTab = (first: string) => replyTabId(threadRef, first);
+const record = () =>
+  selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
+const layout = () => resolveLayout(record());
+const shownTabs = () => drawWorkArea(layout(), NO_VIEW).panes.map((pane) => pane.active);
 
-function mountsWhenShown(first: string, box: FakeBox): Disposable {
-  let unmount: (() => void) | null = null;
-  const stop = useSubThreadsStore.subscribe((state) => {
-    if (unmount === null && state.shownByThreadKey[threadKey] === first) {
-      unmount = registerReplyBox(threadKey, first, box.ref);
-    }
-  });
+/** Opens `first`'s reply tab beside the primary Chat, as a Reply in the main list does. */
+const openReply = (first: string, options?: { readonly reveal?: "find" | "quote" }) =>
+  chatFileTarget({ kind: "own", tab: PRIMARY_CHAT }, threadRef).openSubThread(first, options);
+
+/** The reply tab's strip entry, which a tab's body is keyed by from its open until its close. */
+function entryOf(first: string): ReplyEntry {
+  const [entry] = stripEntries(layout(), record(), [replyTab(first)], threadRef, "Chat");
+  if (entry === undefined || !isReplyEntry(entry)) throw new Error(`no reply tab for ${first}`);
+  return entry;
+}
+
+/** A reply box that mounts once its tab is in the layout; `unmount` stands for a hidden tab. */
+function replyBox(first: string, box: FakeBox) {
+  let mounted: ReturnType<typeof registerReplyBox> | null = null;
+  const mount = () => {
+    if (mounted === null && layout().tabs[replyTab(first)] !== undefined)
+      mounted = registerReplyBox(entryOf(first), threadKey, first, box.ref);
+  };
+  const unmount = () => {
+    mounted?.[Symbol.dispose]();
+    mounted = null;
+  };
+  mount();
+  const stop = useRightPanelStore.subscribe(mount);
   return {
+    focus: () => mounted?.focused(),
+    unmount,
+    remount: () => {
+      unmount();
+      mount();
+    },
     [Symbol.dispose]: () => {
       stop();
-      unmount?.();
+      unmount();
     },
   };
 }
 
-const panel = () =>
-  selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
-const repliesOnScreen = () =>
-  selectActiveRightPanel(useRightPanelStore.getState().byThreadKey, threadRef) === "replies";
-const shownSubThread = () => useSubThreadsStore.getState().shownByThreadKey[threadKey];
+/** Covers a reply tab with a file in its own pane. */
+function coverReply(first: string) {
+  useRightPanelStore.getState().openFile(threadRef, "a.ts");
+  expect(shownTabs()).not.toContain(replyTab(first));
+}
 
 describe("a Cite in the main list of a Chat mode thread", () => {
   it.each([
@@ -112,8 +130,8 @@ describe("a Cite in the main list of a Chat mode thread", () => {
   it("goes into the main box when it has text", () => {
     using view = mainView(" my note ");
     const reply = fakeBox("a reply draft");
-    using _reply = mounted("first-a", reply);
-    openSubThread(threadRef, "first-a");
+    using _reply = replyBox("first-a", reply);
+    openReply("first-a");
 
     expect(view.cite()).toBe(true);
     expect(view.ownCite).toHaveBeenCalledExactlyOnceWith(citation, opaqueSourceAnchor);
@@ -121,52 +139,137 @@ describe("a Cite in the main list of a Chat mode thread", () => {
   });
 
   it.each([true, false])(
-    "goes into the shown reply box with text, and returns its answer %s",
+    "goes into a shown reply box with text, and returns its answer %s",
     (answer) => {
       using view = mainView();
       const reply = fakeBox("a reply draft", answer);
-      using _reply = mounted("first-a", reply);
-      openSubThread(threadRef, "first-a");
+      using _reply = replyBox("first-a", reply);
+      openReply("first-a");
 
       expect(view.cite()).toBe(answer);
       expect(reply.cite).toHaveBeenCalledExactlyOnceWith(citation, opaqueSourceAnchor);
       expect(view.ownCite).not.toHaveBeenCalled();
-      expect(shownSubThread()).toBe("first-a");
       expect(view.toast).toHaveBeenCalledTimes(answer ? 0 : 1);
     },
   );
 
   it.each([
-    { start: "the panel is closed and was left maximized", shown: null },
-    { start: "Replies shows another sub-thread with an empty box", shown: "first-a" },
-    { start: "the cited box is mounted while the panel is closed", shown: "first-b" },
-  ])("opens the cited sub-thread and goes into its box when $start", ({ shown }) => {
+    ["the one focused last", ["first-a", "first-c"], "first-c"],
+    ["the one focused last, not the one registered last", ["first-c", "first-a"], "first-a"],
+  ])("goes, of two shown boxes with drafts, into %s", (_name, focusOrder, expected) => {
+    using view = mainView();
+    const boxes = { "first-a": fakeBox("draft a"), "first-c": fakeBox("draft c") };
+    openReply("first-a");
+    openReply("first-c");
+    useRightPanelStore.getState().updateWorkArea(threadRef, {
+      type: "place",
+      source: { tabs: [replyTab("first-c")] },
+      at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
+    });
+    using a = replyBox("first-a", boxes["first-a"]);
+    using c = replyBox("first-c", boxes["first-c"]);
+    const handles = { "first-a": a, "first-c": c };
+    for (const first of focusOrder) handles[first as keyof typeof handles].focus();
+
+    expect(view.cite()).toBe(true);
+    expect(boxes[expected as keyof typeof boxes].cite).toHaveBeenCalledOnce();
+    for (const [first, box] of Object.entries(boxes)) {
+      if (first !== expected) expect(box.cite).not.toHaveBeenCalled();
+    }
+  });
+
+  it("keeps the focus order of a box whose tab was hidden and shown again", () => {
+    using view = mainView();
+    const boxA = fakeBox("draft a");
+    const boxC = fakeBox("draft c");
+    openReply("first-a");
+    openReply("first-c");
+    useRightPanelStore.getState().updateWorkArea(threadRef, {
+      type: "place",
+      source: { tabs: [replyTab("first-c")] },
+      at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
+    });
+    using a = replyBox("first-a", boxA);
+    using c = replyBox("first-c", boxC);
+    a.focus();
+    c.focus();
+    c.remount();
+    a.remount();
+
+    expect(view.cite()).toBe(true);
+    expect(boxC.cite).toHaveBeenCalledOnce();
+    expect(boxA.cite).not.toHaveBeenCalled();
+  });
+
+  it("forgets the focus of a reply tab that was closed and opened again", () => {
+    using view = mainView();
+    const boxA = fakeBox("draft a");
+    const boxC = fakeBox("draft c");
+    openReply("first-a");
+    openReply("first-c");
+    using a = replyBox("first-a", boxA);
+    using c = replyBox("first-c", boxC);
+    c.focus();
+    a.focus();
+    useRightPanelStore
+      .getState()
+      .updateWorkArea(threadRef, { type: "close", tab: replyTab("first-a") });
+    a.unmount();
+    openReply("first-a", { reveal: "find" });
+
+    expect(view.cite()).toBe(true);
+    expect(boxC.cite).toHaveBeenCalledOnce();
+    expect(boxA.cite).not.toHaveBeenCalled();
+  });
+
+  it("goes into a shown box with a draft rather than an empty one focused later", () => {
+    using view = mainView();
+    const draft = fakeBox("draft a");
+    const empty = fakeBox("");
+    openReply("first-a");
+    openReply("first-c");
+    useRightPanelStore.getState().updateWorkArea(threadRef, {
+      type: "place",
+      source: { tabs: [replyTab("first-c")] },
+      at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
+    });
+    using a = replyBox("first-a", draft);
+    using c = replyBox("first-c", empty);
+    a.focus();
+    c.focus();
+
+    expect(view.cite()).toBe(true);
+    expect(draft.cite).toHaveBeenCalledOnce();
+    expect(empty.cite).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { start: "no reply tab is open", open: null, cover: false },
+    { start: "another sub-thread's tab is shown with an empty box", open: "first-a", cover: false },
+    { start: "the cited tab is open under another tab", open: "first-b", cover: true },
+  ])("opens or shows the cited tab and goes into its box when $start", ({ open, cover }) => {
     using view = mainView();
     const store = useRightPanelStore.getState();
     const other = fakeBox("");
     const cited = fakeBox("");
-    using _other = shown === "first-a" ? mounted("first-a", other) : null;
-    using _cited =
-      shown === "first-b" ? mounted("first-b", cited) : mountsWhenShown("first-b", cited);
-    if (shown === null) store.setMaximized(threadRef, true);
-    else openSubThread(threadRef, shown);
-    if (shown === "first-b") store.close(threadRef);
+    if (open !== null) openReply(open);
+    if (cover && open !== null) coverReply(open);
+    using _other = replyBox("first-a", other);
+    using _cited = replyBox("first-b", cited);
     const revision = store.getUserActionRevision(threadRef);
 
     expect(view.cite()).toBe(true);
     expect(cited.cite).toHaveBeenCalledExactlyOnceWith(citation, opaqueSourceAnchor);
     expect(other.cite).not.toHaveBeenCalled();
     expect(view.ownCite).not.toHaveBeenCalled();
-    expect(shownSubThread()).toBe("first-b");
-    expect(repliesOnScreen()).toBe(true);
-    expect(panel().maximized).toBeUndefined();
+    expect(shownTabs()).toContain(replyTab("first-b"));
     expect(store.getUserActionRevision(threadRef)).toBe(revision + 1);
   });
 
   it("returns the cited box's refusal after opening it", () => {
     using view = mainView();
     const cited = fakeBox("", false);
-    using _cited = mountsWhenShown("first-b", cited);
+    using _cited = replyBox("first-b", cited);
 
     expect(view.cite()).toBe(false);
     expect(cited.cite).toHaveBeenCalledOnce();
@@ -183,48 +286,17 @@ describe("a Cite in the main list of a Chat mode thread", () => {
     expect(view.ownCite).not.toHaveBeenCalled();
   });
 
-  it("does not count a mounted reply box as shown while the panel is closed", () => {
-    using view = mainView();
-    const hidden = fakeBox("a reply draft");
-    using _hidden = mounted("first-a", hidden);
-    openSubThread(threadRef, "first-a");
-    useRightPanelStore.getState().close(threadRef);
-    const cited = fakeBox("");
-    using _cited = mountsWhenShown("first-b", cited);
-
-    expect(view.cite()).toBe(true);
-    expect(hidden.cite).not.toHaveBeenCalled();
-    expect(cited.cite).toHaveBeenCalledOnce();
-  });
-
   it("treats a box that shows only whitespace as empty", () => {
     using view = mainView(" \n\t");
     const blank = fakeBox(" \n");
-    using _blank = mounted("first-a", blank);
-    openSubThread(threadRef, "first-a");
+    openReply("first-a");
+    using _blank = replyBox("first-a", blank);
     const cited = fakeBox("");
-    using _cited = mountsWhenShown("first-b", cited);
+    using _cited = replyBox("first-b", cited);
 
     expect(view.cite()).toBe(true);
     expect(view.ownCite).not.toHaveBeenCalled();
     expect(blank.cite).not.toHaveBeenCalled();
     expect(cited.cite).toHaveBeenCalledOnce();
-    expect(shownSubThread()).toBe("first-b");
   });
-
-  it.each([
-    { layout: "sheet", answer: true, sheetFocuses: false },
-    { layout: "sheet", answer: false, sheetFocuses: true },
-    { layout: "inline", answer: true, sheetFocuses: true },
-  ] as const)(
-    "leaves focus to the comment box when it opens the sheet: $layout, box answers $answer",
-    ({ layout, answer, sheetFocuses }) => {
-      using view = mainView("", layout);
-      using _cited = mountsWhenShown("first-b", fakeBox("", answer));
-
-      expect(view.cite()).toBe(answer);
-      expect(sheetInitialFocus()).toBe(sheetFocuses);
-      expect(sheetInitialFocus()).toBe(true);
-    },
-  );
 });
