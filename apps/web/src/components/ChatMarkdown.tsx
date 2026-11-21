@@ -241,6 +241,7 @@ import {
 } from "./chat/ChatMarkdownMedia";
 import { MarkdownExternalLinkContent } from "./chat/MarkdownExternalLink";
 import { MarkdownFileLink } from "./chat/MarkdownFileLink";
+import { useFileLinkPrefix } from "../fork/FileLinkPathPrefix";
 import { canUseMarkdownFileShellActions } from "./chat/MarkdownFileLink.logic";
 import { rehypeChipPunctuation } from "./chat/markdownChipPunctuation";
 import { handleMarkdownFragmentClick, rehypeHeadingIds } from "./chat/markdownFragments";
@@ -769,6 +770,7 @@ function useChatMarkdownState({
   const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, fileLinkPeerPaths, hostFileOrigins)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
+  const fileLinkPrefix = useFileLinkPrefix(fileLinkParentSuffixByPath);
   const resolveThreadPullRequest = (
     href: string,
   ): (ThreadPullRequestKey & { readonly url: string }) | null => {
@@ -993,6 +995,7 @@ function useChatMarkdownState({
           },
           fileLinkParentSuffixByPath,
         )}
+        labelPrefix={fileLinkPrefix(fileLinkMeta)}
         copyMarkdown={copyMarkdown}
         theme={resolvedTheme}
         threadRef={threadRef}
