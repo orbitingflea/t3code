@@ -250,24 +250,48 @@ function cardRun(entry: TimelineEntry): RunId | null | undefined {
 }
 
 /**
- * Where each run's cards show, as its answer does: the first message of the sub-thread of the
- * latest message the user typed in the run. A run with none, such as one a task or another agent
- * started, shows its cards in the main list, as does a sub-thread whose first message is not loaded.
+ * Where each run answers, by run: the first message of its sub-thread, or null for the main list.
+ * A run with no key has no loaded entry yet.
  */
-function cardPlaces(
-  entries: ReadonlyArray<TimelineEntry>,
-  cores: ReadonlyArray<VisibleCore>,
-): ReadonlyMap<RunId, string> {
-  const coreById = new Map(cores.map((core) => [core.id, core]));
-  const places = new Map<RunId, string>();
-  for (const entry of entries) {
-    const core = coreById.get(entry.id);
-    const runId = entry.kind === "message" ? entry.message.runId : null;
-    if (core?.from !== "user" || runId == null) continue;
-    if (core.reply && core.first !== null && coreById.has(core.first))
-      places.set(runId, core.first);
-    else places.delete(runId);
+export type RunPlaces = ReadonlyMap<RunId, string | null>;
+
+function entryRunId(entry: TimelineEntry): RunId | null {
+  switch (entry.kind) {
+    case "message":
+      return entry.message.runId;
+    case "work":
+      return entry.entry.structuredPayload?.runId ?? null;
+    case "event":
+      return entry.projectedItem.item.runId;
+    default:
+      return null;
   }
+}
+
+const placesOfTimeline = new WeakMap<ReadonlyArray<TimelineEntry>, RunPlaces>();
+
+/**
+ * Where each run answers: the sub-thread of the latest message the user typed in the run. A run
+ * with none, such as one a task, another agent or a wake started, answers in the main list, as does
+ * a sub-thread whose first message is not loaded.
+ */
+export function runPlaces(entries: ReadonlyArray<TimelineEntry>): RunPlaces {
+  const known = placesOfTimeline.get(entries);
+  if (known !== undefined) return known;
+  const coreById = new Map(foldTimeline(entries).cores.map((core) => [core.id, core]));
+  const places = new Map<RunId, string | null>();
+  for (const entry of entries) {
+    const runId = entryRunId(entry);
+    if (runId === null) continue;
+    const core = coreById.get(entry.id);
+    if (core?.from === "user") {
+      places.set(
+        runId,
+        core.reply && core.first !== null && coreById.has(core.first) ? core.first : null,
+      );
+    } else if (!places.has(runId)) places.set(runId, null);
+  }
+  placesOfTimeline.set(entries, places);
   return places;
 }
 
@@ -291,12 +315,10 @@ export function applyDisplayMode(
           .map((core) => core.id),
       )
     : null;
-  let places: ReadonlyMap<RunId, string> | undefined;
   const cardHere = (entry: TimelineEntry) => {
     const runId = cardRun(entry);
     if (runId === undefined) return false;
-    places ??= cardPlaces(entries, cores);
-    return (runId === null ? null : (places.get(runId) ?? null)) === subThread;
+    return (runId === null ? null : (runPlaces(entries).get(runId) ?? null)) === subThread;
   };
   const rows = entries.flatMap((entry, index): TimelineEntry[] => {
     if (shownIds !== null && !shownIds.has(entry.id)) return cardHere(entry) ? [entry] : [];

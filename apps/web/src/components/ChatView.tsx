@@ -395,6 +395,11 @@ import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThrea
 import { useSubThreadCite } from "../fork/subThreads/subThreadCite";
 import { SubThreadViewContext } from "../fork/subThreads/subThreadsState";
 import { useThreadShownView } from "../fork/displayMode/threadView";
+import { ChatWorkingIndicator } from "../fork/displayMode/ChatWorkingIndicator";
+import {
+  scrollToEndBottom,
+  useChatWorkingReserve,
+} from "../fork/displayMode/chatWorkingIndicator.logic";
 import { timelineCitation } from "../fork/dashboard/dashboardCitation";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
 import { branchMismatchBannerItem, extensionStatusBannerItem } from "./chat/ThreadActivityBanners";
@@ -2187,6 +2192,7 @@ export default function ChatView(props: ChatViewProps) {
     return result;
   };
 
+  const chatWorkingReserve = useChatWorkingReserve(isServerThread ? routeThreadDetailRef : null);
   const {
     showScrollToBottom,
     timelineLiveFollowEnabled,
@@ -2203,7 +2209,7 @@ export default function ChatView(props: ChatViewProps) {
     attachComposerOverlay: attachFollowComposerOverlay,
   } = useTimelineFollow({
     legendListRef,
-    composerTimelineInset,
+    composerTimelineInset: composerTimelineInset + chatWorkingReserve,
     routeThreadKey,
     activeThreadKey,
     isServerThread,
@@ -3638,7 +3644,7 @@ export default function ChatView(props: ChatViewProps) {
                   anchorMessageId={timelineAnchorMessageId}
                   onAnchorReady={onTimelineAnchorReadyStable}
                   onAnchorSizeChanged={onTimelineAnchorSizeChangedStable}
-                  contentInsetEndAdjustment={composerTimelineInset}
+                  contentInsetEndAdjustment={composerTimelineInset + chatWorkingReserve}
                   liveFollowEnabled={timelineLiveFollowEnabled}
                   onIsAtEndChange={onIsAtEndChangeStable}
                   onViewportAttach={attachTimelineViewport}
@@ -3654,11 +3660,26 @@ export default function ChatView(props: ChatViewProps) {
 
               {showScrollToBottom && !isThreadFindActive && (
                 <ScrollToEndButton
-                  bottom={scrollToEndClearance + 4}
+                  bottom={scrollToEndBottom(
+                    scrollToEndClearance,
+                    composerTimelineInset,
+                    chatWorkingReserve,
+                  )}
                   summary={scrollToEndSummary}
                   onScrollToEnd={() => scrollToEnd(true)}
                 />
               )}
+              <ChatWorkingIndicator
+                chatMode={chatWorkingReserve > 0}
+                environmentId={environmentId}
+                entries={timelineEntries}
+                working={isWorking}
+                localSendPending={isSendBusy}
+                activityRun={activeActivityRun}
+                runtime={activeRuntime}
+                startedAt={activeWorkStartedAt}
+                composerInset={composerTimelineInset}
+              />
             </div>
 
             <div
