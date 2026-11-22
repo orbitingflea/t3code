@@ -26,7 +26,7 @@ export function FileLinkPathDepthSetting() {
   return (
     <SettingsRow
       {...setting("file-link-path-depth")}
-      description="Folders that file links in messages and Markdown previews show before the file name, on this device. A file name that repeats in a message keeps its folder hint after the name."
+      description="Choose how many folders to show before the name on file links in messages and Markdown previews."
       resetAction={
         depth !== DEFAULT_CLIENT_SETTINGS.fileLinkPathDepth ? (
           <SettingResetButton
