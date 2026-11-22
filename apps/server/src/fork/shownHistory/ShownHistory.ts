@@ -169,18 +169,22 @@ export const sendCallSql = (sql: SqlClient.SqlClient) =>
   sql`(item.type = 'dynamic_tool'
     AND json_extract(item.payload_json, '$.toolName') LIKE ${`%${SEND_TO_USER_TOOL_NAME}%`})`;
 
+/** A `user_message` item `item` that the user typed in a client (isUserTypedMessage). */
+export const userTypedSql = (sql: SqlClient.SqlClient) =>
+  sql`(item.type = 'user_message'
+    AND json_extract(item.payload_json, '$.createdBy') = 'user'
+    AND json_extract(item.payload_json, '$.creationSource') IN ('web', 'mobile')
+    AND json_extract(item.payload_json, '$.scheduledTaskId') IS NULL
+    AND json_extract(item.payload_json, '$.senderThreadId') IS NULL
+    AND json_extract(item.payload_json, '$.idleCompaction') IS NULL)`;
+
 /**
  * The rows a display mode can show: messages the user typed (isUserTypedMessage) and send calls.
  * With `cards`, also waiting secret and link cards, and tool calls with inline output, a superset
  * of the agent's renders and apps.
  */
 const shownCandidateSql = (sql: SqlClient.SqlClient, cards: boolean) => sql`(
-  (item.type = 'user_message'
-    AND json_extract(item.payload_json, '$.createdBy') = 'user'
-    AND json_extract(item.payload_json, '$.creationSource') IN ('web', 'mobile')
-    AND json_extract(item.payload_json, '$.scheduledTaskId') IS NULL
-    AND json_extract(item.payload_json, '$.senderThreadId') IS NULL
-    AND json_extract(item.payload_json, '$.idleCompaction') IS NULL)
+  ${userTypedSql(sql)}
   OR ${sendCallSql(sql)}
   ${
     cards
