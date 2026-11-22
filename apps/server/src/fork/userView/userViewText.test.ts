@@ -429,7 +429,7 @@ describe("userViewText", () => {
     expect(textOf(view(conversation(), { subThread: S5 }))).not.toContain("replies]");
   });
 
-  it("shows replies typed under a user's own message, as threads from before in-place answers have", () => {
+  it("shows replies under a user's own message: a late answer, or replies from before in-place answers", () => {
     const q = shortId("message:1");
     const r = shortId("message:3");
     const items = [
@@ -444,6 +444,17 @@ describe("userViewText", () => {
       `Sub-thread under [user ${q}, 2026-11-15T16:48:00.000Z]:\n\n[user ${r}, 2026-11-15T16:48:20.000Z]\n  In a microwave?\n\n[agent, answer to ${r}, 2026-11-15T16:48:30.000Z]\n  About 15 seconds.\n</t3-user-view>`,
     );
     expect(textOf(view(items, { subThread: r }))).toBe(thread);
+    const late = [
+      user(1, 0, "How long to toast nori?"),
+      user(2, 10, "And in a pan?"),
+      send(3, 20, "A few seconds a side.", { reply_to: q }),
+    ];
+    const main = textOf(view(late, {}));
+    expect(main).toContain(`[user ${q}, 2026-11-15T16:48:00.000Z, 1 reply]`);
+    expect(main).not.toContain(`answer to ${q}`);
+    expect(textOf(view(late, { subThread: q }))).toContain(
+      `Sub-thread under [user ${q}, 2026-11-15T16:48:00.000Z]:\n\n[agent, answer to ${q}, 2026-11-15T16:48:20.000Z]\n  A few seconds a side.\n</t3-user-view>`,
+    );
   });
 
   it("names the messages before the main-list window in an Earlier line that skips none", () => {

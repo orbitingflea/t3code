@@ -103,9 +103,10 @@ export interface VisibleCore {
    */
   readonly first: string | null;
   /**
-   * Whether the core is not in the main list: it shows in the sub-thread of `first`, or nowhere when
+   * Whether the core is not in the main list. It shows in the sub-thread of `first`, or nowhere when
    * `first` is null. A user message is a reply when it carries a `fork-reply` record. An answer is a
-   * reply when the message it answers is one.
+   * reply when the message it answers is one, or when the user sent a later main-list message before
+   * the answer.
    */
   readonly reply: boolean;
   /**
@@ -160,10 +161,10 @@ export interface DisplayMode {
     | ((events: ReadonlyArray<DisplayEvent>, text: string, message: WrappedMessage) => string)
     | null;
   /**
-   * Whether the user can reply under one of the agent's main-list messages, in its sub-thread. The
-   * main list shows the cores that are not replies. The agent answers each message that the user
-   * types once, by its short id, after at most one ack, and the answer shows where that message is.
-   * To say more, it rewrites that answer with `replace_send_to_user`.
+   * Whether the user can reply in a main-list message's sub-thread. The main list shows the cores that
+   * are not replies. The agent answers each message the user types once, by its short id, after at most
+   * one ack. The answer shows where that message is, or in its sub-thread when the user sent a later
+   * main-list message first. To say more, the agent rewrites the answer with `replace_send_to_user`.
    */
   readonly subThreads: boolean;
 }
@@ -208,6 +209,7 @@ export function foldCores(
   const answerByReplyTo = new Map<string, number>();
   const agentFirstByShortId = new Map<string, number>();
   const unplacedAnswers = new Map<string, number>();
+  let latestMainUser = -1;
   for (const event of events) {
     switch (event.type) {
       case "user": {
@@ -216,8 +218,7 @@ export function foldCores(
         if (root !== undefined)
           cores[root] = { ...cores[root]!, first: event.under!, reply: false };
         const id = shortId(event.id);
-        userByShortId.set(
-          id,
+        const at =
           cores.push({
             id: event.id,
             from: "user",
@@ -226,8 +227,9 @@ export function foldCores(
             reply: event.under !== undefined,
             shortId: id,
             ...(event.compaction && { compaction: event.compaction }),
-          }) - 1,
-        );
+          }) - 1;
+        userByShortId.set(id, at);
+        if (isMainListOnItsOwn(event)) latestMainUser = at;
         break;
       }
       case "sent":
@@ -247,10 +249,12 @@ export function foldCores(
         } else {
           const answered = userByShortId.get(event.replyTo);
           const question = answered === undefined ? undefined : cores[answered]!;
-          // An answer shows where the message it answers is. With that message not among the
-          // events, its place is unknown and it shows nowhere until a reply under it places it;
-          // ShownHistory loads that message with it.
-          const inMainList = question !== undefined && !question.reply;
+          // An answer shows where the message it answers is. If a later main-list user message came
+          // first, an answer to an earlier main-list message shows in the answered message's
+          // sub-thread. With the answered message not among the events, its place is unknown and it
+          // shows nowhere until a reply under it places it; ShownHistory loads that message with it.
+          const inMainList =
+            question !== undefined && !question.reply && latestMainUser <= answered!;
           latestSent =
             cores.push({
               id: event.id,
@@ -357,18 +361,18 @@ function chatRepliesWrap(
         ? `Message "${id}" from the user, a reply in a sub-thread.`
         : `Message "${id}" from the user, a reply in the sub-thread that showed:`,
     ...shown.map(recapLine),
-    `To answer, call send_to_user with reply_to "${id}" and the user's words below as user_message. Your answer shows ${message.under === undefined ? "in the main list" : "in this sub-thread"}.`,
+    `To answer, call send_to_user with reply_to "${id}" and the user's words below as user_message. Your answer shows ${message.under === undefined ? "in the main list, or in this message's sub-thread if the user sends a later main-list message before you answer" : "in this sub-thread"}.`,
     "</t3-replies-mode>",
     text,
   ].join("\n");
 }
 
 const CHAT_REPLIES_RULES =
-  "They see only their own messages and your send_to_user messages. The main list is one chat. The user can also choose Reply on one of your messages there and talk with you in its sub-thread. Each message from the user comes with a short id. To answer one, call send_to_user with reply_to set to its id and user_message set to its words; your answer shows where the user wrote it, in the main list or in that sub-thread. Answer only the user's latest message in each place, once. To change an answer, call replace_send_to_user with the same reply_to, until the user writes after it there or replies under it. To say something that answers no message, call send_to_user with new_sub_thread true: it shows in the main list, one until the user writes there again. To change that message, call replace_send_to_user with sub_thread set to the id that the send returned, until the user writes after it or replies under it.";
+  "They see only their own messages and your send_to_user messages. The main list is one chat. The user can also choose Reply on one of your messages there and talk with you in its sub-thread. Each message from the user comes with a short id. To answer one, call send_to_user with reply_to set to its id and user_message set to its words. Your answer shows where the user wrote it, in the main list or in that sub-thread. If the user sent a later main-list message, an answer to an earlier one shows in the earlier message's sub-thread. If that later message is on the same topic, give one combined answer to the latest message only. Otherwise, you may answer the earlier message in its sub-thread and the latest one in the main list. Answer each message at most once. In a sub-thread, answer only the latest message. To change an answer, call replace_send_to_user with the same reply_to, until the user writes after it where it shows or replies under it. To say something that answers no message, call send_to_user with new_sub_thread true. It shows in the main list, one until the user writes there again. To change that message, call replace_send_to_user with sub_thread set to the id the send returned, until the user writes after it or replies under it.";
 
 export const CHAT_REPLIES_DISPLAY_MODE: DisplayMode = {
   id: "chat-replies",
-  toldId: "chat-replies@3",
+  toldId: "chat-replies@4",
   label: "Chat mode",
   notice: `<t3-display-mode>The user switched this thread to Chat mode. ${CHAT_REPLIES_RULES}</t3-display-mode>`,
   stateNotice: `<t3-display-mode>This thread is in Chat mode. ${CHAT_REPLIES_RULES}</t3-display-mode>`,
@@ -668,6 +672,12 @@ export function displayEventFromTurnItem(item: OrchestrationV2TurnItem): Display
       return OUTSIDE_TRANSCRIPT_TYPES.has(item.type) ? null : { type: "other" };
   }
 }
+
+export const displayEventsOf = (items: Iterable<OrchestrationV2TurnItem>): DisplayEvent[] =>
+  Array.from(items).flatMap((item) => {
+    const event = displayEventFromTurnItem(item);
+    return event === null ? [] : [event];
+  });
 
 /** The text of a completed `send_to_user` call. Any other item has none. */
 export function sentMessageText(item: OrchestrationV2TurnItem): string | null {

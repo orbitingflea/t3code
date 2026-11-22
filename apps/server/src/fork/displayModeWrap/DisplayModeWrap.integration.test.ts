@@ -32,7 +32,7 @@ const inMainList = (messageId: string, text: string) =>
   [
     "<t3-replies-mode>",
     `Message "${shortId(messageId)}" from the user in the main list.`,
-    `To answer, call send_to_user with reply_to "${shortId(messageId)}" and the user's words below as user_message. Your answer shows in the main list.`,
+    `To answer, call send_to_user with reply_to "${shortId(messageId)}" and the user's words below as user_message. Your answer shows in the main list, or in this message's sub-thread if the user sends a later main-list message before you answer.`,
     "</t3-replies-mode>",
     text,
   ].join("\n");

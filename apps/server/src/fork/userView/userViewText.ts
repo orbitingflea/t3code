@@ -392,7 +392,8 @@ function rootOf(
     if (first === undefined) return complete ? nowhere : { type: "more" };
     return first.reply ? nowhere : first;
   }
-  // Threads from before answers moved in place have replies under the user's own messages.
+  // A user message has replies when the agent answered it late, or in threads from before answers
+  // moved in place.
   if (named.from === "agent" || cores.some((core) => core.reply && core.first === named.id))
     return named;
   const answers = cores.filter(

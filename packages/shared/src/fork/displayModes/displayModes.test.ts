@@ -35,6 +35,7 @@ import {
   subThreadCores,
   threadDisplay,
   toldKey,
+  type VisibleCore,
   withoutRemovedDisplayModes,
 } from "./displayModes.ts";
 
@@ -369,7 +370,7 @@ describe("sub-threads", () => {
     answer("A2", "Q2"),
   ];
 
-  it("puts an answer where the message it answers is", () => {
+  it("puts an answer where the message it answers is, or under it after a later main-list message", () => {
     const cores = foldCores([...events, replyUnder("More?", "sent:A1"), answer("Sure", "More?")]);
     expect(cores.filter((core) => !core.reply).map((core) => core.text)).toEqual([
       "Q1",
@@ -387,6 +388,68 @@ describe("sub-threads", () => {
       "More?",
       "Sure",
     ]);
+
+    const textsOf = (shown: ReadonlyArray<VisibleCore>) => shown.map((core) => core.text);
+    const compact: DisplayEvent = {
+      type: "user",
+      id: "user:/compact",
+      text: "/compact",
+      compaction: true,
+    };
+    const ack: DisplayEvent = {
+      type: "sent",
+      id: "sent:On it.",
+      text: "On it.",
+      replyTo: shortId("user:T"),
+      ack: true,
+    };
+    const rewritten: DisplayEvent = {
+      type: "rewrite",
+      id: "rewrite:A2",
+      text: "A2",
+      replyTo: shortId("user:T"),
+    };
+    const rows: ReadonlyArray<
+      readonly [ReadonlyArray<DisplayEvent>, ReadonlyArray<string>, ReadonlyArray<string>]
+    > = [
+      [
+        [user("T"), user("N"), answer("A", "T")],
+        ["T", "N"],
+        ["T", "A"],
+      ],
+      [[user("T"), answer("A", "T"), user("N")], ["T", "A", "N"], ["T"]],
+      [[user("T"), compact, answer("A", "T")], ["T", "/compact", "A"], ["T"]],
+      [
+        [user("T"), sent("News"), replyUnder("X", "sent:News"), answer("A", "T")],
+        ["T", "News", "A"],
+        ["T"],
+      ],
+      [
+        [user("T"), ack, user("N"), answer("A", "T"), rewritten],
+        ["T", "On it.", "N"],
+        ["T", "A2"],
+      ],
+      [
+        [user("T"), user("N"), answer("A", "T"), replyUnder("R", "user:T"), answer("AR", "R")],
+        ["T", "N"],
+        ["T", "A", "R", "AR"],
+      ],
+    ];
+    const before = [user("P"), sent("Old news"), answer("AP", "P"), user("Q")];
+    const placesFromT = (shown: ReadonlyArray<VisibleCore>) =>
+      shown
+        .slice(shown.findIndex((core) => core.id === "user:T"))
+        .map(({ id, first, reply }) => ({ id, first, reply }));
+    for (const [row, main, underT] of rows) {
+      const shown = foldCores(row);
+      expect(textsOf(shown.filter((core) => !core.reply))).toEqual(main);
+      expect(textsOf(subThreadCores(shown, "user:T"))).toEqual(underT);
+      const history = [...before, ...row];
+      for (let start = 0; start <= before.length; start++)
+        expect(placesFromT(foldCores(history.slice(start))), `window from ${start}`).toEqual(
+          placesFromT(foldCores(history)),
+        );
+    }
   });
 
   it("gives an answer no sub-thread when the message it answers is not among the events", () => {
@@ -461,7 +524,7 @@ describe("sub-threads", () => {
       [
         "<t3-replies-mode>",
         `Message "${shortId("user:Q3")}" from the user in the main list.`,
-        `To answer, call send_to_user with reply_to "${shortId("user:Q3")}" and the user's words below as user_message. Your answer shows in the main list.`,
+        `To answer, call send_to_user with reply_to "${shortId("user:Q3")}" and the user's words below as user_message. Your answer shows in the main list, or in this message's sub-thread if the user sends a later main-list message before you answer.`,
         "</t3-replies-mode>",
         "Q3",
       ].join("\n"),
@@ -615,18 +678,18 @@ describe("displayNote", () => {
   const CHAT = CHAT_REPLIES_DISPLAY_MODE;
 
   it.each<readonly [string, string, boolean, ReadonlyArray<string> | null]>([
-    ["chat-replies@3+dashboard@2", "chat-replies", true, null],
+    ["chat-replies@4+dashboard@2", "chat-replies", true, null],
     ["normal", "chat-replies", false, [CHAT.notice]],
     ["normal", "normal", true, [ON]],
-    ["chat-replies@3+dashboard@2", "chat-replies", false, [OFF]],
+    ["chat-replies@4+dashboard@2", "chat-replies", false, [OFF]],
     ["normal", "chat-replies", true, [CHAT.notice, ON]],
-    ["chat-replies@3", "normal", true, [NORMAL.notice, ON]],
+    ["chat-replies@4", "normal", true, [NORMAL.notice, ON]],
     ["unknown", "chat-replies", true, [CHAT.stateNotice, ON_STATE]],
     ["messages-dashboard", "chat-replies", true, [CHAT.stateNotice, ON_STATE]],
     ["messages-dashboard", "chat-replies", false, [CHAT.stateNotice, OFF_STATE]],
-    ["chat-replies@2", "chat-replies", false, [CHAT.stateNotice, OFF_STATE]],
-    ["chat-replies@3+dashboard", "chat-replies", true, [CHAT.stateNotice, ON_STATE]],
-    ["chat-replies@3+dashboard", "chat-replies", false, [CHAT.stateNotice, OFF_STATE]],
+    ["chat-replies@3", "chat-replies", false, [CHAT.stateNotice, OFF_STATE]],
+    ["chat-replies@4+dashboard", "chat-replies", true, [CHAT.stateNotice, ON_STATE]],
+    ["chat-replies@4+dashboard", "chat-replies", false, [CHAT.stateNotice, OFF_STATE]],
   ])("brings an agent told %s up to %s with the Dashboard on: %s", (told, modeId, on, notes) => {
     expect(displayNote(told, displayOf(resolveDisplayMode(modeId), on))).toBe(
       notes?.join("\n") ?? null,
@@ -641,7 +704,7 @@ describe("displayNote", () => {
   it("records what the agent was told in one key per display", () => {
     expect([NORMAL_DISPLAY, displayOf(CHAT, true)].map(toldKey)).toEqual([
       "normal",
-      "chat-replies@3+dashboard@2",
+      "chat-replies@4+dashboard@2",
     ]);
   });
 });

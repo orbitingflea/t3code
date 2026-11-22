@@ -9,6 +9,7 @@ import {
 } from "@t3tools/contracts";
 import {
   displayEventFromTurnItem,
+  displayEventsOf,
   displayNote,
   isMainListOnItsOwn,
   isWebTypedMessage,
@@ -452,16 +453,9 @@ export const layer: Layer.Layer<
         const events =
           under === undefined
             ? []
-            : (yield* shownItems(
-                threadId,
-                message.id,
-                undefined,
-                SUB_THREAD_WINDOW_CORES,
-                false,
-              )).flatMap((item) => {
-                const event = displayEventFromTurnItem(item);
-                return event === null ? [] : [event];
-              });
+            : displayEventsOf(
+                yield* shownItems(threadId, message.id, undefined, SUB_THREAD_WINDOW_CORES, false),
+              );
         const wrapped =
           mode.wrap === null ? text : mode.wrap(events, text, { id: message.id, under });
         if (under !== undefined) {

@@ -7,6 +7,7 @@ import { expandAssistantCitationsForProvider } from "@t3tools/shared/assistantCi
 import {
   ACK_MAX_BYTES,
   displayEventFromTurnItem,
+  displayEventsOf,
   foldCores,
   freshFirstPointer,
   isMainListOnItsOwn,
@@ -42,6 +43,7 @@ import * as SubThreads from "../subThreads/SubThreads.ts";
 import {
   judgeReplace,
   judgeSend,
+  isUnread,
   makeReplyHolds,
   type ReplyCall,
   replyCallOf,
@@ -88,6 +90,7 @@ const MatchInput = (description: string) =>
 
 /** How long an accepted send counts while its call is not yet in the history, for calls not named. */
 const UNNAMED_SEND_HOLD_MS = 10_000;
+const UNREAD_TOLD_MS = 10 * 60_000;
 const MIN_PERCENT = Math.round(TEXT_MATCH_MIN_RATIO * 100);
 const DONE = "If you are done, end your turn with no text.";
 const SHOWN = { ok: true as const, message: `Shown to the user. ${DONE}` };
@@ -114,7 +117,7 @@ const SendToUserTool = Tool.make(SEND_TO_USER_TOOL_NAME, {
   parameters: Schema.Struct({
     text: SendText,
     reply_to: Pointer(
-      "Chat mode only. The id of the user's message that this text answers, as the <t3-replies-mode> block before that message gave it. The answer shows where that message is: in the main list or in its sub-thread.",
+      "Chat mode only. The id of the user's message that this text answers, as the <t3-replies-mode> block before that message gave it. The answer shows where that message is, in the main list or in its sub-thread. If the user sent a later main-list message, an answer to an earlier one shows in the earlier message's sub-thread.",
     ),
     user_message: Schema.optional(
       Schema.NullOr(
@@ -198,12 +201,11 @@ function itemsBefore(shown: ReadonlyArray<OrchestrationV2TurnItem>, ownItem: str
 }
 
 const coresOf = (items: ReadonlyArray<OrchestrationV2TurnItem>) =>
-  foldCores(
-    items.flatMap((item) => {
-      const event = displayEventFromTurnItem(item);
-      return event === null ? [] : [event];
-    }),
-  );
+  foldCores(displayEventsOf(items));
+
+const sweep = (expiries: Map<string, number>, now: number) => {
+  for (const [key, until] of expiries) if (until <= now) expiries.delete(key);
+};
 
 /** The calls toward the answer to the user message at `at`: those after it that `concerns` keeps. */
 function replyCallsAfter(
@@ -441,6 +443,11 @@ export const layerHandlers = McpToolAccess.toLayer(
     // few seconds instead, while the provider has not yet stored it, for that user message only.
     /** The ids given to first messages that may not be in the history yet, each with its hold's end. */
     const givenIds = new Map<string, number>();
+    /**
+     * Unread user messages that a refusal already showed, by thread and message id, each with its
+     * expiry.
+     */
+    const toldUnread = new Map<string, number>();
     const holds = makeReplyHolds(UNNAMED_SEND_HOLD_MS);
     const holdKey = (threadId: ThreadId, place: string) => `${threadId}\n${place}`;
 
@@ -456,11 +463,13 @@ export const layerHandlers = McpToolAccess.toLayer(
         .latestShownItems(threadId, toolUseId, SUB_THREAD_WINDOW_CORES, toMainListMessage)
         .pipe(Effect.mapError(orchestrationError));
       const items = itemsBefore(shown, toolUseId);
-      // `cores` is what the agent saw when it made the call. `coresNow` has what the user typed since.
+      const events = displayEventsOf(items);
+      // `cores` is what the agent saw when it made the call. `shown` has what the user typed since.
       return {
         items,
-        cores: coresOf(items),
-        coresNow: coresOf(shown),
+        events,
+        cores: foldCores(events),
+        shown,
         named: toolUseId !== undefined,
       };
     });
@@ -482,7 +491,7 @@ export const layerHandlers = McpToolAccess.toLayer(
       },
     ) {
       const replyTo = messagePointer(input.reply_to);
-      const { items, cores, named } = yield* readThreadCores(
+      const { items, events, cores, named } = yield* readThreadCores(
         threadId,
         replyTo === undefined && input.new_sub_thread === true && input.ack !== true,
       );
@@ -526,7 +535,7 @@ export const layerHandlers = McpToolAccess.toLayer(
         holds.record(mainKey, named, "answer", "answered", now);
         // A user message to the main list between two first messages can come before the first is
         // in the history, so the ids given for a while count as taken.
-        for (const [id, until] of givenIds) if (until <= now) givenIds.delete(id);
+        sweep(givenIds, now);
         const id = freshFirstPointer(
           new Set([
             ...cores.map((core) => core.shortId),
@@ -566,12 +575,14 @@ export const layerHandlers = McpToolAccess.toLayer(
       }
       // `/compact` is never the latest message, except when it is the one being answered.
       const counts = owesAnswer(target) ? owesAnswer : (core: VisibleCore) => core.from === "user";
-      const latest = cores.findLast((core) => counts(core) && samePlace(core, target));
-      if (latest !== target) {
+      const later = cores
+        .slice(cores.indexOf(target) + 1)
+        .filter((core) => counts(core) && samePlace(core, target));
+      if (target.reply && later.length > 0) {
         return yield* placeRefusal(
           "invalid_request",
           [
-            `the user sent a later message, "${latest?.shortId}", ${target.reply ? "in this sub-thread" : "in the main list"}. Answer that one.`,
+            `the user sent a later message, "${later.at(-1)?.shortId}", in this sub-thread. Answer that one.`,
           ],
           cores,
           target,
@@ -591,20 +602,90 @@ export const layerHandlers = McpToolAccess.toLayer(
       });
       if (!verdict.ok)
         return yield* placeRefusal("invalid_request", [verdict.reason], cores, target, []);
-      holds.record(key, named, input.ack === true ? "ack" : "answer", verdict.next, now);
-      if (input.ack === true) return ACKED;
-      if (target.reply && target.first !== null)
-        yield* subThreadChanged(
-          threadId,
-          [
-            ...subThreadCores(cores, target.first),
-            { id: "", from: "agent", text: input.text, first: target.first, reply: true },
-          ],
-          target.first,
+      sweep(toldUnread, now);
+      const userItems = new Map(
+        items.flatMap((item) =>
+          item.type === "user_message" ? [[String(item.messageId), item] as const] : [],
+        ),
+      );
+      // An answer or ack to a later message shows that the agent read it.
+      const unread = later.filter((core) => {
+        const item = userItems.get(core.id);
+        return (
+          item !== undefined &&
+          isUnread(item) &&
+          !toldUnread.has(`${threadId}\n${core.id}`) &&
+          !cores
+            .slice(cores.indexOf(core) + 1)
+            .some((reply) => reply.from === "agent" && reply.replyTo === core.shortId)
         );
+      });
+      if (unread.length > 0) {
+        for (const core of unread) toldUnread.set(`${threadId}\n${core.id}`, now + UNREAD_TOLD_MS);
+        return yield* placeRefusal(
+          "invalid_request",
+          [
+            `your answer was not shown because the user wrote in the main list after "${replyTo}", and you may not have read what they sent yet.`,
+          ],
+          cores,
+          undefined,
+          [
+            "Later main-list messages from the user, by id:",
+            ...unread.map((core) => `"${core.shortId}": ${recapText(core.text)}`),
+            `Read what the user sent first. If it is on the same topic, give one combined answer to the latest message only. If it is a separate topic, call send_to_user again with reply_to "${replyTo}", and your answer shows in that message's sub-thread.`,
+          ],
+        );
+      }
+      const shown = foldCores([
+        ...events,
+        {
+          type: "sent",
+          id: "",
+          text: input.text,
+          replyTo,
+          ...(input.ack === true && { ack: true }),
+        },
+      ]);
+      const placed = shown.at(-1)!;
+      const late = placed.reply && !target.reply;
+      // A late ack opens the sub-thread, so the user may already have written there.
+      const replied = late
+        ? cores.findLast(
+            (core) =>
+              owesAnswer(core) && core.reply && core.first === placed.first && core !== target,
+          )
+        : undefined;
+      if (replied !== undefined) {
+        return yield* placeRefusal(
+          "invalid_request",
+          [
+            `the user sent a later message, "${replied.shortId}", in this sub-thread. Answer that one.`,
+          ],
+          cores,
+          replied,
+          [],
+        );
+      }
+      holds.record(key, named, input.ack === true ? "ack" : "answer", verdict.next, now);
+      if (input.ack === true)
+        return late
+          ? {
+              ok: true as const,
+              message: `Shown to the user as an ack for "${replyTo}", in that message's sub-thread, because the user wrote later in the main list. Send your answer when it is ready.`,
+            }
+          : ACKED;
+      if (placed.reply && placed.first !== null)
+        yield* subThreadChanged(threadId, subThreadCores(shown, placed.first), placed.first);
+      if (!late)
+        return {
+          ok: true as const,
+          message: `Shown to the user as your answer to "${replyTo}", ${placed.reply ? "in its sub-thread" : "in the main list"}. ${DONE}`,
+        };
+      const open = unansweredLines(shown);
+      const sent = `Shown to the user as your answer to "${replyTo}", in that message's sub-thread, because the user wrote later in the main list.`;
       return {
         ok: true as const,
-        message: `Shown to the user as your answer to "${replyTo}", ${target.reply ? "in its sub-thread" : "in the main list"}. ${DONE}`,
+        message: open.length === 0 ? `${sent} ${DONE}` : [sent, ...open].join("\n"),
       };
     });
 
@@ -618,7 +699,8 @@ export const layerHandlers = McpToolAccess.toLayer(
         readonly new_text: string;
       },
     ) {
-      const { items, cores, coresNow, named } = yield* readThreadCores(threadId, false);
+      const { items, cores, shown, named } = yield* readThreadCores(threadId, false);
+      const coresNow = coresOf(shown);
       const replyTo = messagePointer(input.reply_to);
       const subThread = messagePointer(input.sub_thread);
       if ((replyTo === undefined) === (subThread === undefined)) {
@@ -681,7 +763,9 @@ export const layerHandlers = McpToolAccess.toLayer(
               // judgeSend still takes the answer after an ack that the user replied under.
               answerNow.ack && later.first === answerNow.id
                 ? `the user has written after your ack for message "${replyTo}", so it stays as it is. Send your answer to "${replyTo}" with send_to_user and reply_to "${replyTo}".`
-                : `the user has written after your ${answerNow.ack ? "ack for" : "answer to"} message "${replyTo}", so it stays as it is. Answer their latest message with send_to_user and reply_to "${later.shortId}".`,
+                : answerNow.ack && !later.reply
+                  ? `the user has written after your ack for message "${replyTo}", so it stays as it is. Answer their latest message with send_to_user and reply_to "${later.shortId}". You may still send your answer to "${replyTo}" with send_to_user and reply_to "${replyTo}". It shows in that message's sub-thread.`
+                  : `the user has written after your ${answerNow.ack ? "ack for" : "answer to"} message "${replyTo}", so it stays as it is. Answer their latest message with send_to_user and reply_to "${later.shortId}".`,
             ],
             coresNow,
             later,

@@ -6,6 +6,7 @@ import {
   SEND_TO_USER_TOOL_NAME,
 } from "@t3tools/shared/displayModes";
 import { resolveT3McpToolId } from "@t3tools/shared/t3McpToolPresentation";
+import * as DateTime from "effect/DateTime";
 
 /** How far the agent's answer to one user message has come. It only moves forward. */
 export type ReplyStage = "open" | "acked" | "answered";
@@ -94,6 +95,25 @@ export function judgeSend(input: {
     ? { ok: true, next: step.next }
     : { ok: false, reason: REFUSALS[step.refused](input.subject) };
 }
+
+type UserMessageItem = Extract<OrchestrationV2TurnItem, { readonly type: "user_message" }>;
+
+const STEERS: ReadonlySet<UserMessageItem["inputIntent"]> = new Set([
+  "steer",
+  "promoted_queued_to_steer",
+]);
+
+const epochMillis = (at: DateTime.Utc | null) => (at === null ? null : DateTime.toEpochMillis(at));
+
+/**
+ * Whether `item` is a steer that no provider has confirmed reading, because it is pending, was
+ * cancelled, or never moved past the time it was stored.
+ */
+export const isUnread = (item: UserMessageItem): boolean =>
+  STEERS.has(item.inputIntent) &&
+  (item.status === "pending" ||
+    item.status === "cancelled" ||
+    epochMillis(item.completedAt) === epochMillis(item.startedAt));
 
 /**
  * Whether a replace may go out now. It checks its old text against the delivered messages, so it
