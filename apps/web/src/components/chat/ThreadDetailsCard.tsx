@@ -20,6 +20,9 @@ import {
 import { observeResize } from "../../lib/observeResize";
 import { requestWorkspaceFocus } from "../../lib/workspaceFocus";
 
+// The toggle sits in the tab bar right above the header, so the popover opens from the header's top edge.
+const FROM_HEADER_TOP = ({ anchor }: { anchor: { height: number } }) => -anchor.height;
+
 export function ThreadDetailsCard({
   threadRef,
   anchor,
@@ -186,7 +189,7 @@ export function ThreadDetailsCard({
         alignOffset={THREAD_DETAILS_CARD_GAP - 8}
         collisionAvoidance={{ side: "shift", align: "shift", fallbackAxisSide: "none" }}
         side="bottom"
-        sideOffset={topInset}
+        sideOffset={topInset > 0 ? topInset : FROM_HEADER_TOP}
         variant="panel"
         padding="none"
       >
