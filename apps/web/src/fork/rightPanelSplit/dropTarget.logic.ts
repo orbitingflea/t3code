@@ -61,6 +61,53 @@ export interface DropInput {
 
 const MARKER_WIDTH = 2;
 
+/** Viewport rectangle; `DOMRect` and dnd-kit's `ClientRect` satisfy it. */
+export interface Rect {
+  readonly left: number;
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+}
+
+/** A slot marker at the left edge of `tab`, or at its right edge when `after`. */
+export function markerGhost(tab: Rect, after: boolean): DropGhost {
+  return {
+    kind: "marker",
+    left: (after ? tab.right : tab.left) - MARKER_WIDTH / 2,
+    top: tab.top,
+    height: tab.bottom - tab.top,
+  };
+}
+
+export function boxGhost(rect: Rect): DropGhost {
+  return {
+    kind: "box",
+    left: rect.left,
+    top: rect.top,
+    width: rect.right - rect.left,
+    height: rect.bottom - rect.top,
+  };
+}
+
+/** The outer third of `content` under `x`, or null in the centre. */
+export function splitSideAt(content: Rect, x: number): PaneSide | null {
+  const third = (content.right - content.left) / 3;
+  return x < content.left + third ? "left" : x > content.right - third ? "right" : null;
+}
+
+/** The half a new split on `side` gives, after the panel grows `growth` to the left. */
+export function splitGhost(content: Rect, side: PaneSide, growth: number): DropGhost {
+  const grownLeft = content.left - growth;
+  const half = (content.right - grownLeft) / 2;
+  return {
+    kind: "box",
+    left: side === "left" ? grownLeft : grownLeft + half,
+    top: content.top,
+    width: half,
+    height: content.bottom - content.top,
+  };
+}
+
 function restore(restoreShown: string | null): { restoreShown?: string } {
   return restoreShown === null ? {} : { restoreShown };
 }
@@ -122,12 +169,7 @@ export function resolveDrop(input: DropInput): DropPlan | null {
         beforeId,
         ...restore(input.restoreShown),
       },
-      ghost: {
-        kind: "marker",
-        left: (after ? over.rect.right : over.rect.left) - MARKER_WIDTH / 2,
-        top: over.rect.top,
-        height: over.rect.height,
-      },
+      ghost: markerGhost(over.rect, after),
     };
   }
 
@@ -135,21 +177,11 @@ export function resolveDrop(input: DropInput): DropPlan | null {
   if (!input.splitRendered) {
     if (!input.splitAllowed || arrangement.split !== undefined) return null;
     if (arrangement.surfaces.length < 2) return null;
-    const third = rect.width / 3;
-    const side: PaneSide | null =
-      pointer.x < rect.left + third ? "left" : pointer.x > rect.right - third ? "right" : null;
+    const side = splitSideAt(rect, pointer.x);
     if (side === null) return null;
-    const grownLeft = rect.left - input.splitGrowth;
-    const half = (rect.right - grownLeft) / 2;
     return {
       change: { type: "split", surfaceId: draggedId, side, ...restore(input.restoreShown) },
-      ghost: {
-        kind: "box",
-        left: side === "left" ? grownLeft : grownLeft + half,
-        top: rect.top,
-        width: half,
-        height: rect.height,
-      },
+      ghost: splitGhost(rect, side, input.splitGrowth),
     };
   }
   if (over.pane === draggedPane) return null;
@@ -161,11 +193,11 @@ export function resolveDrop(input: DropInput): DropPlan | null {
       beforeId: null,
       ...restore(input.restoreShown),
     },
-    ghost: { kind: "box", left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+    ghost: boxGhost(rect),
   };
 }
 
-export function samePlan(left: DropPlan | null, right: DropPlan | null): boolean {
+export function samePlan<Plan>(left: Plan | null, right: Plan | null): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 

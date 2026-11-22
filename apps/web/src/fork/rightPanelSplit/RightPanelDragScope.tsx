@@ -174,7 +174,7 @@ export function RightPanelDragScope(props: {
   );
 }
 
-function DropGhostView({ ghost }: { ghost: DropGhost }) {
+export function DropGhostView({ ghost }: { ghost: DropGhost }) {
   if (ghost.kind === "marker") {
     return (
       <div

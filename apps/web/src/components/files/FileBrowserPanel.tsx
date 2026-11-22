@@ -25,6 +25,8 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { useTheme } from "~/hooks/useTheme";
 import { useWorkspaceMutationRefresh } from "~/hooks/useWorkspaceMutationRefresh";
 import { useFileContextMenu, type FileContextMenuAction } from "~/fileContextMenu";
+import { fileRowPanelLink } from "~/fork/rightPanelSplit/linkSources";
+import { startPanelLinkDrag, usePanelLinkOwner } from "~/fork/rightPanelSplit/panelLinkDrag";
 import { readLocalApi } from "~/localApi";
 import { T3_PIERRE_ICONS } from "~/pierre-icons";
 import { PIERRE_TREE_UNSAFE_CSS, pierreTreeStyle } from "~/pierre-tree-theme";
@@ -169,6 +171,7 @@ export default function FileBrowserPanel({
   const messages = useMessages();
   const { resolvedTheme } = useTheme();
   const composerRef = useComposerHandleContext();
+  const panelLinkOwner = usePanelLinkOwner();
   const fileContextMenu = useFileContextMenu(environmentId);
   const {
     entries: directoryEntries,
@@ -550,7 +553,18 @@ export default function FileBrowserPanel({
         contextMenuPointerRef.current = { x: event.clientX, y: event.clientY, at: event.timeStamp };
       }}
       // Capture dragstart before the tree selects the row so selection sees the drag flag.
-      onDragStartCapture={(event) => dragMention.handleDragStart(event.nativeEvent)}
+      onDragStartCapture={(event) => {
+        const treePath = dragMention.handleDragStart(event.nativeEvent);
+        startPanelLinkDrag(
+          event,
+          fileRowPanelLink({
+            owner: panelLinkOwner,
+            treePath,
+            isFile: (path) => entryKindsRef.current.get(path) === "file",
+            panelPath,
+          }),
+        );
+      }}
       onDragEnd={() => dragMention.handleDragEnd((path) => model.getItem(path)?.deselect())}
       onWheel={stopFollowingReveal}
       onPointerDown={stopFollowingReveal}

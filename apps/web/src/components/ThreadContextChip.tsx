@@ -3,6 +3,7 @@ import type { ThreadContextRecord, ProjectId } from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { MessagesSquareIcon } from "lucide-react";
 import { useGT } from "gt-react";
+import type { DragEventHandler } from "react";
 
 import { resolveThreadOpenRoute } from "~/lib/sideChatPane";
 import { buildThreadRouteParams } from "~/threadRoutes";
@@ -18,6 +19,8 @@ export function ThreadContextChip(props: {
   projectId?: ProjectId | null;
   copyMarkdown?: string;
   unreadable?: boolean;
+  /** Makes the chip draggable; without it the router link does not drag. */
+  onDragStart?: DragEventHandler<HTMLElement> | undefined;
 }) {
   const gt = useGT();
   const { environmentId, threadId } = props.record;
@@ -58,7 +61,8 @@ export function ThreadContextChip(props: {
                     ),
                   });
                 }}
-                draggable={false}
+                draggable={props.onDragStart !== undefined}
+                onDragStart={props.onDragStart}
               />
             }
             aria-label={gt("Thread, {title}", { title })}

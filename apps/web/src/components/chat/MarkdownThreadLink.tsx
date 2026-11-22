@@ -11,6 +11,8 @@ import {
 import { unknownThreadLinkLabel } from "@t3tools/shared/threadLinksCopy";
 import { resolveLinkedThreadOpen } from "@t3tools/client-runtime/linked-thread";
 
+import { threadChipPanelLink } from "../../fork/rightPanelSplit/linkSources";
+import { startPanelOnlyDrag } from "../../fork/rightPanelSplit/panelLinkDrag";
 import { configuredHostedAppUrl } from "../../hostedPairing";
 import { useThreadRefs, useThreadShell } from "../../state/entities";
 import { useConnectedEnvironmentIds, useEnvironmentIdentities } from "../../state/environments";
@@ -87,6 +89,12 @@ export function MarkdownThreadLink(props: {
   if (linked && linkedLabel !== undefined) {
     const knownTitle = props.label ?? written?.title ?? null;
     const title = knownTitle ?? gt("Thread on {label}", { label: linkedLabel });
+    const linkedTarget = {
+      viaEnvironmentId: props.environmentId,
+      ...writtenRef,
+      label: linkedLabel,
+      title: knownTitle,
+    };
     return (
       <Tooltip>
         <TooltipTrigger
@@ -96,16 +104,21 @@ export function MarkdownThreadLink(props: {
               render={
                 <button
                   type="button"
+                  draggable={panelRef !== null}
+                  onDragStart={(event) =>
+                    startPanelOnlyDrag(
+                      event,
+                      threadChipPanelLink({
+                        threadRef: props.threadRef,
+                        target: { kind: "linked", target: linkedTarget },
+                      }),
+                    )
+                  }
                   {...trigger(
                     (intent) =>
                       openLinkedThreadRead({
                         panelRef,
-                        target: {
-                          viaEnvironmentId: props.environmentId,
-                          ...writtenRef,
-                          label: linkedLabel,
-                          title: knownTitle,
-                        },
+                        target: linkedTarget,
                         intent,
                         navigate,
                       }),
@@ -138,6 +151,15 @@ export function MarkdownThreadLink(props: {
       record={{ ...ref, title }}
       projectId={resolved?.metadata.projectId ?? null}
       copyMarkdown={formatHostedThreadLink(ref, title, configuredHostedAppUrl())}
+      onDragStart={
+        props.threadRef
+          ? (event) =>
+              startPanelOnlyDrag(
+                event,
+                threadChipPanelLink({ threadRef: props.threadRef, target: { kind: "local", ref } }),
+              )
+          : undefined
+      }
     />
   );
 }

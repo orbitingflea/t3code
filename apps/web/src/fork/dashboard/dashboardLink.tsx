@@ -11,6 +11,8 @@ import {
   selectActiveRightPanel,
   useRightPanelStore,
 } from "../../rightPanelStore";
+import { openedSync } from "../rightPanelSplit/linkSources";
+import { type PanelLink, startPanelOnlyDrag } from "../rightPanelSplit/panelLinkDrag";
 import { FORK_SURFACES, threadHasModeSurface } from "./dashboardSurface";
 
 /** "open" for the Dashboard link, "inert" for any other `t3-dashboard:` link, null otherwise. */
@@ -25,9 +27,13 @@ export function dashboardLinkLabel(node: unknown, href: string): string {
   return written === "" || written === href ? "Dashboard" : written;
 }
 
+function isHostedThread(threadRef: ScopedThreadRef): boolean {
+  return scopedThreadKey(rightPanelHostRef(threadRef)) !== scopedThreadKey(threadRef);
+}
+
 function openThreadDashboard(threadRef: ScopedThreadRef) {
   // A hosted thread's actions open in its host's panel, which shows the host's Dashboard.
-  if (scopedThreadKey(rightPanelHostRef(threadRef)) !== scopedThreadKey(threadRef)) {
+  if (isHostedThread(threadRef)) {
     toastManager.add({ type: "info", title: "Open this thread on its own to see its Dashboard" });
     return;
   }
@@ -40,6 +46,15 @@ function openThreadDashboard(threadRef: ScopedThreadRef) {
   store.open(threadRef, "dashboard");
   // Opening an already active tab changes no panel state, so nothing else moves focus there.
   if (alreadyShown) requestWorkspaceFocus({ area: "panel" });
+}
+
+/** What a drop of the chip on a right-panel pane opens, when the click would open the Dashboard. */
+function dashboardPanelLink(threadRef: ScopedThreadRef): PanelLink | null {
+  if (isHostedThread(threadRef) || !threadHasModeSurface(threadRef, "dashboard")) return null;
+  return {
+    panelRef: threadRef,
+    open: () => openedSync(threadRef, () => openThreadDashboard(threadRef)),
+  };
 }
 
 /** A chat link to the thread's Dashboard: a chip that opens it, or plain text when it cannot. */
@@ -58,6 +73,8 @@ export function DashboardLinkChip(props: {
       aria-label={label === "Dashboard" ? "Open the Dashboard" : `${label}. Open the Dashboard`}
       data-markdown-copy={`[${label.replace(/[\\[\]*_`<>&]/g, "\\$&")}](${DASHBOARD_LINK_HREF})`}
       onClick={() => openThreadDashboard(threadRef)}
+      draggable
+      onDragStart={(event) => startPanelOnlyDrag(event, dashboardPanelLink(threadRef))}
     >
       <Icon aria-hidden />
       <ContextChipLabel>{label}</ContextChipLabel>

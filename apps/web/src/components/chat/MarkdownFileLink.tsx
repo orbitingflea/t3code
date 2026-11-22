@@ -17,9 +17,12 @@ import {
   leavesFileChipClickToBrowser,
   runHostFileLinkMenuItem,
 } from "../../fork/hostFileLinks";
+import { fileChipPanelLink } from "../../fork/rightPanelSplit/linkSources";
+import { type OpenedSurface, startPanelLinkDrag } from "../../fork/rightPanelSplit/panelLinkDrag";
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";
+import type { OpenFileOptions } from "../../rightPanelStore";
 import type { markdownFileCopyPaths } from "../../markdownFileHostPath";
 import { documentChipKindForFileName } from "../../pierre-icons";
 import { ContextChip } from "../ContextChip";
@@ -49,7 +52,12 @@ interface MarkdownFileLinkProps {
   theme: "light" | "dark";
   threadRef?: ScopedThreadRef | undefined;
   onOpen?: (() => Promise<AtomCommandResult<unknown, unknown>>) | undefined;
-  onOpenInPanel: (panelPath: string, line: number | undefined) => void;
+  /** The surface it opened in the panel, or null. */
+  onOpenInPanel: (
+    panelPath: string,
+    line: number | undefined,
+    options?: OpenFileOptions,
+  ) => OpenedSurface | Promise<OpenedSurface>;
   resolveDragPath: () => Promise<string>;
   resolveCopyPaths: () => Promise<ReturnType<typeof markdownFileCopyPaths>>;
   openInEditorMenuLabel: string;
@@ -127,7 +135,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
 
   const handleOpenInFilePreview = () => {
     if (threadRef && panelPath) {
-      onOpenInPanel(panelPath, line);
+      void onOpenInPanel(panelPath, line);
       return;
     }
     if (onOpenMedia) {
@@ -348,6 +356,16 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
           hasPrimaryAction ? (
             <ContextChip
               {...nativeDrag}
+              onDragStart={(event) => {
+                if (nativeDrag.draggable) nativeDrag.onDragStart(event);
+                else
+                  startPanelLinkDrag(
+                    event,
+                    fileChipPanelLink(threadRef, panelPath, (path, options) =>
+                      onOpenInPanel(path, line, options),
+                    ),
+                  );
+              }}
               kind={chipKind}
               dir="ltr"
               render={<a href={href} />}

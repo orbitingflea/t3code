@@ -27,6 +27,7 @@ import {
 
 import type { ContentDropData } from "./dropTarget.logic";
 import { useReportSplitRendered } from "./renderedSplit";
+import { PanelLinkDropScope } from "./PanelLinkDropScope";
 import { NotePressContext, RightPanelDragScope } from "./RightPanelDragScope";
 import {
   clampSplitRatio,
@@ -121,12 +122,13 @@ export function RightPanelSplitView(props: RightPanelSplitViewProps) {
   const visible = props.open !== false;
   const single = props.surfaces.find((surface) => surface.id === props.activeSurfaceId) ?? null;
   const leftShown = panes ? panes.left.shown : single;
+  const splitGrowth = widenTarget === null || !inlineSize ? 0 : widenTarget - inlineSize.width;
   return (
     <RightPanelDragScope
       threadRef={threadRef}
       splitAllowed={splitAllowed}
       splitRendered={panes !== null}
-      splitGrowth={widenTarget === null || !inlineSize ? 0 : widenTarget - inlineSize.width}
+      splitGrowth={splitGrowth}
       applyChange={updateSplit}
     >
       <PreviewPanelShell
@@ -140,37 +142,45 @@ export function RightPanelSplitView(props: RightPanelSplitViewProps) {
           className="flex h-full min-h-0 min-w-0 flex-1"
           style={{ [RATIO_PROPERTY]: panes?.ratio ?? SPLIT_RATIO_DEFAULT } as CSSProperties}
         >
-          <PaneSection
-            key="left"
-            side={panes ? "left" : null}
-            focused={panes ? panes.focused === "left" : true}
-            shown={leftShown}
-            tabs={{ ...tabs, surfaces: panes ? panes.left.surfaces : props.surfaces }}
-            tabMenu={tabMenu}
-            layoutControls={panes ? undefined : layoutControls}
-            content={leftShown ? renderSurface(leftShown, visible) : null}
-            onFocus={() => updateSplit({ type: "focus", pane: "left" })}
-          />
-          {panes ? (
-            <SplitDivider
-              key="divider"
-              ratio={panes.ratio}
-              onCommit={(ratio) => updateSplit({ type: "ratio", ratio })}
-            />
-          ) : null}
-          {panes ? (
+          <PanelLinkDropScope
+            threadRef={threadRef}
+            splitAllowed={splitAllowed}
+            splitRendered={panes !== null}
+            splitGrowth={splitGrowth}
+            applyChange={updateSplit}
+          >
             <PaneSection
-              key="right"
-              side="right"
-              focused={panes.focused === "right"}
-              shown={panes.right.shown}
-              tabs={{ ...tabs, surfaces: panes.right.surfaces }}
+              key="left"
+              side={panes ? "left" : null}
+              focused={panes ? panes.focused === "left" : true}
+              shown={leftShown}
+              tabs={{ ...tabs, surfaces: panes ? panes.left.surfaces : props.surfaces }}
               tabMenu={tabMenu}
-              layoutControls={layoutControls}
-              content={renderSurface(panes.right.shown, visible)}
-              onFocus={() => updateSplit({ type: "focus", pane: "right" })}
+              layoutControls={panes ? undefined : layoutControls}
+              content={leftShown ? renderSurface(leftShown, visible) : null}
+              onFocus={() => updateSplit({ type: "focus", pane: "left" })}
             />
-          ) : null}
+            {panes ? (
+              <SplitDivider
+                key="divider"
+                ratio={panes.ratio}
+                onCommit={(ratio) => updateSplit({ type: "ratio", ratio })}
+              />
+            ) : null}
+            {panes ? (
+              <PaneSection
+                key="right"
+                side="right"
+                focused={panes.focused === "right"}
+                shown={panes.right.shown}
+                tabs={{ ...tabs, surfaces: panes.right.surfaces }}
+                tabMenu={tabMenu}
+                layoutControls={layoutControls}
+                content={renderSurface(panes.right.shown, visible)}
+                onFocus={() => updateSplit({ type: "focus", pane: "right" })}
+              />
+            ) : null}
+          </PanelLinkDropScope>
         </div>
       </PreviewPanelShell>
     </RightPanelDragScope>
@@ -200,6 +210,7 @@ function PaneSection(props: {
   return (
     <div
       ref={attachContent}
+      data-right-panel-pane={paneSide}
       onPointerDownCapture={(event) => {
         // A tab press activates its tab, which focuses the pane and moves keyboard focus with it.
         if (focused || (event.target as Element).closest("[data-active-tab]")) return;

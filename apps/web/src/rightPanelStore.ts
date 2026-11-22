@@ -182,6 +182,11 @@ export interface ThreadPanelVisibility {
   popoverOpen: boolean;
 }
 
+/** `keepExplorer`: a file dropped beside the standalone Files tab opens next to it. */
+export interface OpenFileOptions {
+  readonly keepExplorer?: boolean;
+}
+
 interface RightPanelStoreState {
   byThreadKey: Record<string, ThreadRightPanelState>;
   pendingMaximizeThreadKey: string | null;
@@ -217,7 +222,12 @@ interface RightPanelStoreState {
   openDevice: (ref: ScopedThreadRef, target: DeviceTabTarget, automatic?: boolean) => void;
   renameDevice: (ref: ScopedThreadRef, surfaceId: string, title: string) => void;
   openBrowser: (ref: ScopedThreadRef, tabId: string | null) => void;
-  openFile: (ref: ScopedThreadRef, relativePath: string, line?: number) => void;
+  openFile: (
+    ref: ScopedThreadRef,
+    relativePath: string,
+    line?: number,
+    options?: OpenFileOptions,
+  ) => void;
   /** Moves in place; "" opens the root explorer. folderTrail keeps the return path; keepSource opens beside the source. */
   navigateFolder: (
     ref: ScopedThreadRef,
@@ -1032,7 +1042,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             ),
           }));
         }),
-      openFile: (ref, requestedPath, line) =>
+      openFile: (ref, requestedPath, line, options) =>
         set((state) =>
           userAction(state, scopedThreadKey(ref), (current) => {
             if (requestedPath === ".") {
@@ -1042,11 +1052,11 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             const relativePath = /^[A-Za-z]:\/+$/.test(requestedPath)
               ? requestedPath
               : requestedPath.replace(/\/+$/, "") || requestedPath;
-            const withoutStandaloneExplorer = current.surfaces.filter(
-              (surface) => surface.kind !== "files",
-            );
+            const kept = options?.keepExplorer
+              ? current.surfaces
+              : current.surfaces.filter((surface) => surface.kind !== "files");
             const surfaceId = `file:${relativePath}` as const;
-            const existing = withoutStandaloneExplorer.find(
+            const existing = kept.find(
               (surface): surface is Extract<RightPanelSurface, { kind: "file" }> =>
                 surface.id === surfaceId && surface.kind === "file",
             );
@@ -1060,10 +1070,8 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
               isOpen: true,
               activeSurfaceId: surface.id,
               surfaces: existing
-                ? withoutStandaloneExplorer.map((entry) =>
-                    entry.id === surface.id ? surface : entry,
-                  )
-                : [...withoutStandaloneExplorer, surface],
+                ? kept.map((entry) => (entry.id === surface.id ? surface : entry))
+                : [...kept, surface],
             };
           }),
         ),
