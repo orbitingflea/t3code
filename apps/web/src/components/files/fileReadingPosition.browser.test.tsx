@@ -46,6 +46,13 @@ vi.mock(import("../DiffWorkerPoolProvider"), async () =>
   (await import("./fileReadingTestMocks")).mockPanelParts.diffWorkers(),
 );
 
+import {
+  linkedFileEntry,
+  linkedFileTabId,
+  shownLinkedFile,
+  type WorkAreaTab,
+} from "~/fork/workArea/workArea.logic";
+import FilePreviewPanel from "./FilePreviewPanel";
 import { readings } from "./fileReadingSave";
 import {
   AttachmentPanel,
@@ -63,6 +70,45 @@ import {
   state,
 } from "./fileReadingTestKit";
 import { FILE_LINK_REVEAL_ATTRIBUTE } from "./fileSurfaceChrome";
+
+type LinkedFilePayload = Extract<WorkAreaTab, { kind: "linked-file" }>;
+const noop = () => {};
+
+/** A file another thread's Chat opened in the work area, read the way `LinkedFileBody` reads it. */
+function LinkedPanel(props: {
+  readonly payload: LinkedFilePayload;
+  readonly cwd: string;
+  readonly onShown: () => void;
+}) {
+  const { payload } = props;
+  const entry = linkedFileEntry(linkedFileTabId(payload.source, payload.path), payload);
+  return (
+    <div style={{ display: "flex", height: 400, width: 700 }}>
+      <FilePreviewPanel
+        environmentId={environmentId}
+        cwd={props.cwd}
+        projectName="Project"
+        relativePath={entry.relativePath}
+        threadRef={payload.source}
+        composerDraftTarget={payload.source}
+        keybindings={[]}
+        availableEditors={[]}
+        openInShortcutEnabled={false}
+        revealLine={entry.revealLine}
+        revealRequestId={entry.revealRequestId}
+        revealSurface={entry.reveal}
+        revealShown={payload.shown === true}
+        onRevealShown={props.onShown}
+        onOpenFile={noop}
+        onNavigateFolder={noop}
+        folderTrail={undefined}
+        onPendingChange={noop}
+        selectedFilePending={false}
+        workspaceMutationId={null}
+      />
+    </div>
+  );
+}
 
 describe("file reading position", () => {
   it("returns a source file to the reader's line after a tab switch and a panel remount", async () => {
@@ -270,6 +316,48 @@ describe("file reading position", () => {
     await act(() => panel.openFile(reading.ref, "a.ts", 40));
 
     await vi.waitFor(() => view.expectLineInView(40, "alpha_40"));
+  });
+
+  it("returns a shown linked CSV citation read in raw text to the reader's line after a reload", async () => {
+    using reading = await readingSetup("linked-csv");
+    const contents = csv(300);
+    state.files["table.csv"] = {
+      relativePath: "table.csv",
+      contents,
+      byteLength: contents.length,
+      truncated: false,
+    };
+    let payload: LinkedFilePayload = {
+      kind: "linked-file",
+      source: reading.ref,
+      path: "table.csv",
+      line: 120,
+      reveal: 1,
+    };
+    const linked = () => (
+      <LinkedPanel
+        payload={payload}
+        cwd={reading.cwd}
+        onShown={() => {
+          payload = shownLinkedFile(payload);
+        }}
+      />
+    );
+    await using screen = await render(linked());
+    const view = sourceView(screen.container);
+    await vi.waitFor(() => view.expectLineInView(120, "row 119"), COLD_WORKER);
+    await vi.waitFor(() => expect(payload.shown).toBe(true));
+    await userEvent.wheel(view.scroller(), { delta: { y: 600 } });
+    await vi.waitFor(() => expect(reading.saved("table.csv", "source")?.line).toBeGreaterThan(130));
+    const before = view.topLine();
+
+    await screen.rerender(<></>);
+    payload = JSON.parse(JSON.stringify(payload));
+    await screen.rerender(linked());
+    await vi.waitFor(() => {
+      expect(screen.container.querySelector("diffs-container")).not.toBeNull();
+      expect(view.topLine()).toEqual(before);
+    }, COLD_WORKER);
   });
 });
 

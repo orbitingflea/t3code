@@ -39,6 +39,7 @@ export function LinkedFileBody(props: {
   readonly owner: ScopedThreadRef;
   readonly tab: TabId;
   readonly entry: LinkedFileEntry;
+  readonly shown: boolean;
   readonly keybindings: ResolvedKeybindingsConfig;
   readonly availableEditors: ReadonlyArray<EditorId>;
 }) {
@@ -80,12 +81,11 @@ export function LinkedFileBody(props: {
             revealLine={entry.revealLine}
             revealRequestId={entry.revealRequestId}
             revealSurface={entry.reveal}
+            revealShown={props.shown}
             onRevealShown={() =>
-              useRightPanelStore.getState().updateWorkArea(owner, {
-                type: "linked-file-shown",
-                tab,
-                reveal: entry.revealRequestId,
-              })
+              useRightPanelStore
+                .getState()
+                .updateWorkArea(owner, { type: "linked-file-shown", tab, entry })
             }
             onOpenFile={treeOwner.openFile}
             {...(sharesWorkspace

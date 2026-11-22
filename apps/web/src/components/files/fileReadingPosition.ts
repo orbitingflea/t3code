@@ -159,12 +159,17 @@ export function useFileReadingPosition(input: {
   readonly revealLine: number | null;
   /** The tab when the store holds no surface for it; its object keys the line reveal. */
   readonly surface?: FileSurface | undefined;
+  /** `surface`'s line was shown before a reload, which the ledger cannot see. */
+  readonly revealShown?: boolean | undefined;
   readonly onRevealShown?: (() => void) | undefined;
 }) {
   const threadKey = scopedThreadKey(input.threadRef);
   const surface = useRightPanelStore(
     (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );
+  if (input.revealShown === true && input.surface !== undefined) {
+    ledger.markShown(threadKey, input.surface);
+  }
   const verdict = ledger.verdict(surface);
   const file =
     input.relativePath === null

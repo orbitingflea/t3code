@@ -19,6 +19,8 @@ import {
   LAUNCHER,
   type LayoutNode,
   leaves,
+  linkedFileEntry,
+  type LinkedFileEntry,
   linkedFileTabId,
   mapPanes,
   mapSplits,
@@ -124,8 +126,8 @@ export type WorkAreaChange =
       /** The secondary Chat the link was clicked in, as placed at click time; none from a linked file. */
       readonly from?: { readonly tab: TabId; readonly placement: number };
     }
-  /** A linked file's citation was shown; a stale `reveal` from a replaced citation is a no-op. */
-  | { readonly type: "linked-file-shown"; readonly tab: TabId; readonly reveal: number }
+  /** A linked file's citation was shown; an `entry` from a replaced or reopened citation is a no-op. */
+  | { readonly type: "linked-file-shown"; readonly tab: TabId; readonly entry: LinkedFileEntry }
   /** A thread link in a chat: the thread's Chat tab, shown where it is or placed beside the origin. */
   | { readonly type: "open-thread"; readonly thread: ScopedThreadRef }
   /** One Replies sub-thread as its own tab, shown where it is or placed beside the origin. */
@@ -1002,7 +1004,11 @@ function changedLayout(
     }
     case "linked-file-shown": {
       const payload = layout.tabs[change.tab];
-      if (payload?.kind !== "linked-file" || payload.reveal !== change.reveal || payload.shown) {
+      if (
+        payload?.kind !== "linked-file" ||
+        payload.shown ||
+        linkedFileEntry(change.tab, payload) !== change.entry
+      ) {
         return layout;
       }
       return withPayload(layout, change.tab, shownLinkedFile(payload));

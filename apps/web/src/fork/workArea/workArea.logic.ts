@@ -476,7 +476,7 @@ export function linkedFileEntry(tab: TabId, payload: LinkedFilePayload): LinkedF
   const file = {
     kind: "file",
     relativePath: payload.path,
-    revealLine: payload.shown ? null : payload.line,
+    revealLine: payload.line,
     revealRequestId: payload.reveal,
     ...(payload.attachment === undefined ? {} : { attachment: payload.attachment }),
   } as const;

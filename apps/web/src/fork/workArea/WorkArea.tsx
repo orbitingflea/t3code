@@ -701,6 +701,7 @@ function WorkAreaPane(props: {
         owner={threadRef}
         tab={pane.active}
         entry={linkedFileEntry(pane.active, payload)}
+        shown={payload.shown === true}
         keybindings={tabs.keybindings}
         availableEditors={props.availableEditors}
       />

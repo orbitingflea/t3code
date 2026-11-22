@@ -8,6 +8,7 @@ import {
   type LayoutNode,
   leaves,
   linkedFileEntry,
+  type LinkedFileEntry,
   linkedFileTabId,
   PRIMARY_CHAT,
   replyTabId,
@@ -308,35 +309,41 @@ describe("work area records", () => {
 
   it("a linked file's shown citation survives a reload; a new or reopened citation reveals again", () => {
     const fileTab = linkedFileTabId(other, "src/x.ts");
-    const entryOf = (tab: TabId) => stripEntries(layout(), record(), [tab], ref, "Chat")[0];
+    const entryOf = (tab: TabId) =>
+      stripEntries(layout(), record(), [tab], ref, "Chat")[0] as LinkedFileEntry;
     const payload = () => layout().tabs[fileTab];
     const link = () => change({ type: "link-file", source: other, path: "src/x.ts", line: 3 });
+    const shown = (entry: LinkedFileEntry) =>
+      change({ type: "linked-file-shown", tab: fileTab, entry });
     link();
     const first = entryOf(fileTab);
-    change({ type: "linked-file-shown", tab: fileTab, reveal: 1 });
+    shown(first);
     expect(payload()).toMatchObject({ reveal: 1, shown: true });
     expect(entryOf(fileTab)).toBe(first);
 
     const restored = restoreWorkArea(JSON.parse(JSON.stringify(layout())))?.tabs[fileTab];
     if (restored?.kind !== "linked-file") throw new Error("linked file not restored");
     expect(restored.shown).toBe(true);
-    const reloaded = linkedFileEntry(fileTab, restored);
-    expect(reloaded.revealLine).toBeNull();
-    expect(reloaded.reveal.revealLine).toBeNull();
-
-    const before = layout();
-    change({ type: "linked-file-shown", tab: fileTab, reveal: 0 });
-    expect(layout()).toBe(before);
+    expect(linkedFileEntry(fileTab, restored)).toMatchObject({ revealLine: 3, revealRequestId: 1 });
 
     link();
     expect(payload()).toMatchObject({ reveal: 2 });
     expect(payload()).not.toHaveProperty("shown");
-    expect(entryOf(fileTab)).toMatchObject({ revealLine: 3, revealRequestId: 2 });
+    const second = entryOf(fileTab);
+    expect(second).toMatchObject({ revealLine: 3, revealRequestId: 2 });
+    const before = layout();
+    shown(first);
+    expect(layout()).toBe(before);
 
-    change({ type: "linked-file-shown", tab: fileTab, reveal: 2 });
+    shown(second);
+    expect(payload()).toMatchObject({ reveal: 2, shown: true });
     change({ type: "close", tab: fileTab });
     link();
     expect(payload()).toMatchObject({ reveal: 1 });
+    const reopened = layout();
+    shown(first);
+    shown(second);
+    expect(layout()).toBe(reopened);
     expect(payload()).not.toHaveProperty("shown");
     expect(entryOf(fileTab)).toMatchObject({ revealLine: 3, revealRequestId: 1 });
   });
