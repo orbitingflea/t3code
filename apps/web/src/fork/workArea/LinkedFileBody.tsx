@@ -80,6 +80,13 @@ export function LinkedFileBody(props: {
             revealLine={entry.revealLine}
             revealRequestId={entry.revealRequestId}
             revealSurface={entry.reveal}
+            onRevealShown={() =>
+              useRightPanelStore.getState().updateWorkArea(owner, {
+                type: "linked-file-shown",
+                tab,
+                reveal: entry.revealRequestId,
+              })
+            }
             onOpenFile={treeOwner.openFile}
             {...(sharesWorkspace
               ? {

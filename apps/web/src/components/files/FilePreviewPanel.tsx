@@ -164,6 +164,7 @@ interface FilePreviewPanelProps {
   revealRequestId: number;
   /** A tab the right panel store does not hold, such as a work-area linked file. */
   revealSurface?: FileSurface | undefined;
+  onRevealShown?: (() => void) | undefined;
   onOpenFile: (relativePath: string) => void;
   /** Absent shows folder breadcrumbs as plain text. */
   onNavigateFolder?: (relativePath: string, folderTrail: string, keepSource: boolean) => void;
@@ -1301,6 +1302,7 @@ export default function FilePreviewPanel({
   revealLine,
   revealRequestId,
   revealSurface,
+  onRevealShown,
   onOpenFile,
   onNavigateFolder,
   folderTrail,
@@ -1421,6 +1423,7 @@ export default function FilePreviewPanel({
     attachment,
     revealLine,
     surface: revealSurface,
+    onRevealShown,
   });
   const revealHandled =
     revealLine === null ||

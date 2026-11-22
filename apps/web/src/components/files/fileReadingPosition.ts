@@ -159,6 +159,7 @@ export function useFileReadingPosition(input: {
   readonly revealLine: number | null;
   /** The tab when the store holds no surface for it; its object keys the line reveal. */
   readonly surface?: FileSurface | undefined;
+  readonly onRevealShown?: (() => void) | undefined;
 }) {
   const threadKey = scopedThreadKey(input.threadRef);
   const surface = useRightPanelStore(
@@ -203,7 +204,10 @@ export function useFileReadingPosition(input: {
             id: ledger.generation(surface),
             line: input.revealLine,
             pending: () => ledger.verdict(surface) === "pending",
-            shown: () => ledger.markShown(threadKey, surface),
+            shown: () => {
+              ledger.markShown(threadKey, surface);
+              input.onRevealShown?.();
+            },
           }
         : null,
   });
@@ -230,6 +234,7 @@ export function useFileReadingPosition(input: {
     restoresSavedScroll: () => file !== null && readings.readPosition(file, "source") !== null,
     onRevealApplied: (fileContainer: HTMLElement, line: number) => {
       if (surface !== undefined) ledger.markShown(threadKey, surface);
+      input.onRevealShown?.();
       const binding = sourceBindings.get(fileContainer);
       binding?.tracker.record(binding.geometry.centered(line));
     },

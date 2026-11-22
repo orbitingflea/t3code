@@ -29,6 +29,7 @@ export type WorkAreaTab =
       readonly reveal: number;
       /** A chat attachment of the source thread; `path` is then its name. */
       readonly attachment?: ChatFileAttachment;
+      readonly shown?: true;
     };
 
 type LinkedFilePayload = Extract<WorkAreaTab, { kind: "linked-file" }>;
@@ -475,7 +476,7 @@ export function linkedFileEntry(tab: TabId, payload: LinkedFilePayload): LinkedF
   const file = {
     kind: "file",
     relativePath: payload.path,
-    revealLine: payload.line,
+    revealLine: payload.shown ? null : payload.line,
     revealRequestId: payload.reveal,
     ...(payload.attachment === undefined ? {} : { attachment: payload.attachment }),
   } as const;
@@ -490,6 +491,14 @@ export function linkedFileEntry(tab: TabId, payload: LinkedFilePayload): LinkedF
   };
   linkedFileEntries.set(payload, entry);
   return entry;
+}
+
+// Keeps the cached entry: a new one would re-key the open tab's reveal and remount its view.
+export function shownLinkedFile(payload: LinkedFilePayload): LinkedFilePayload {
+  const next = { ...payload, shown: true } as const;
+  const cached = linkedFileEntries.get(payload);
+  if (cached) linkedFileEntries.set(next, cached);
+  return next;
 }
 
 export const isReplyEntry = (entry: WorkAreaEntry): entry is ReplyEntry =>

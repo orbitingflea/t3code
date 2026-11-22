@@ -112,8 +112,9 @@ function parseTab(tab: TabId, raw: unknown): WorkAreaTab | null {
     }
     case "linked-file": {
       const source = parseThread(raw.source);
-      const { path, line, reveal } = raw;
+      const { path, line, reveal, shown } = raw;
       if (!source || typeof path !== "string" || !isCount(reveal)) return null;
+      if (shown !== undefined && shown !== true) return null;
       if (line !== null && !(typeof line === "number" && Number.isSafeInteger(line) && line > 0)) {
         return null;
       }
@@ -131,6 +132,7 @@ function parseTab(tab: TabId, raw: unknown): WorkAreaTab | null {
         line,
         reveal,
         ...(attachment === undefined ? {} : { attachment }),
+        ...(shown ? { shown } : {}),
       };
     }
     default:

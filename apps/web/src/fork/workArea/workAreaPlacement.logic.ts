@@ -34,6 +34,7 @@ import {
   resolveLayout,
   secondaryChatTabId,
   setPane,
+  shownLinkedFile,
   SPLIT_ID,
   type SplitId,
   splitPane,
@@ -123,6 +124,8 @@ export type WorkAreaChange =
       /** The secondary Chat the link was clicked in, as placed at click time; none from a linked file. */
       readonly from?: { readonly tab: TabId; readonly placement: number };
     }
+  /** A linked file's citation was shown; a stale `reveal` from a replaced citation is a no-op. */
+  | { readonly type: "linked-file-shown"; readonly tab: TabId; readonly reveal: number }
   /** A thread link in a chat: the thread's Chat tab, shown where it is or placed beside the origin. */
   | { readonly type: "open-thread"; readonly thread: ScopedThreadRef }
   /** One Replies sub-thread as its own tab, shown where it is or placed beside the origin. */
@@ -148,6 +151,7 @@ const CHANGE_KINDS: Record<WorkAreaChange["type"], LayoutWriteKind> = {
   arm: "automatic",
   "split-launcher": "user",
   "link-file": "user",
+  "linked-file-shown": "automatic",
   "open-thread": "user",
   "open-reply": "user",
 };
@@ -995,6 +999,13 @@ function changedLayout(
         ...(attachment === undefined ? {} : { attachment }),
       });
       return showOrPlace(next, tab, "file", view, openFrom);
+    }
+    case "linked-file-shown": {
+      const payload = layout.tabs[change.tab];
+      if (payload?.kind !== "linked-file" || payload.reveal !== change.reveal || payload.shown) {
+        return layout;
+      }
+      return withPayload(layout, change.tab, shownLinkedFile(payload));
     }
     case "open-thread": {
       const side = sideThreadTabId(change.thread.threadId);
