@@ -92,28 +92,30 @@ function ReplyLine(props: {
 }
 
 /**
- * The Reply slot's height with a mouse: the button's 16px less the row's bottom padding, so the
- * button stays inside the row, which the list clips. Mirrors TimelineRowContent's message padding:
- * pb-1 when grouped with the next row, pb-2 for an agent message with no meta, else pb-4.
+ * Height of the Reply slot with a mouse. The Reply button is 16px tall, and the list clips
+ * anything outside the row, so the slot is 16px minus the row's bottom padding. For an agent
+ * message with no meta row (the Copy and time line), TimelineRowContent sets pb-1 (4px) when
+ * grouped with the next row and pb-2 (8px) otherwise, giving h-3 or h-2.
  */
 const fineSlotHeight = (row: Extract<TimelineRow, { kind: "message" }>) =>
-  row.groupedWithNext
-    ? "h-3"
-    : row.message.role === "assistant" && !row.showAssistantMeta
-      ? "h-2"
-      : "h-0";
+  row.groupedWithNext ? "h-3" : "h-2";
 
 /**
- * At the end of one of the agent's main-list rows that has no reply yet: a Reply button, since the
- * user follows up on what the agent said. With a mouse it shows while the pointer is on the row, in
- * the row's bottom padding and a slot that tops it up. On a touch screen it always shows and has its
- * own height, so it stays clear of the next row.
+ * Reply button under an agent's main-list message with no replies yet and no meta row (the line
+ * with Copy and the time). Rows with a meta row use SubThreadMetaReply instead. With a mouse, it
+ * shows on row hover or focus and sits in the row's bottom padding plus a slot. On touch, it
+ * always shows with its own height so it clears the next row.
  */
 export function SubThreadReplyButton(props: {
   readonly row: Extract<TimelineRow, { kind: "message" }>;
 }) {
   const subThread = useRowSubThread(props.row.id);
-  if (subThread === null || props.row.message.role === "user" || subThread.summary.replies > 0)
+  if (
+    subThread === null ||
+    props.row.message.role === "user" ||
+    props.row.showAssistantMeta ||
+    subThread.summary.replies > 0
+  )
     return null;
   const { threadRef, summary } = subThread;
   return (
@@ -121,11 +123,33 @@ export function SubThreadReplyButton(props: {
       <button
         type="button"
         onClick={() => openSubThread(threadRef, summary.first)}
-        className="absolute top-0 left-0 z-10 inline-flex items-center gap-1 rounded-md bg-background px-1.5 text-muted-foreground text-xs opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset group-hover/sub-thread-row:opacity-100 pointer-coarse:static pointer-coarse:py-0.5 pointer-coarse:opacity-100"
+        className="absolute top-0 left-0 z-10 inline-flex items-center gap-1 rounded-md bg-background px-1.5 text-muted-foreground text-xs opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset group-hover/assistant:opacity-100 pointer-coarse:static pointer-coarse:py-0.5 pointer-coarse:opacity-100"
       >
         <ReplyIcon className="size-3" />
         Reply
       </button>
     </div>
+  );
+}
+
+/**
+ * Reply button at the end of an agent message's meta row, right of the time. It renders only when
+ * that message starts a main-list sub-thread with no replies yet. It has no visibility rules of
+ * its own. It shows and hides with the meta row.
+ */
+export function SubThreadMetaReply(props: { readonly messageId: string }) {
+  const subThread = useRowSubThread(props.messageId);
+  if (subThread === null || subThread.summary.replies > 0) return null;
+  const { threadRef, summary } = subThread;
+  return (
+    // As tall as the meta row's xs buttons, in the time's 12px text at every width.
+    <button
+      type="button"
+      onClick={() => openSubThread(threadRef, summary.first)}
+      className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-muted-foreground text-xs outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:h-6"
+    >
+      <ReplyIcon className="size-3" />
+      Reply
+    </button>
   );
 }

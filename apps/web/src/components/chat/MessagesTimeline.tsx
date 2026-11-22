@@ -1690,7 +1690,6 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
           row.kind === "assistant-meta"
           ? "group/assistant"
           : null,
-        "group/sub-thread-row",
       )}
       data-timeline-row-id={row.id}
       data-timeline-row-kind={row.kind}
