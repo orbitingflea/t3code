@@ -132,8 +132,21 @@ const readAt = (at: string | null) =>
   new Map([["q1", { firstId: "q1", readAt: at, summary: null }]]);
 
 describe("Chat mode rows", () => {
-  it("draws the main list with each answer where its question is", () => {
+  it("draws the main list with each answer where its question is, or under it if answered late", () => {
     expect(ids(applyDisplayMode(CHAT_REPLIES_DISPLAY_MODE, entries))).toEqual(["q1", "news", "a1"]);
+    const late = entriesOf([
+      typed("t", 0, "Is the build green?"),
+      typed("n", 1, "And the lint job?"),
+      sent("a", 2, { text: "Yes.", reply_to: shortId("t"), user_message: "x" }),
+    ]);
+    expect(ids(applyDisplayMode(CHAT_REPLIES_DISPLAY_MODE, late))).toEqual(["t", "n"]);
+    expect(ids(applyDisplayMode(CHAT_REPLIES_DISPLAY_MODE, late, "t"))).toEqual(["t", "a"]);
+    expect(timelineSubThreads(late, null).get("t")).toMatchObject({
+      firstFrom: "user",
+      replies: 1,
+      lastFrom: "agent",
+      lastText: "Yes.",
+    });
   });
 
   it("draws a sub-thread as its first message and its replies", () => {
