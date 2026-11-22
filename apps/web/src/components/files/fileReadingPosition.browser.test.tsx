@@ -318,7 +318,7 @@ describe("file reading position", () => {
     await vi.waitFor(() => view.expectLineInView(40, "alpha_40"));
   });
 
-  it("returns a shown linked CSV citation read in raw text to the reader's line after a reload", async () => {
+  it("returns a shown linked CSV citation to the reader's line after a reload, and to its line once that place expires", async () => {
     using reading = await readingSetup("linked-csv");
     const contents = csv(300);
     state.files["table.csv"] = {
@@ -358,6 +358,12 @@ describe("file reading position", () => {
       expect(screen.container.querySelector("diffs-container")).not.toBeNull();
       expect(view.topLine()).toEqual(before);
     }, COLD_WORKER);
+
+    await screen.rerender(<></>);
+    payload = JSON.parse(JSON.stringify(payload));
+    using _expired = vi.spyOn(Date, "now").mockReturnValue(Date.UTC(2200, 0, 1));
+    await screen.rerender(linked());
+    await vi.waitFor(() => view.expectLineInView(120, "row 119"), COLD_WORKER);
   });
 });
 

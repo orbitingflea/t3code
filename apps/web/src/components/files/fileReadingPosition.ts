@@ -167,14 +167,20 @@ export function useFileReadingPosition(input: {
   const surface = useRightPanelStore(
     (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );
-  if (input.revealShown === true && input.surface !== undefined) {
-    ledger.markShown(threadKey, input.surface);
-  }
-  const verdict = ledger.verdict(surface);
   const file =
     input.relativePath === null
       ? null
       : pathReadingKey(input.environmentId, resolvePathLinkTarget(input.relativePath, input.cwd));
+  // Like an expired receipt, an expired saved place lets the line show again.
+  if (
+    input.revealShown === true &&
+    input.surface !== undefined &&
+    file !== null &&
+    readings.newestView(file, ["source", "rendered", "offset"]) !== null
+  ) {
+    ledger.markShown(threadKey, input.surface);
+  }
+  const verdict = ledger.verdict(surface);
   const viewMount = () => {
     const newest =
       verdict === "shown" && file !== null
