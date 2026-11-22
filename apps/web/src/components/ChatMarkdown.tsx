@@ -103,6 +103,9 @@ import type {
 } from "react-markdown";
 import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
 import { postWhiteboardHover, remarkWhiteboardLinks } from "../fork/whiteboard/markdown-whiteboard";
+import { chatAnchorPanelLinks } from "../fork/rightPanelSplit/chatAnchorLink";
+import { openedSync } from "../fork/rightPanelSplit/linkSources";
+import { type OpenedSurface, startPanelLinkDrag } from "../fork/rightPanelSplit/panelLinkDrag";
 import { showBoardRef } from "../fork/whiteboard/boardChannel";
 import { remarkEndLinksAtCjkPunctuation } from "../fork/cjkLinkEnd";
 import { DashboardLinkChip, parseDashboardHref } from "../fork/dashboard/dashboardLink";
@@ -177,7 +180,7 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 import { hostEnvironmentIdAtom } from "../state/primaryEnvironment";
 import { cn } from "../lib/utils";
 import { resolveRemoteOpenState, useRemoteOpenResolution } from "../remoteOpen";
-import { rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
+import { type OpenFileOptions, rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
 import { useOpenIssueLink } from "../lib/openIssueLink";
 import { issueTrackerEnvironment } from "../state/issueTrackers";
 import { useEnvironmentQuery } from "../state/query";
@@ -794,7 +797,7 @@ function useChatMarkdownState({
     if (!readEnvironmentScope(threadRef.environmentId, AuthOrchestrationOperateScope)) return;
     await pullRequestLinking.changeLink(threadRef, href, linked);
   };
-  const openExternalLinkInPreview = (url: string) => {
+  const openExternalLinkInPreview = (url: string, onOpened?: () => void) => {
     if (!threadRef || !canOperatePreview) {
       return Promise.resolve(
         AsyncResult.failure<void, BrowserPreviewUnavailableError>(
@@ -806,7 +809,8 @@ function useChatMarkdownState({
         ),
       );
     }
-    return openUrlInPreview({ threadRef, url, openPreview }).then((result) => {
+    const opened = onOpened ? { onOpened } : {};
+    return openUrlInPreview({ threadRef, url, openPreview, ...opened }).then((result) => {
       if (result._tag === "Success") recordVisitForThread(threadRef, url);
       else if (!isAtomCommandInterrupted(result)) {
         const error = squashAtomCommandFailure(result);
@@ -823,6 +827,14 @@ function useChatMarkdownState({
       return result;
     });
   };
+  const anchorPanelLink = chatAnchorPanelLinks({
+    threadRef,
+    canOperatePreview,
+    issueTrackers,
+    openChangeRequestLink,
+    openIssueLink,
+    openExternalLinkInPreview,
+  });
   const openMarkdownFileInPreview = (path: string) => {
     const preparedConnection = threadRef ? readPreparedConnection(threadRef.environmentId) : null;
     if (!threadRef || !canOperatePreview || preparedConnection === null) {
@@ -918,30 +930,35 @@ function useChatMarkdownState({
     }
     return findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot);
   };
-  const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
+  const openFileInPanel = (
+    fileLinkMeta: MarkdownFileLinkMeta,
+    panelPath: string,
+    ...options: [OpenFileOptions?]
+  ): OpenedSurface | Promise<OpenedSurface> => {
+    if (!threadRef) return null;
     const openAt = (path: string) =>
-      useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line);
+      openedSync(rightPanelHostRef(threadRef), () =>
+        useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line, ...options),
+      );
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
       workspaceLinkLookupQuery(panelPath, cwd) === null
     ) {
-      openAt(panelPath);
-      return;
+      return openAt(panelPath);
     }
     // Anything the user opens in this panel meanwhile, such as a file from the picker, wins.
     const panelRef = rightPanelHostRef(threadRef);
     const panelKey = scopedThreadKey(panelRef);
     const userActionRevision = useRightPanelStore.getState().markUserAction(panelRef);
-    void (async () => {
+    return (async () => {
       const match = await findWorkspaceFileMatch(fileLinkMeta);
       if (
         scopedThreadKey(rightPanelHostRef(threadRef)) !== panelKey ||
         useRightPanelStore.getState().getUserActionRevision(panelRef) !== userActionRevision
       )
-        return;
-      openAt(match ?? panelPath);
+        return null;
+      return openAt(match ?? panelPath);
     })();
   };
   const fileLinkChip = (
@@ -1019,7 +1036,7 @@ function useChatMarkdownState({
         resolveCopyPaths={async () =>
           markdownFileCopyPaths(fileLinkMeta, await resolveHostPath(), cwd)
         }
-        onOpenInPanel={(path) => openFileInPanel(fileLinkMeta, path)}
+        onOpenInPanel={(path, _line, ...options) => openFileInPanel(fileLinkMeta, path, ...options)}
         onOpenMedia={
           threadRef && canPreviewMedia
             ? () => openMarkdownMedia(mediaPath, fileLinkMeta.filePath)
@@ -1072,6 +1089,7 @@ function useChatMarkdownState({
     openIssueLink,
     openDeferredMarkdownLink,
     openExternalLinkInPreview,
+    anchorPanelLink,
     openMarkdownMedia,
     projects,
     issueProjects,
@@ -1246,6 +1264,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       openDeferredMarkdownLink,
       linkTargetPreference,
       openExternalLinkInPreview,
+      anchorPanelLink,
       projects,
       issueProjects,
       issueTrackers,
@@ -1359,6 +1378,9 @@ const CHAT_MARKDOWN_COMPONENTS = {
           onMouseLeave={() => {
             if (isWhiteboardLink) postWhiteboardHover(null);
           }}
+          onDragStart={(event) =>
+            startPanelLinkDrag(event, anchorPanelLink(href, pullRequestAutolink))
+          }
           onClick={(event) => {
             onClick?.(event);
             if (isWhiteboardLink && href) {

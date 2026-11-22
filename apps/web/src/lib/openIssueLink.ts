@@ -11,6 +11,23 @@ import { readIssueListPreferences } from "../components/issue/issueListPreferenc
 import { ISSUES_PANEL_REF, PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { useProjects, useServerConfigs } from "../state/entities";
 
+/** The issue a click on this link opens in the app, or null when the click leaves it alone. */
+export function issueLinkTarget(input: {
+  readonly url: string;
+  readonly environmentId: EnvironmentId;
+  readonly serverConfigs: ReturnType<typeof useServerConfigs>;
+  readonly projects: ReturnType<typeof useProjects>;
+  readonly trackers: IssueTrackerConnectionList | undefined;
+}) {
+  const { environmentId } = input;
+  if (input.serverConfigs.get(environmentId)?.environment.capabilities.issues !== true) return null;
+  return resolveIssueLinkTarget({
+    url: input.url,
+    projects: input.projects.filter((project) => project.environmentId === environmentId),
+    trackers: input.trackers,
+  });
+}
+
 /**
  * Opens an issue link beside the thread, and says whether it did. Anything else — a host no
  * project here is on, a link that merely looks like one — is left alone for the caller to handle
@@ -38,10 +55,11 @@ export function useOpenIssueLink(
     // A list page's panel ref is a placeholder, not an environment; the link names its own.
     const environmentId = threadRef?.environmentId ?? targetEnvironmentId;
     if (resolvedPanelRef === undefined || environmentId === undefined) return false;
-    if (serverConfigs.get(environmentId)?.environment.capabilities.issues !== true) return false;
-    const target = resolveIssueLinkTarget({
+    const target = issueLinkTarget({
       url: targetUrl,
-      projects: allProjects.filter((project) => project.environmentId === environmentId),
+      environmentId,
+      serverConfigs,
+      projects: allProjects,
       trackers,
     });
     if (target === null) return false;

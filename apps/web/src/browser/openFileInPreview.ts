@@ -64,6 +64,8 @@ export async function openUrlInPreview<E>(input: {
   readonly openPreview: OpenPreviewMutation<E>;
   readonly profileId?: PreviewOpenInput["profileId"];
   readonly background?: boolean;
+  /** Runs right after the panel opens the tab, in the same task as that write. */
+  readonly onOpened?: () => void;
 }): Promise<AtomCommandResult<void, E | BrowserSettingsReadError>> {
   // Read before any await: a side chat pane that unmounts meanwhile drops its host mapping.
   const threadRef = rightPanelHostRef(input.threadRef);
@@ -108,6 +110,7 @@ export async function openUrlInPreview<E>(input: {
     }
     applyPreviewServerSnapshot(threadRef, snapshot);
     useRightPanelStore.getState().openBrowser(threadRef, snapshot.tabId);
+    input.onOpened?.();
   });
 }
 

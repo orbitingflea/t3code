@@ -5,6 +5,10 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
 
+import {
+  COMPOSER_MENTION_DRAG_TYPE,
+  makeComposerMentionDragHandlers,
+} from "~/components/chat/composerMentionDrag";
 import type { ResizableWidthHandlers } from "~/hooks/useResizableWidth";
 import { startWorkspaceFocus } from "~/lib/workspaceFocus";
 import {
@@ -14,6 +18,8 @@ import {
   useRightPanelStore,
 } from "~/rightPanelStore";
 import { render } from "../../../test/render";
+import { openedSync } from "./linkSources";
+import { type OpenedSurface, startPanelLinkDrag } from "./panelLinkDrag";
 import { RightPanelSplitView } from "./RightPanelSplitView";
 
 const environmentId = EnvironmentId.make("environment-local");
@@ -54,8 +60,49 @@ function setup(thread: ThreadRightPanelState) {
 
 const thread = () => selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref);
 
-function StubSurface(props: { surface: RightPanelSurface; onRender: (id: string) => void }) {
+/** Claims `@mention` drags in the capture phase and stops them, as the chat composer does. */
+function StubComposer(props: { onMention: (text: string) => void }) {
+  const handlers = makeComposerMentionDragHandlers({
+    insertMentionAtEnd: (text) => {
+      props.onMention(text);
+      return true;
+    },
+    insertPullRequestAtEnd: () => false,
+    setDragActive: () => {},
+    onInsertRejected: () => {},
+  });
+  return (
+    <form
+      aria-label="Composer"
+      className="min-h-0 flex-1"
+      onDragEnterCapture={handlers.onDragEnter}
+      onDragOverCapture={handlers.onDragOver}
+      onDropCapture={handlers.onDrop}
+    />
+  );
+}
+
+function StubSurface(props: {
+  surface: RightPanelSurface;
+  onRender: (id: string) => void;
+  onMention: (text: string) => void;
+}) {
   props.onRender(props.surface.id);
+  if (props.surface.id === "file:page.html") {
+    return <iframe title="Page" sandbox="" srcDoc="<p>Page</p>" className="min-h-0 flex-1" />;
+  }
+  if (props.surface.id === "file:chat.md") return <StubComposer onMention={props.onMention} />;
+  if (props.surface.id === "file:tree.ts") {
+    // Accepts every drag and drops it as a no-op, as the Files tree does with its own rows.
+    return (
+      <div
+        aria-label="Tree"
+        className="min-h-0 flex-1"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => event.preventDefault()}
+      />
+    );
+  }
   return (
     <div data-testid={`surface ${props.surface.id}`} className="flex min-h-0 flex-1 flex-col p-2">
       {props.surface.kind === "terminal" ? (
@@ -68,7 +115,11 @@ function StubSurface(props: { surface: RightPanelSurface; onRender: (id: string)
 }
 
 /** ChatView's wiring of the split view to the store, with stub surfaces. */
-function Panel(props: { width: number; onRender: (id: string) => void }) {
+function Panel(props: {
+  width: number;
+  onRender: (id: string) => void;
+  onMention?: (text: string) => void;
+}) {
   const state = useRightPanelStore((store) => selectThreadRightPanelState(store.byThreadKey, ref));
   const store = () => useRightPanelStore.getState();
   const close = (strip: readonly RightPanelSurface[]) => {
@@ -132,7 +183,13 @@ function Panel(props: { width: number; onRender: (id: string) => void }) {
         deviceAvailable={false}
         threadRef={ref}
         split={state.split}
-        renderSurface={(surface) => <StubSurface surface={surface} onRender={props.onRender} />}
+        renderSurface={(surface) => (
+          <StubSurface
+            surface={surface}
+            onRender={props.onRender}
+            onMention={props.onMention ?? noop}
+          />
+        )}
       />
     </div>
   );
@@ -159,6 +216,56 @@ function center(element: Element) {
   const box = element.getBoundingClientRect();
   return { x: box.left + box.width / 2, y: box.top + box.height / 2 };
 }
+
+/** A chat link that opens `e.ts` in the panel when dropped on it; a Files row also carries a mention. */
+function LinkSource(props: {
+  open: () => OpenedSurface | Promise<OpenedSurface>;
+  mention?: string;
+}) {
+  return (
+    <a
+      href="https://example.com/e"
+      onDragStart={(event) => {
+        if (props.mention) event.dataTransfer.setData(COMPOSER_MENTION_DRAG_TYPE, props.mention);
+        startPanelLinkDrag(event, { panelRef: ref, open: props.open });
+      }}
+    >
+      Link e
+    </a>
+  );
+}
+
+const openE = () => openedSync(ref, () => useRightPanelStore.getState().openFile(ref, "e.ts"));
+
+/** A real drag gesture from the link to `at` in the split row, through the panel on the way. */
+async function dragLinkTo(
+  screen: { container: HTMLElement },
+  at: (row: DOMRect, pane: (name: string) => DOMRect) => { x: number; y: number },
+  /** Skips the pre-drag hit check, for a target that a layer covers until the drag starts. */
+  force = false,
+) {
+  const row = screen.container.querySelector("[data-right-panel-split-row]")!;
+  const rowBox = row.getBoundingClientRect();
+  const point = at(rowBox, (name) =>
+    page.getByRole("region", { name }).element().getBoundingClientRect(),
+  );
+  await userEvent.dragAndDrop(
+    page.getByRole("link", { name: "Link e" }),
+    page.elementLocator(row),
+    {
+      targetPosition: { x: point.x - rowBox.left, y: point.y - rowBox.top },
+      steps: 12,
+      force,
+    },
+  );
+}
+
+const PAGE_SPLIT: ThreadRightPanelState = {
+  isOpen: true,
+  activeSurfaceId: "file:a.ts",
+  surfaces: [file("a.ts"), file("page.html")],
+  split: { rightIds: ["file:page.html"], otherShownId: "file:page.html", ratio: 0.5 },
+};
 
 /** Presses a tab and drags it into the right third of the panel content, until the ghost shows. */
 async function dragIntoRightThird(screen: { container: HTMLElement }, title: string) {
@@ -328,5 +435,193 @@ describe("RightPanelSplitView", () => {
       expect(thread().surfaces.map((surface) => surface.id)).toEqual(["file:a.ts"]);
     });
     expect(thread().split).toBeUndefined();
+  });
+
+  it.each([
+    [
+      "content over its iframe, at the end",
+      (_row: DOMRect, pane: (name: string) => DOMRect) => {
+        const right = pane("Right pane");
+        return { x: right.left + right.width / 2, y: right.top + right.height / 2 };
+      },
+      ["file:page.html", "file:e.ts"],
+    ],
+    [
+      "tab strip, before the tab under the drop",
+      () => {
+        const tab = page.getByRole("button", { name: "page.html", exact: true }).element();
+        const box = tab.getBoundingClientRect();
+        return { x: box.left + 4, y: box.top + box.height / 2 };
+      },
+      ["file:e.ts", "file:page.html"],
+    ],
+  ])("opens a link dragged onto the other pane's %s", async (_case, at, rightIds) => {
+    await page.viewport(1280, 800);
+    setup(PAGE_SPLIT);
+    await using screen = await render(
+      <>
+        <LinkSource open={openE} />
+        <Panel width={600} onRender={() => {}} />
+      </>,
+    );
+
+    await dragLinkTo(screen, at);
+
+    await vi.waitFor(() => expect(thread().split?.rightIds).toEqual(rightIds));
+    expect(thread().activeSurfaceId).toBe("file:e.ts");
+    expect(thread().split?.otherShownId).toBe("file:a.ts");
+    expect(document.querySelector("[data-panel-link-drag]")).toBeNull();
+    expect(document.querySelector("[data-right-panel-drop-ghost]")).toBeNull();
+  });
+
+  it("opens a link dropped on the desktop preview layer drawn over a pane", async () => {
+    await page.viewport(1280, 800);
+    setup(PAGE_SPLIT);
+    await using screen = await render(
+      <>
+        <LinkSource open={openE} />
+        <Panel width={600} onRender={() => {}} />
+      </>,
+    );
+    // The desktop app draws its preview webview in a fixed layer outside the panel, over its pane.
+    const pane = page.getByRole("region", { name: "Right pane" }).element().getBoundingClientRect();
+    const layer = document.createElement("div");
+    layer.dataset.previewViewport = "tab";
+    Object.assign(layer.style, {
+      position: "fixed",
+      left: `${pane.left}px`,
+      top: `${pane.top + 40}px`,
+      width: `${pane.width}px`,
+      height: `${pane.height - 40}px`,
+      zIndex: "50",
+      pointerEvents: "auto",
+    });
+    layer.append(document.createElement("div"));
+    document.body.append(layer);
+    using _layer = { [Symbol.dispose]: () => layer.remove() };
+
+    await dragLinkTo(
+      screen,
+      (_row, paneBox) => {
+        const right = paneBox("Right pane");
+        return { x: right.left + right.width / 2, y: right.top + right.height / 2 };
+      },
+      true,
+    );
+
+    await vi.waitFor(() =>
+      expect(thread().split?.rightIds).toEqual(["file:page.html", "file:e.ts"]),
+    );
+  });
+
+  it("opens a link dropped on content that accepts drags without claiming them", async () => {
+    await page.viewport(1280, 800);
+    setup({
+      isOpen: true,
+      activeSurfaceId: "file:a.ts",
+      surfaces: [file("a.ts"), file("tree.ts")],
+      split: { rightIds: ["file:tree.ts"], otherShownId: "file:tree.ts", ratio: 0.5 },
+    });
+    await using screen = await render(
+      <>
+        <LinkSource open={openE} />
+        <Panel width={600} onRender={() => {}} />
+      </>,
+    );
+
+    await dragLinkTo(screen, (_row, pane) => {
+      const right = pane("Right pane");
+      return { x: right.left + right.width / 2, y: right.top + right.height / 2 };
+    });
+
+    await vi.waitFor(() => expect(thread().split?.rightIds).toEqual(["file:tree.ts", "file:e.ts"]));
+    expect(thread().activeSurfaceId).toBe("file:e.ts");
+  });
+
+  it("leaves a drag that a composer in a pane claims to that composer", async () => {
+    await page.viewport(1280, 800);
+    setup({
+      isOpen: true,
+      activeSurfaceId: "file:a.ts",
+      surfaces: [file("a.ts"), file("chat.md")],
+      split: { rightIds: ["file:chat.md"], otherShownId: "file:chat.md", ratio: 0.5 },
+    });
+    const onMention = vi.fn();
+    const open = vi.fn(openE);
+    await using screen = await render(
+      <>
+        <LinkSource open={open} mention="@e.ts" />
+        <Panel width={600} onRender={() => {}} onMention={onMention} />
+      </>,
+    );
+
+    await dragLinkTo(screen, (_row, pane) => {
+      const right = pane("Right pane");
+      return { x: right.left + right.width / 2, y: right.top + right.height / 2 };
+    });
+
+    await vi.waitFor(() => expect(onMention).toHaveBeenCalledWith("@e.ts "));
+    expect(open).not.toHaveBeenCalled();
+    expect(thread().surfaces.map((surface) => surface.id)).toEqual(["file:a.ts", "file:chat.md"]);
+    expect(document.querySelector("[data-right-panel-drop-ghost]")).toBeNull();
+  });
+
+  it.each([
+    ["lands", false, ["file:page.html", "file:e.ts"]],
+    ["lands after a press elsewhere", true, ["file:page.html"]],
+  ])(
+    "places a slow open where it was dropped unless the user acts first: it %s",
+    async (_case, pressFirst, rightIds) => {
+      await page.viewport(1280, 800);
+      setup(PAGE_SPLIT);
+      const opened = Promise.withResolvers<OpenedSurface>();
+      const open = vi.fn(() => opened.promise);
+      await using screen = await render(
+        <>
+          <LinkSource open={open} />
+          <Panel width={600} onRender={() => {}} />
+        </>,
+      );
+
+      await dragLinkTo(screen, (_row, pane) => {
+        const right = pane("Right pane");
+        return { x: right.left + right.width / 2, y: right.top + right.height / 2 };
+      });
+      await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+      if (pressFirst) pointer(document, "pointerdown", { x: 0, y: 0 });
+      useRightPanelStore.getState().openFile(ref, "e.ts");
+      opened.resolve("file:e.ts");
+      // The drop's own continuation was queued first, so it has run once this await returns.
+      await opened.promise;
+
+      expect(thread().split?.rightIds).toEqual(rightIds);
+      expect(thread().activeSurfaceId).toBe("file:e.ts");
+    },
+  );
+
+  it("places the tab a slow open opened, not one another open activated before it lands", async () => {
+    await page.viewport(1280, 800);
+    setup(PAGE_SPLIT);
+    const opened = Promise.withResolvers<OpenedSurface>();
+    const open = vi.fn(() => opened.promise);
+    await using screen = await render(
+      <>
+        <LinkSource open={open} />
+        <Panel width={600} onRender={() => {}} />
+      </>,
+    );
+
+    await dragLinkTo(screen, (_row, pane) => {
+      const right = pane("Right pane");
+      return { x: right.left + right.width / 2, y: right.top + right.height / 2 };
+    });
+    await vi.waitFor(() => expect(open).toHaveBeenCalledOnce());
+    useRightPanelStore.getState().openFile(ref, "e.ts");
+    useRightPanelStore.getState().openFile(ref, "z.ts");
+    opened.resolve("file:e.ts");
+    await opened.promise;
+
+    expect(thread().split?.rightIds).toEqual(["file:page.html", "file:e.ts"]);
+    expect(thread().surfaces.map((surface) => surface.id)).toContain("file:z.ts");
   });
 });

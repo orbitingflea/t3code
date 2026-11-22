@@ -300,6 +300,13 @@ export function postWhiteboardHover(ref: string | null, element?: Element): void
   postTo(shown.board, { type: "wb-hover", ref, ...(origin === undefined ? {} : { origin }) });
 }
 
+/** Whether `showBoardRef` would open the board in `threadRef`'s panel. */
+export function canShowBoardRefInPanel(threadRef: ScopedThreadRef | undefined): boolean {
+  if (isEmbeddedInWhiteboard() || threadRef === undefined) return false;
+  const host = rightPanelHostRef(threadRef);
+  return boardOfferedFor(host, readThreadProjectRoot(host));
+}
+
 /** A `board://` link in `threadRef`'s chat was clicked: show that region on the board. */
 export function showBoardRef(ref: string, threadRef: ScopedThreadRef | undefined): void {
   if (isEmbeddedInWhiteboard()) {

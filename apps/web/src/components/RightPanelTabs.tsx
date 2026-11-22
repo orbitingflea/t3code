@@ -1141,6 +1141,7 @@ function RightPanelTab(
   return (
     <div
       data-active-tab={props.active}
+      data-right-panel-tab-id={surface.id}
       onMouseDown={(event) => {
         preventTabMiddleButtonDefault(event);
         press.onMouseDown(event);
