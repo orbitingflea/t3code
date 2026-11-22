@@ -1001,27 +1001,11 @@ export default function ChatView(props: ChatViewProps) {
           threadId: parentSubagentThreadRef.threadId,
           title: parentSubagentThread?.title ?? gt("Parent thread"),
         };
-<<<<<<< origin/main
-  const threadError = isServerThread
-    ? (localServerError ?? (subThreadDraft === null ? serverRuntime?.lastError : null) ?? null)
-    : localDraftError;
-  const threadErrorBannerKey = getThreadErrorBannerKey(
-    routeThreadKey,
-    threadError,
-    threadErrorIsServerRuntime({
-      isServerThread,
-      localServerError,
-      runtimeError: serverRuntime?.lastError ?? null,
-    })
-      ? (serverRuntime?.lastErrorSource ?? null)
-      : null,
-  );
-=======
   const { threadError, sessionDismissal: threadErrorSessionDismissal } = resolveThreadErrorBanner({
     isServerThread,
     localServerError,
     localDraftError,
-    runtimeError: serverRuntime?.lastError ?? null,
+    runtimeError: subThreadDraft === null ? (serverRuntime?.lastError ?? null) : null,
     runtimeErrorSource: serverRuntime?.lastErrorSource ?? null,
   });
   const threadErrorBannerKey =
@@ -1032,7 +1016,6 @@ export default function ChatView(props: ChatViewProps) {
           threadErrorSessionDismissal.error,
           threadErrorSessionDismissal.source,
         );
->>>>>>> upstream/main
   const visibleThreadError = shouldShowThreadErrorBanner(
     routeThreadKey,
     threadError,
@@ -1731,13 +1714,9 @@ export default function ChatView(props: ChatViewProps) {
   const threadShownView = useThreadShownView(routeThreadDetailRef);
   // A paged history window cannot identify the first loaded run as the thread start.
   const threadStartCheckpointAvailable =
-<<<<<<< origin/main
     !serverThreadHistory.hasMoreHistory &&
     !threadShownView &&
-    findRevertCheckpoint(serverProjection?.checkpoints ?? [], 0) !== undefined;
-=======
-    !serverThreadHistory.hasMoreHistory && findRevertCheckpoint(serverProjection, 0) !== undefined;
->>>>>>> upstream/main
+    findRevertCheckpoint(serverProjection, 0) !== undefined;
 
   const workspaceMutationId = deriveWorkspaceMutationId(
     serverVisibleTurnItems,
@@ -3411,7 +3390,6 @@ export default function ChatView(props: ChatViewProps) {
     return embedded ? null : <NoActiveThreadState />;
   }
 
-<<<<<<< origin/main
   const renderRightPanelSurface = (surface: RightPanelSurface, visible: boolean) =>
     activeThreadRef ? (
       <RightPanelSurfaceContent
@@ -3424,6 +3402,7 @@ export default function ChatView(props: ChatViewProps) {
         keybindings={keybindings}
         configuredPreviewUrls={configuredPreviewUrls}
         workspaceMutationId={workspaceMutationId}
+        workspaceRevision={workspaceRevision.revision}
         getShortcutContext={getShortcutContextStable}
         onSendAnnotation={sendPreviewAnnotationStable}
         onCloseSurface={closeRightPanelSurface}
@@ -3467,62 +3446,6 @@ export default function ChatView(props: ChatViewProps) {
         }}
       />
     ) : null;
-=======
-  const rightPanelContent = activeThreadRef ? (
-    <RightPanelSurfaceContent
-      surface={renderedRightPanelSurface}
-      activeSurfaceId={activeRightPanelSurface?.id ?? null}
-      threadRef={activeThreadRef}
-      environmentId={activeThread.environmentId}
-      visible={rightPanelOpen}
-      composerDraftTarget={composerDraftTarget}
-      keybindings={keybindings}
-      configuredPreviewUrls={configuredPreviewUrls}
-      workspaceMutationId={workspaceMutationId}
-      workspaceRevision={workspaceRevision.revision}
-      getShortcutContext={getShortcutContextStable}
-      onSendAnnotation={sendPreviewAnnotationStable}
-      onCloseSurface={closeRightPanelSurface}
-      sideChatParentPanel={sideChatParentPanel}
-      terminal={{
-        launchContext: activeTerminalLaunchContext ?? null,
-        keybindings,
-        onAddTerminalContext: addTerminalContextToDraftStable,
-        onSplitTerminal: splitPanelTerminalStable,
-        onSplitTerminalVertical: splitPanelTerminalVerticalStable,
-        onNewTerminal: addTerminalSurfaceStable,
-        onActiveTerminalChange: activatePanelTerminalStable,
-        onCloseTerminal: closePanelTerminalStable,
-        splitShortcutLabel: splitTerminalShortcutLabel ?? undefined,
-        splitVerticalShortcutLabel: splitTerminalVerticalShortcutLabel ?? undefined,
-        newShortcutLabel: newTerminalShortcutLabel ?? undefined,
-        closeShortcutLabel: closeTerminalShortcutLabel ?? undefined,
-      }}
-      pullRequest={{
-        capabilityKnown: pullRequestsCapabilityKnown,
-        supported: supportsPullRequests,
-        projectId: activeThread.projectId,
-        pullRequests: visiblePullRequests,
-        linkedPullRequest: linkedThreadPullRequest,
-        branchPullRequest: activeThreadShell?.branchPullRequest ?? activeThread.branchPullRequest,
-        onBack:
-          pullRequestsSurfaceAvailable && visiblePullRequestCount > 1
-            ? addPullRequestsSurfaceStable
-            : undefined,
-      }}
-      issuesSupported={serverConfig?.environment.capabilities.issues === true}
-      files={{
-        projectId: activeProject?.id,
-        projectName: activeProject?.title ?? null,
-        workspaceRoot: activeWorkspaceRoot,
-        availableEditors,
-        pendingSurfaceIds: pendingFileSurfaceIds,
-        onOpenFile: openFileSurfaceStable,
-        onPendingChange: handleFilePendingChangeStable,
-      }}
-    />
-  ) : null;
->>>>>>> upstream/main
   const panelToggleControlProps = {
     terminalAvailable: activeProject !== null,
     terminalOpen: terminalUiState.terminalOpen,
@@ -4321,25 +4244,16 @@ export default function ChatView(props: ChatViewProps) {
         />
       ) : null}
 
-<<<<<<< origin/main
       {subThreadDraft === null ? (
         <RevertConfirmHost
           threadKey={routeThreadKey}
-          checkpoints={serverProjection?.checkpoints}
+          environmentId={environmentId}
+          taskFolderPath={activeThreadWorktreePath}
+          projection={serverProjection}
           worktreePath={activeThread?.worktreePath ?? null}
           onConfirm={onConfirmRevertStable}
         />
       ) : null}
-=======
-      <RevertConfirmHost
-        threadKey={routeThreadKey}
-        environmentId={environmentId}
-        taskFolderPath={activeThreadWorktreePath}
-        projection={serverProjection}
-        worktreePath={activeThread?.worktreePath ?? null}
-        onConfirm={onConfirmRevertStable}
-      />
->>>>>>> upstream/main
       {embedded ? null : <LinkPullRequestDialogHost />}
       <ThreadVisitWatermark threadRef={routeThreadRef} />
       {subThreadDraft === null ? <ExpandedImageDialogHost threadKey={routeThreadKey} /> : null}

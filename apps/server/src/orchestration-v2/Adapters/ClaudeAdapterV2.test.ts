@@ -380,7 +380,6 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.isUndefined(options.extraArgs?.["dangerously-skip-permissions"]);
   });
 
-<<<<<<< origin/main
   it("loads a session-local plugin configured by the hosting T3 instance", () => {
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: CLAUDE_TEST_MODEL_SELECTION,
@@ -392,10 +391,7 @@ describe("ClaudeAdapterV2 runtime query policy", () => {
     assert.deepEqual(options.plugins, [{ type: "local", path: "/path/to/whiteboard" }]);
   });
 
-  it("passes every --add-dir and --plugin-dir launch directory to Claude", () => {
-=======
   it("passes the thread's other folders and every --add-dir and --plugin-dir launch directory to Claude", () => {
->>>>>>> upstream/main
     const options = ClaudeAdapterV2.makeClaudeQueryOptions({
       modelSelection: CLAUDE_TEST_MODEL_SELECTION,
       nativeThreadId: "native-add-dir",

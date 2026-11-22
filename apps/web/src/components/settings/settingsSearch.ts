@@ -96,12 +96,9 @@ export interface SettingsSearchAvailability {
   /** An environment without a provider allow-list, which hides text generators. */
   readonly hasTextGeneratorsEnvironment?: boolean;
   readonly hasPrimaryEnvironment?: boolean;
-<<<<<<< origin/main
+  readonly hasSecretProvidersEnvironment?: boolean;
   /** A whiteboard board host, the only place the right panel's menu settings exist. */
   readonly hasRightPanelMenu?: boolean;
-=======
-  readonly hasSecretProvidersEnvironment?: boolean;
->>>>>>> upstream/main
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -1703,14 +1700,10 @@ export function filterAvailableSettingsSearchItems(
       (!item.peerLinksOnly || availability.hasPeerLinkHost === true) &&
       (!item.fastWorktreeCheckoutOnly ||
         availability.hasFastWorktreeCheckoutEnvironment === true) &&
-<<<<<<< origin/main
       (!item.reflinkWorktreesOnly || availability.hasReflinkWorktreesEnvironment === true) &&
       (!item.textGeneratorsOnly || availability.hasTextGeneratorsEnvironment === true) &&
+      (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true) &&
       (!item.rightPanelMenuOnly || availability.hasRightPanelMenu === true),
-=======
-      (!item.textGeneratorsOnly || availability.hasTextGeneratorsEnvironment === true) &&
-      (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true),
->>>>>>> upstream/main
   );
 }
 

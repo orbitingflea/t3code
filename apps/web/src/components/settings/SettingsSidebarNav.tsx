@@ -149,11 +149,7 @@ export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const [compactSearchOpen, setCompactSearchOpen] = useState(false);
   const [activeResultIndex, setActiveResultIndex] = useState(0);
   const searchableItems = useAvailableSettingsSearchItems();
-<<<<<<< origin/main
-  const navGroups = useForkSettingsNavGroups(SETTINGS_NAV_GROUPS);
-=======
-  const navGroups = settingsNavGroups(useHasSecretProvidersEnvironment());
->>>>>>> upstream/main
+  const navGroups = useForkSettingsNavGroups(settingsNavGroups(useHasSecretProvidersEnvironment()));
   const results = searchSettings(query, searchableItems, m);
   const isSearching = query.trim().length > 0;
   const hasResults = results.length > 0;

@@ -1365,7 +1365,6 @@ it.effect("restarts the turn for an image when native steering takes text only",
   }),
 );
 
-<<<<<<< origin/main
 it.effect.each(["completed", "interrupted"] as const)(
   "checkpoints a run that a steer restarted after its first answer was checkpointed (restart %s)",
   (restartEnd) =>
@@ -1485,46 +1484,12 @@ it.effect.each(["completed", "interrupted"] as const)(
     }),
 );
 
-it.effect("starts a steer that missed the turn on the saved next-turn selection", () =>
-  Effect.gen(function* () {
-    const { events, started, steered, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
-      "steering-selection-follow-up",
-    );
-    yield* Effect.gen(function* () {
-      const orchestrator = yield* Orchestrator.OrchestratorV2;
-      const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-      const threadId = yield* startFirstTurn;
-      const first = started[0]!;
-      yield* orchestrator.dispatch({
-        type: "message.dispatch",
-        commandId: CommandId.make("steer"),
-        threadId,
-        messageId: MessageId.make("message:steer"),
-        text: "late steer",
-        attachments: [],
-        modelSelection: composerSelection,
-        dispatchMode: { type: "steer_active", targetRunId: first.runId },
-        createdBy: "user",
-        creationSource: "web",
-      });
-      const settled = yield* orchestrator.streamDomainEvents.pipe(
-        Stream.filter(
-          (event) =>
-            event.type === "run.updated" &&
-            event.payload.id === first.runId &&
-            event.payload.status === "waiting",
-        ),
-        Stream.take(1),
-        Stream.runDrain,
-        Effect.forkScoped,
-=======
 it.effect.each(["complete", "stop-before-end"] as const)(
   "starts a steer that missed the turn in its place on the saved next-turn selection: %s",
   (timing) =>
     Effect.gen(function* () {
       const { events, started, steered, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
         `steering-selection-follow-up-${timing}`,
->>>>>>> upstream/main
       );
       yield* Effect.gen(function* () {
         const orchestrator = yield* Orchestrator.OrchestratorV2;

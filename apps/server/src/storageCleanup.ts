@@ -337,11 +337,8 @@ const make = Effect.gen(function* () {
   const terminals = yield* TerminalManager.TerminalManager;
   const fs = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
-<<<<<<< origin/main
   const homeCacheDir = yield* homeCheckoutCacheDir;
-=======
   const taskFolders = yield* TaskFolders.TaskFolders;
->>>>>>> upstream/main
   const liveTerminals = new Map<string, Map<string, TerminalSummary>>();
   const orphanSizes = new Map<string, number | null>();
   const noteTerminal = (terminal: TerminalSummary) => {

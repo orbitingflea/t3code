@@ -94,10 +94,7 @@ export function useAvailableSettingsSearchItems() {
     hasReflinkWorktreesEnvironment,
     hasTextGeneratorsEnvironment,
     hasPrimaryEnvironment: primaryEnvironmentId !== null,
-<<<<<<< origin/main
-    hasRightPanelMenu,
-=======
     hasSecretProvidersEnvironment,
->>>>>>> upstream/main
+    hasRightPanelMenu,
   });
 }

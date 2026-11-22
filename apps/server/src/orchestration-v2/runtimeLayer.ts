@@ -61,17 +61,14 @@ import * as ThreadForkService from "./ThreadForkService.ts";
 import * as TurnItemPositionStore from "./TurnItemPositionStore.ts";
 import * as ScheduledTaskService from "../scheduledTasks/ScheduledTaskService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
-<<<<<<< origin/main
 import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as FyiDelivery from "../fork/fyi/FyiDelivery.ts";
 import * as FyiWakeWorker from "../fork/fyi/FyiWakeWorker.ts";
 import * as ThreadDashboard from "../fork/threadDashboard/ThreadDashboard.ts";
 import * as UserView from "../fork/userView/UserView.ts";
 import * as SubThreads from "../fork/subThreads/SubThreads.ts";
-=======
 import * as WorkspaceFolders from "../workspace/WorkspaceFolders.ts";
 import * as TaskFolderStore from "../workspace/TaskFolderStore.ts";
->>>>>>> upstream/main
 
 export const layerEventInfrastructure = Layer.mergeAll(
   OrchestrationEventStore.layer,

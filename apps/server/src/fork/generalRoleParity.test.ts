@@ -91,6 +91,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { SourceControlRepositoryService } from "../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
+import { TaskFolders } from "../workspace/TaskFolders.ts";
 
 const projectId = ProjectId.make("project:general-role-parity");
 const environmentId = EnvironmentId.make("environment:general-role-parity");
@@ -726,6 +727,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(ThreadIssueService)({}),
   Layer.mock(ThreadLaunchService.ThreadLaunchService)({}),
   McpToolAccessTestkit.liveThreadsLayer,
+  Layer.mock(TaskFolders)({}),
   Layer.mock(ThreadSearch)({}),
   Layer.mock(VcsStatusBroadcaster)({}),
 ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));

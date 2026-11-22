@@ -1164,11 +1164,7 @@ const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")
     },
     withProcess: (_stop, task) => task,
     defaultModel: Effect.undefined,
-<<<<<<< origin/main
-    profileDirectory: detachedChildProfile ?? unusedProfileDirectory,
-  });
-=======
-    ...(profileDirectory === undefined ? {} : { profileDirectory }),
+    profileDirectory: profileDirectory ?? unusedProfileDirectory,
   };
   const adapter =
     options === undefined
@@ -1177,6 +1173,7 @@ const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")
           instanceId,
           flavor: makeAntigravityAcpAdapterFlavor({
             ...adapterOptions,
+            digest: yield* Digest.Digest,
             random: crypto,
             fileSystem: yield* FileSystem.FileSystem,
             path,
@@ -1190,7 +1187,6 @@ const openSessionWithRunningCommand = Effect.fn("openSessionWithRunningCommand")
             onDeferredFinalizeScheduled: (debounce) => Queue.offer(scheduledFinalizes, debounce),
           },
         });
->>>>>>> upstream/main
   const runtimePolicy = ProviderAdapter.ProviderAdapterV2RuntimePolicy.make({
     runtimeMode: "full-access",
     interactionMode: "default",

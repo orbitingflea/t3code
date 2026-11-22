@@ -437,9 +437,8 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
         // A resolved account already has an identity; its public key must stay distinct from others'.
         const hub = resolved ? `${environmentId}:${source.id}` : hubIdentity(environmentId, source);
         const key = `${hub}:${account.id}${account.workspaceId ? `:${account.workspaceId}` : ""}`;
-<<<<<<< origin/main
         merge(
-          resolved ?? key,
+          hubRowKey(resolveKey, environmentId, source, account),
           {
             key,
             driver: account.driver,
@@ -463,29 +462,6 @@ export function collectLimitAccounts(presentations: LimitPresentations): readonl
           },
           account.label !== undefined,
         );
-=======
-        merge(hubRowKey(resolveKey, environmentId, source, account), {
-          key,
-          driver: account.driver,
-          displayName: account.email ? null : hubAccountName(account),
-          email: account.email,
-          plan: account.plan,
-          accentColor: undefined,
-          environments: [],
-          sourceLabel,
-          redeem: account.usageLimits.resetCredits?.nextCreditId
-            ? {
-                environmentId,
-                input: {
-                  sourceId: source.id,
-                  accountId: account.id,
-                  creditId: account.usageLimits.resetCredits.nextCreditId,
-                },
-              }
-            : null,
-          limits: account.usageLimits,
-        });
->>>>>>> upstream/main
       }
     }
   }
@@ -518,7 +494,7 @@ export function unshownFailedHubAccounts(
       for (const account of source.accounts) {
         if (account.usageLimits.unavailable?.reason !== "probeFailed") continue;
         if (shownRows.has(hubRowKey(resolveKey, environmentId, source, account))) continue;
-        failed.set(account, account.email ?? hubAccountName(account));
+        failed.set(account, account.label ?? account.email ?? hubAccountName(account));
       }
     }
   }

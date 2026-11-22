@@ -64,6 +64,7 @@ const layerFor = (calls: Queue.Queue<GenerationCall>) =>
               faviconPath: null,
               projectIcon: null,
               scripts: [],
+              trackedFolders: [],
               pinnedAt: null,
               archivedAt: null,
               createdAt: "2026-01-01T00:00:00.000Z",

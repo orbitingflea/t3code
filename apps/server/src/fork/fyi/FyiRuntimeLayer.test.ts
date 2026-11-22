@@ -39,6 +39,7 @@ import * as Orchestrator from "../../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../../orchestration-v2/ProjectionStore.ts";
 import * as ProjectStore from "../../orchestration-v2/ProjectStore.ts";
 import * as ProviderSessionManager from "../../orchestration-v2/ProviderSessionManager.ts";
+import { layerNoTaskFolders } from "../../orchestration-v2/ProviderTurnStartService.testkit.ts";
 import * as RuntimeLayer from "../../orchestration-v2/runtimeLayer.ts";
 import * as ThreadCommandExecutor from "../../orchestration-v2/ThreadCommandExecutor.ts";
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
@@ -129,6 +130,7 @@ const layerTest = Layer.mergeAll(
       createWorktree: () => Effect.succeed({} as never),
     }),
   ),
+  Layer.provide(layerNoTaskFolders),
   Layer.provide(
     Layer.mock(ProjectService.ProjectService)({
       getById: () => Effect.succeedNone,
