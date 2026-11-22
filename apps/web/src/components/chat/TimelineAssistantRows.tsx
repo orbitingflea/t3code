@@ -41,7 +41,7 @@ import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts"
 import { useAtomValue } from "@effect/atom-react";
 import { AsyncResult, Atom } from "effect/reactivity";
 import { vcsEnvironment } from "../../state/vcs";
-import { SubThreadReplyLine } from "../../fork/subThreads/SubThreadReplyLine";
+import { SubThreadMetaReply, SubThreadReplyLine } from "../../fork/subThreads/SubThreadReplyLine";
 import { AgentMessageDivider } from "../../fork/displayMode/AgentMessageDivider";
 import { EditedMark } from "../../fork/displayMode/EditedMark";
 
@@ -291,6 +291,7 @@ function AssistantMessageMeta({
           </TooltipPopup>
         </Tooltip>
       )}
+      <SubThreadMetaReply messageId={message.id} />
     </div>
   );
 }
