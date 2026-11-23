@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
+import { chatFileTarget } from "./chatFileOpener";
 import {
   anchorPanelLink,
   fileChipPanelLink,
   fileRowPanelLink,
   filesTreeOwner,
 } from "./linkSources";
+import { linkedFileTabId, resolveLayout, surfaceTabId } from "./workArea.logic";
 
 const ref = scopeThreadRef(EnvironmentId.make("env"), ThreadId.make("thread"));
 const thread = () => selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, ref);
@@ -65,7 +67,7 @@ describe("anchorPanelLink", () => {
     const calls: string[] = [];
     const link = anchorPanelLink({
       href: row.href ?? PR,
-      threadRef: ref,
+      panelRef: ref,
       autolink: row.autolink ?? "",
       boardInPanel: () => row.board ?? false,
       showBoard: () => {
@@ -95,7 +97,7 @@ describe("anchorPanelLink", () => {
   it("is null outside a thread", () => {
     const link = anchorPanelLink({
       href: PR,
-      threadRef: undefined,
+      panelRef: undefined,
       autolink: "",
       boardInPanel: () => true,
       showBoard: () => {},
@@ -136,11 +138,25 @@ describe("fileChipPanelLink", () => {
     const open = (path: string, options: unknown) => {
       opens.push([path, options]);
     };
-    expect(fileChipPanelLink(undefined, "a.ts", open)).toBeNull();
-    expect(fileChipPanelLink(ref, null, open)).toBeNull();
+    const opener = (target = ref) => chatFileTarget(null, target);
+    expect(fileChipPanelLink(null, "a.ts", open)).toBeNull();
+    expect(fileChipPanelLink(opener, null, open)).toBeNull();
 
-    void fileChipPanelLink(ref, "a.ts", open)?.open();
+    void fileChipPanelLink(opener, "a.ts", open)?.open();
     expect(opens).toEqual([["a.ts", { keepExplorer: true }]]);
+  });
+
+  it("drags a linked file's chip to the layout its click opens in, with the source Chat hidden", () => {
+    const source = scopeThreadRef(EnvironmentId.make("env"), ThreadId.make("source"));
+    const shown = { kind: "shown", owner: ref, tab: surfaceTabId("file:notes.md") } as const;
+    const opener = (target = source) => chatFileTarget(shown, target);
+    const link = fileChipPanelLink(opener, "a.ts", (path) => opener().openFile(path, 7));
+    expect(link?.panelRef).toEqual(ref);
+    void link?.open();
+    expect(resolveLayout(thread()).tabs[linkedFileTabId(source, "a.ts")]).toMatchObject({
+      kind: "linked-file",
+      line: 7,
+    });
   });
 });
 

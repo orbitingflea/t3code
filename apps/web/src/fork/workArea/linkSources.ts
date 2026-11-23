@@ -54,15 +54,18 @@ export function fileRowPanelLink(input: {
   return { panelRef: owner.ref, open: () => owner.openFile(path) };
 }
 
-/** A chat file chip. A dropped file keeps a standalone Files tab open beside it. */
+/**
+ * A chat file chip, owned by the layout its click opens in. A dropped file keeps a standalone Files
+ * tab open beside it.
+ */
 export function fileChipPanelLink(
-  threadRef: ScopedThreadRef | undefined,
+  opener: ChatFileOpener | null,
   panelPath: string | null | undefined,
   openInPanel: (panelPath: string, options: OpenFileOptions) => void | Promise<unknown>,
 ): PanelLink | null {
-  if (threadRef === undefined || !panelPath) return null;
+  if (opener === null || !panelPath) return null;
   return {
-    panelRef: rightPanelHostRef(threadRef),
+    panelRef: opener().panel(),
     open: () => openInPanel(panelPath, { keepExplorer: true }),
   };
 }
@@ -74,7 +77,8 @@ export function fileChipPanelLink(
  */
 export function anchorPanelLink(input: {
   readonly href: string;
-  readonly threadRef: ScopedThreadRef | undefined;
+  /** The layout the click opens in. */
+  readonly panelRef: ScopedThreadRef | undefined;
   /** The anchor's `data-pull-request-autolink`: "", "reference", "mention" or "commit". */
   readonly autolink: string;
   /** Whether a click on this `board://` link would show the board in this panel. */
@@ -87,9 +91,8 @@ export function anchorPanelLink(input: {
   readonly openChangeRequest: () => boolean;
   readonly openInPreview: () => Promise<unknown>;
 }): PanelLink | null {
-  const { href, threadRef } = input;
-  if (threadRef === undefined) return null;
-  const panelRef = rightPanelHostRef(threadRef);
+  const { href, panelRef } = input;
+  if (panelRef === undefined) return null;
   if (href.startsWith("board://")) {
     return input.boardInPanel() ? { panelRef, open: input.showBoard } : null;
   }

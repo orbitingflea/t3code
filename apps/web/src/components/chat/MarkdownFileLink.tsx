@@ -17,6 +17,7 @@ import {
   leavesFileChipClickToBrowser,
   runHostFileLinkMenuItem,
 } from "../../fork/hostFileLinks";
+import { useChatFileOpener } from "../../fork/workArea/chatFileOpener";
 import { fileChipPanelLink } from "../../fork/workArea/linkSources";
 import { startPanelLinkDrag } from "../../fork/workArea/panelLinkDrag";
 import { readLocalApi } from "../../localApi";
@@ -94,6 +95,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
 }: MarkdownFileLinkProps) {
   const gt = useGT();
   const nativeDrag = useNativeFileDrag(environmentId, resolveDragPath);
+  const panelOpener = useChatFileOpener(threadRef);
   const handleOpenInEditor = () => {
     if (!onOpen) {
       return;
@@ -360,7 +362,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
                 else
                   startPanelLinkDrag(
                     event,
-                    fileChipPanelLink(threadRef, panelPath, (path, options) =>
+                    fileChipPanelLink(panelOpener, panelPath, (path, options) =>
                       onOpenInPanel(path, line, options),
                     ),
                   );
