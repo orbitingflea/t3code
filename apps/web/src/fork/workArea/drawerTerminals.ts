@@ -92,18 +92,15 @@ function loadAwaiting(): Readonly<Record<string, string>> {
   }
 }
 
-let awaiting = loadAwaiting();
-
-function setAwaiting(next: Readonly<Record<string, string>>) {
-  awaiting = next;
+// Read before every write: another app tab may have changed the map since.
+const setAwaiting = (next: Readonly<Record<string, string>>) =>
   awaitingStorage.setItem(AWAITING_KEY, JSON.stringify(next));
-}
 
 const focusedTabOf = (threadRef: ScopedThreadRef) => focusedTab(resolveLayout(recordOf(threadRef)));
 
 function openSavedDrawer(threadRef: ScopedThreadRef, listed: ReadonlyArray<string>): boolean {
   const threadKey = scopedThreadKey(threadRef);
-  const { [threadKey]: focusedWhenFound, ...rest } = awaiting;
+  const { [threadKey]: focusedWhenFound, ...rest } = loadAwaiting();
   if (focusedWhenFound === undefined) return false;
   setAwaiting(rest);
   const saved = selectThreadTerminalUiState(
@@ -132,7 +129,7 @@ function showDrawerRequests(next: DrawerStates, previous?: DrawerStates) {
     const threadRef = parseScopedThreadKey(threadKey);
     if (threadRef === null) continue;
     if (previous === undefined) {
-      setAwaiting({ ...awaiting, [threadKey]: focusedTabOf(threadRef) });
+      setAwaiting({ ...loadAwaiting(), [threadKey]: focusedTabOf(threadRef) });
     } else inOwnRecord(threadRef, () => showTerminalTab(threadRef, state.activeTerminalId));
     useTerminalUiStateStore.getState().setTerminalOpen(threadRef, false);
   }

@@ -7,7 +7,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "~/terminal
 
 import { adoptServerTerminals, followDrawerTerminals, terminalTabShown } from "./drawerTerminals";
 import { dismissTerminalTabs } from "./terminalTabsSeen";
-import { focusedTab, resolveLayout } from "./workArea.logic";
+import { focusedTab, PRIMARY_CHAT, resolveLayout } from "./workArea.logic";
 import { other, ref, resetWorkAreaStore, store, WIDE } from "./workAreaTestKit";
 import { publishWorkAreaView } from "./workAreaView";
 
@@ -147,6 +147,42 @@ describe("the terminal drawer as a request for a terminal tab", () => {
       }
     },
   );
+
+  it.each([
+    ["found open in both at once", true],
+    ["found open in the second later", false],
+  ])("converts a drawer once when two tabs of the app wait for it, %s", async (_, together) => {
+    const saved = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => saved.get(key) ?? null,
+        setItem: (key: string, value: string) => void saved.set(key, value),
+        removeItem: (key: string) => void saved.delete(key),
+      },
+    });
+    try {
+      const old = await loadPage();
+      old.terminals.ensureTerminal(ref, "t1", { open: true });
+      old.terminals.splitTerminalVertical(ref, "t2");
+      old.terminals.ensureTerminal(other, "u1", { open: true });
+      const a = await loadPage();
+      if (!together) a.drawer.followDrawerTerminals();
+      const b = await loadPage();
+      if (together) a.drawer.followDrawerTerminals();
+      b.drawer.followDrawerTerminals();
+      b.list(["t1", "t2"]);
+      a.drawer.adoptServerTerminals(other, { sessionIds: ["u1"], surfaces: [], suppressed: [] });
+      b.panels().updateWorkArea(ref, { type: "activate", tab: PRIMARY_CHAT });
+      const reloaded = await loadPage();
+      reloaded.drawer.followDrawerTerminals();
+      const before = reloaded.record();
+      reloaded.list(["t1", "t2"]);
+      expect(reloaded.record()).toBe(before);
+      expect(reloaded.focused()).toBe(PRIMARY_CHAT);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 
   it("keeps a file opened before a late first session list in focus", async () => {
     const page = await loadPage();
