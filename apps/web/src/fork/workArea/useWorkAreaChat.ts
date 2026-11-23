@@ -11,6 +11,7 @@ import {
   useRightPanelStore,
 } from "~/rightPanelStore";
 
+import { panelHostedElsewhere } from "./chatFileOpener";
 import {
   focusedTab,
   paneHolding,
@@ -75,15 +76,16 @@ const replyUnderFind = (layout: WorkAreaLayout, strip: boolean, thread: ScopedTh
 
 let followingFind = false;
 
-// Find searches the primary Chat, so each request shows it. Zustand runs this inside `set`, before
-// the Find field's focus effect, which focuses nothing in an inert column.
+// Find searches the primary Chat, so each request shows it, unless the Chat is drawn as another
+// thread's side Chat. Zustand runs this inside `set`, before the Find field's focus effect, which
+// focuses nothing in an inert column.
 export function followFindRequests(): void {
   if (followingFind) return;
   followingFind = true;
   useThreadFindStore.subscribe((next, previous) => {
     if (next.focusRequestId === previous.focusRequestId || next.threadKey === null) return;
     const thread = parseScopedThreadKey(next.threadKey);
-    if (thread === null) return;
+    if (thread === null || panelHostedElsewhere(thread)) return;
     const store = useRightPanelStore.getState();
     const layout = resolveLayout(selectThreadRightPanelState(store.byThreadKey, thread));
     const view = currentWorkAreaView();

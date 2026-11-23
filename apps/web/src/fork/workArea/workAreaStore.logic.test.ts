@@ -6,6 +6,7 @@ import { openThreadFind } from "~/components/chat/threadFindStore";
 import { useClosedViewStore } from "~/closedViewStore";
 import { planNextReopen, reopenClosedView } from "~/reopenClosedView";
 import {
+  hostRightPanel,
   pullRequestSurface,
   selectActiveRightPanelSurface,
   selectThreadRightPanelState,
@@ -283,6 +284,24 @@ describe("Find", () => {
     expect(focusedTab(layout())).not.toBe(PRIMARY_CHAT);
     openThreadFind(scopedThreadKey(ref));
     expect(focusedTab(layout())).toBe(PRIMARY_CHAT);
+  });
+
+  it("leaves the own layout of a thread it searches as a side Chat alone", () => {
+    followFindRequests();
+    publishWorkAreaView({ narrow: true, size: null });
+    store().openFile(other, "a.ts");
+    publishWorkAreaView(WIDE);
+    change({ type: "open-thread", thread: other });
+    const own = () => recordOf(other);
+    const before = own();
+    expect(focusedTab(resolveLayout(before))).toBe(tab("file:a.ts"));
+    const unhost = hostRightPanel(other, ref);
+    try {
+      openThreadFind(scopedThreadKey(other));
+    } finally {
+      unhost();
+    }
+    expect(own()).toBe(before);
   });
 });
 
