@@ -1,36 +1,40 @@
-import {
-  CHAT_MARKDOWN_REHYPE_PLUGINS,
-  CHAT_MARKDOWN_REMARK_PLUGINS,
-} from "@t3tools/shared/markdownPipeline";
-import { renderToStaticMarkup } from "react-dom/server";
+import type { Element, Root } from "hast";
 import { describe, expect, it } from "vite-plus/test";
 
-import { createMarkdownRenderer } from "../components/chat/markdownRenderer";
-import { remarkEndLinksAtCjkPunctuation } from "./cjkLinkEnd";
-import { remarkWhiteboardLinks } from "./whiteboard/markdown-whiteboard";
+import { wordsHast, type WordsHastOptions } from "../markdown/wordsHast";
 
-const render = createMarkdownRenderer({
-  remarkPlugins: [
-    ...CHAT_MARKDOWN_REMARK_PLUGINS,
-    remarkWhiteboardLinks,
-    remarkEndLinksAtCjkPunctuation,
-  ],
-  rehypePlugins: CHAT_MARKDOWN_REHYPE_PLUGINS,
-  components: {},
-  urlTransform: (url) => url,
-});
+const CHAT: WordsHastOptions = {
+  math: false,
+  breaks: false,
+  escapeHtml: false,
+  insights: false,
+  extensions: {},
+  boardLinks: true,
+};
+
+const URI_ESCAPE = /%[0-9A-F]{2}/i;
 
 function anchors(source: string) {
-  const markup = renderToStaticMarkup(render(source));
-  return Array.from(markup.matchAll(/<a href="([^"]*)">([^<]*)<\/a>/g), ([, href, text]) => ({
-    href,
-    text,
-  }));
+  const found: Array<{ href: string; text: string }> = [];
+  const visit = (node: Root | Element) => {
+    for (const child of node.children) {
+      if (child.type !== "element") continue;
+      if (child.tagName === "a") {
+        const text = child.children
+          .map((part) => (part.type === "text" ? part.value : ""))
+          .join("");
+        const href = String(child.properties.href);
+        found.push({ href: URI_ESCAPE.test(href) ? decodeURI(href) : href, text });
+      } else visit(child);
+    }
+  };
+  visit(wordsHast(source, CHAT));
+  return found;
 }
 
-const bare = (href: string, text = href) => ({ href: encodeURI(href), text });
+const bare = (href: string, text = href) => ({ href, text });
 
-describe("remarkEndLinksAtCjkPunctuation", () => {
+describe("endLinksAtCjkPunctuation", () => {
   it.each([
     ["（https://example.com/pull/78），Claude 和", [bare("https://example.com/pull/78")]],
     [
@@ -58,6 +62,11 @@ describe("remarkEndLinksAtCjkPunctuation", () => {
     ],
     ["https://example.com/a，见xhttps://example.com/b", [bare("https://example.com/a")]],
     ["https://example.com/a，见www.example.com/b", [bare("https://example.com/a")]],
+    ["https://example.com/中文，见https://", [bare("https://example.com/中文")]],
+    [
+      "https://example.com/中文，见https://example.com/b]",
+      [bare("https://example.com/中文"), bare("https://example.com/b")],
+    ],
     [
       "「https://example.com/a」『https://example.com/b』【https://example.com/c】《https://example.com/d》",
       ["a", "b", "c", "d"].map((path) => bare(`https://example.com/${path}`)),
@@ -106,15 +115,17 @@ describe("remarkEndLinksAtCjkPunctuation", () => {
     expect(anchors(source)).toEqual(links);
   });
 
-  // Upstream's CJK autolink pass ends these first. The first two differ from GFM at a space.
+  // Words' own autolink boundaries end these first, and the fork pass leaves them as they are.
   it.each([
-    ["[https://example.com/a]，然后", [bare("https://example.com/a]")]],
+    ["[https://example.com/a]，然后", []],
     [
       "https://example.com/a，www.example.com/b?u=https://example.com/c",
       [
         bare("https://example.com/a"),
-        bare("http://www.example.com/b?u=", "www.example.com/b?u="),
-        bare("https://example.com/c"),
+        bare(
+          "http://www.example.com/b?u=https://example.com/c",
+          "www.example.com/b?u=https://example.com/c",
+        ),
       ],
     ],
     ["见 https://example.com/report（1）.pdf 页", [bare("https://example.com/report")]],

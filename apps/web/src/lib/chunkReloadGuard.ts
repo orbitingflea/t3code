@@ -1,5 +1,3 @@
-import { chunkReloadBuild } from "../fork/chunkReloadBuild";
-
 // Deploys and desktop server swaps can invalidate lazy chunks; one reload fetches the fresh index.
 // Keyed by build and kept across boots: a chunk loaded after boot can fail on every visit.
 const CHUNK_RELOAD_GUARD_KEY = "t3code:chunk-load-reloaded";
@@ -35,4 +33,27 @@ export function isChunkLoadError(error: unknown): boolean {
   return (
     message !== undefined && CHUNK_LOAD_ERROR_PREFIXES.some((prefix) => message.startsWith(prefix))
   );
+}
+
+export const chunkLoadState = { reloadScheduled: false };
+
+// Registered from the entry before main loads, so main-chunk and route-chunk failures share one decision.
+export function handleChunkLoadErrors() {
+  window.addEventListener("vite:preloadError", (event) => {
+    if (reloadOnceForChunkLoadError()) {
+      chunkLoadState.reloadScheduled = true;
+      event.preventDefault();
+    }
+  });
+}
+
+// The bundler's entry hash covers the hashed names it imports, so any changed chunk renames the entry.
+function chunkReloadBuild(): string {
+  if (typeof document === "undefined") return import.meta.env.APP_VERSION;
+  const buildAssetPrefix = `${import.meta.env.BASE_URL}assets/`;
+  const entryPath = Array.from(
+    document.querySelectorAll<HTMLScriptElement>('script[type="module"][src]'),
+    (script) => script.getAttribute("src")?.split(/[?#]/, 1)[0],
+  ).find((path) => path?.startsWith(buildAssetPrefix));
+  return entryPath ?? import.meta.env.APP_VERSION;
 }

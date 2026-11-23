@@ -73,7 +73,7 @@ import {
   workEntryRawCommand,
   buildToolCallExpandedBody,
   workEntryIconName,
-  thoughtPreviewPlugins,
+  thoughtPreviewMarkdown,
   THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
 } from "./TimelineWorkEntryRow.logic";
 
@@ -214,7 +214,7 @@ export function ReasoningTraceContent({ entries }: { entries: ReadonlyArray<Time
           onUseArtifactTemplate={ctx.onUseArtifactTemplate}
           onImageExpand={ctx.onImageExpand}
           lineBreaks
-          // Fork: selects the agent-text single-tilde list, so a thinking line's "1~2" keeps its tilde.
+          // Fork: agent text, so a thinking line's "1~2" keeps its tilde.
           assistantReply
         />
       ))}
@@ -592,12 +592,12 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                   )}
                   cwd={ctx.markdownCwd}
                   parseRawHtml={false}
-                  // Fork: selects the agent-text single-tilde list, so a thinking line's "1~2" keeps its tilde.
+                  // Fork: agent text, so a thinking line's "1~2" keeps its tilde.
                   assistantReply
-                  extraRemarkPlugins={
+                  extensions={
                     workEntry.toolLifecycleStatus === "inProgress"
-                      ? thoughtPreviewPlugins(gt("Thinking"))
-                      : thoughtPreviewPlugins(gt("Thought"))
+                      ? thoughtPreviewMarkdown(gt("Thinking"))
+                      : thoughtPreviewMarkdown(gt("Thought"))
                   }
                 />
               ) : threadLabel ? (

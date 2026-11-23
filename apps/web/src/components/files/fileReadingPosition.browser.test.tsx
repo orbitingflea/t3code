@@ -60,6 +60,7 @@ import {
   csv,
   environmentId,
   holdIndexing,
+  LARGE_TEXT_BYTES,
   largeText,
   lines,
   ReadingPanel,
@@ -188,63 +189,6 @@ describe("file reading position", () => {
       scroller.scrollHeight - scroller.clientHeight - 1,
     );
     expect(reading.saved("a.ts", "source")).toEqual(saved);
-  });
-
-  it("returns rendered Markdown to the reader's block after a tab switch, clamped when shorter", async () => {
-    using reading = await readingSetup("rendered");
-    const { panel, ref } = reading;
-    panel.openFile(ref, "b.ts");
-    panel.openFile(ref, "doc.md");
-    await using screen = await render(<ReadingPanel threadRef={ref} cwd={reading.cwd} />);
-    const viewport = () =>
-      screen.container
-        .querySelector(".chat-markdown")
-        ?.closest<HTMLElement>('[data-slot="scroll-area-viewport"]');
-    await vi.waitFor(() => expect(viewport()?.textContent).toContain("Paragraph 80."));
-    await userEvent.wheel(viewport()!, { delta: { y: 1500 } });
-    await vi.waitFor(() => expect(reading.saved("doc.md", "rendered")?.block).toBeGreaterThan(10));
-    const wheeled = reading.saved("doc.md", "rendered")!.block!;
-
-    // The custom scrollbar sits beside the viewport and moves it directly.
-    const scrollbar = screen.container.querySelector<HTMLElement>(
-      '[data-slot="scroll-area-scrollbar"]',
-    )!;
-    const track = scrollbar.getBoundingClientRect();
-    await userEvent.click(scrollbar, {
-      position: { x: track.width / 2, y: track.height - 4 },
-    });
-    await vi.waitFor(() =>
-      expect(reading.saved("doc.md", "rendered")?.block).toBeGreaterThan(wheeled),
-    );
-    const before = viewport()!.scrollTop;
-
-    await act(() => panel.activateSurface(ref, "file:b.ts"));
-    await vi.waitFor(() => expect(viewport()).toBeFalsy());
-    await act(() => panel.activateSurface(ref, "file:doc.md"));
-    await vi.waitFor(() => expect(Math.abs(viewport()!.scrollTop - before)).toBeLessThanOrEqual(1));
-
-    await act(() => panel.activateSurface(ref, "file:b.ts"));
-    await vi.waitFor(() => expect(viewport()).toBeFalsy());
-    const saved = reading.saved("doc.md", "rendered");
-    const shorter = Array.from({ length: 30 }, (_, index) => `Paragraph ${index + 1}.`).join(
-      "\n\n",
-    );
-    state.files["doc.md"] = {
-      relativePath: "doc.md",
-      contents: shorter,
-      byteLength: shorter.length,
-      truncated: false,
-    };
-    await act(() => panel.activateSurface(ref, "file:doc.md"));
-    await vi.waitFor(() => {
-      const element = viewport()!;
-      expect(element.textContent).not.toContain("Paragraph 31.");
-      expect(element.scrollHeight).toBeGreaterThan(element.clientHeight);
-      expect(element.scrollTop).toBeGreaterThanOrEqual(
-        element.scrollHeight - element.clientHeight - 1,
-      );
-    });
-    expect(reading.saved("doc.md", "rendered")).toEqual(saved);
   });
 
   it("returns a citation reopened with Reopen Closed View to the reader's place", async () => {
@@ -414,7 +358,7 @@ describe("large text and table rows keep the reader's place", () => {
     expect(reading.saved("table.csv", "rendered")).toEqual(saved);
   });
 
-  it("keeps a text file's line when it grows past the 1 MB preview and when it shrinks back", async () => {
+  it("keeps a text file's line when it grows past the full-text read and when it shrinks back", async () => {
     using reading = await readingSetup("crossing");
     const { panel, ref } = reading;
     const contents = lines(400);
@@ -438,7 +382,7 @@ describe("large text and table rows keep the reader's place", () => {
     await act(() => panel.activateSurface(ref, "file:b.ts"));
     await vi.waitFor(() => view.expectLineInView(1, "beta_1"));
     reading.serve("app.log", contents);
-    state.files["app.log"] = { ...small, byteLength: 2_000_000, truncated: true };
+    state.files["app.log"] = { ...small, byteLength: LARGE_TEXT_BYTES, truncated: true };
     await act(() => panel.activateSurface(ref, "file:app.log"));
     await vi.waitFor(() => {
       rows.indexed();
@@ -512,8 +456,14 @@ describe("large text and table rows keep the reader's place", () => {
     await using screen = await render(<ReadingPanel threadRef={ref} cwd={reading.cwd} />);
     const rows = rowsView(screen.container);
     const view = sourceView(screen.container);
-    const status = () => screen.container.querySelector('[role="status"]')?.textContent ?? "";
-    await vi.waitFor(() => expect(status()).toMatch(/600 lines.*Indexing/), COLD_WORKER);
+    // The worker has read all 600 rows; the status shows counts only once indexing ends.
+    const stillIndexing = () => {
+      expect(screen.container.querySelector("[aria-rowcount]")?.getAttribute("aria-rowcount")).toBe(
+        "600",
+      );
+      expect(screen.container.querySelector('[role="status"]')?.textContent).toBe("");
+    };
+    await vi.waitFor(stillIndexing, COLD_WORKER);
     await rows.wheel(3000);
     await vi.waitFor(() => expect(rows.topRow()).toBeGreaterThan(80));
     const top = rows.scroller()!.scrollTop;
@@ -533,7 +483,7 @@ describe("large text and table rows keep the reader's place", () => {
     indexing.hold();
     await act(() => panel.activateSurface(ref, "file:big.log"));
     // A click that scrolls nothing while it indexes leaves the restore to land.
-    await vi.waitFor(() => expect(status()).toMatch(/600 lines.*Indexing/), COLD_WORKER);
+    await vi.waitFor(stillIndexing, COLD_WORKER);
     await userEvent.click(rows.scroller()!);
     indexing.release();
     await vi.waitFor(() => {

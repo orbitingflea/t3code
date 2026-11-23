@@ -170,6 +170,7 @@ describe("searchSettings", () => {
       "linked-environments",
       "worktree-reflink",
       "right-panel-menu",
+      "agent-feedback",
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
   });

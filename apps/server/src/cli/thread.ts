@@ -86,6 +86,17 @@ export class ThreadToolFailedError extends Schema.TaggedError<ThreadToolFailedEr
   }
 }
 
+/** The server answered that it has no such tool: it predates the tool, or hides it from this session. */
+class ThreadToolMissingError extends Schema.TaggedError<ThreadToolMissingError>()(
+  "ThreadToolMissingError",
+  { tool: Schema.String },
+) {
+  override readonly [Runtime.errorReported] = false;
+  override get message(): string {
+    return `This T3 Code server has no ${this.tool} tool. Update T3 Code, then retry.`;
+  }
+}
+
 export class ThreadUsageError extends Schema.TaggedError<ThreadUsageError>()("ThreadUsageError", {
   detail: Schema.String,
 }) {
@@ -133,6 +144,7 @@ const ThreadCliError = Schema.Union([
   ThreadServerNotRunningError,
   ThreadServerUnreachableError,
   ThreadToolFailedError,
+  ThreadToolMissingError,
   ThreadUsageError,
   ThreadProjectNotFoundError,
   ThreadNeedsInputError,
@@ -153,7 +165,7 @@ export const reportThreadErrors = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
 
 const decodeFailureText = Schema.decodeUnknownOption(Schema.fromJsonString(OrchestratorMcpFailure));
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
-const printJson = (value: unknown) => Console.log(encodeJson(value));
+export const printJson = (value: unknown) => Console.log(encodeJson(value));
 
 const ToolResult = Schema.Struct({
   isError: Schema.optional(Schema.Boolean),
@@ -186,6 +198,15 @@ const toolFailureDetail = (result: typeof ToolResult.Type) => {
   });
 };
 
+/** JSON-RPC's invalid params: the arguments failed the tool's schema. */
+const INVALID_PARAMS = -32602;
+const rpcErrorDetail = (error: { readonly code: number; readonly message: string }) => {
+  const message = error.message.replaceAll(/\s*\n\s*/g, " ");
+  return error.code === INVALID_PARAMS
+    ? `The server refused the arguments: ${message}`
+    : `The server refused the request: ${message}`;
+};
+
 const makeThreadTools = (session: McpToolSession, origin: string) => {
   const unexpected = (tool: string) =>
     new ThreadToolFailedError({
@@ -197,10 +218,21 @@ const makeThreadTools = (session: McpToolSession, origin: string) => {
       tool: string,
       args: Readonly<Record<string, unknown>>,
       schema: S,
-    ): Effect.fn.Return<S["Type"], ThreadServerUnreachableError | ThreadToolFailedError> {
-      const raw = yield* session
-        .call(tool, args)
-        .pipe(Effect.mapError((cause) => new ThreadServerUnreachableError({ origin, cause })));
+    ): Effect.fn.Return<
+      S["Type"],
+      ThreadServerUnreachableError | ThreadToolFailedError | ThreadToolMissingError
+    > {
+      const raw = yield* session.call(tool, args).pipe(
+        Effect.mapError((cause) =>
+          cause.rpcError === undefined
+            ? new ThreadServerUnreachableError({ origin, cause })
+            : // Effect's MCP server words an unknown or hidden tool exactly this way.
+              cause.rpcError.code === -32602 &&
+                cause.rpcError.message === `Tool '${tool}' not found`
+              ? new ThreadToolMissingError({ tool })
+              : new ThreadToolFailedError({ tool, detail: rpcErrorDetail(cause.rpcError) }),
+        ),
+      );
       const result = yield* decodeToolResult(raw).pipe(Effect.mapError(() => unexpected(tool)));
       if (result.isError === true) {
         return yield* new ThreadToolFailedError({ tool, detail: toolFailureDetail(result) });
@@ -218,7 +250,11 @@ export type ThreadTools = ReturnType<typeof makeThreadTools>;
  * outside agent does, and revokes that session when the command ends.
  */
 export const withThreadTools = Effect.fn("cli.thread.withThreadTools")(function* <A, E, R>(
-  flags: { readonly baseDir: Option.Option<string>; readonly json: boolean },
+  flags: {
+    readonly baseDir: Option.Option<string>;
+    readonly json: boolean;
+    readonly clientLabel?: string;
+  },
   run: (tools: ThreadTools) => Effect.Effect<A, E, R>,
 ) {
   const logLevel = yield* GlobalFlag.LogLevel;
@@ -233,7 +269,7 @@ export const withThreadTools = Effect.fn("cli.thread.withThreadTools")(function*
     const environmentAuth = yield* EnvironmentAuth.EnvironmentAuth;
     const issued = yield* Effect.acquireRelease(
       environmentAuth.issueMcpClientSession({
-        label: "t3 thread cli",
+        label: flags.clientLabel ?? "t3 thread cli",
         // The CLI runs as the machine's owner. New threads still start at
         // the project's default mode, never at this ceiling by default.
         access: "full-access",
@@ -460,7 +496,8 @@ export const readLatestMessages = Effect.fn("cli.thread.readLatestMessages")(fun
       );
       afterPosition = page.nextPosition ?? Number.POSITIVE_INFINITY;
     } while (page.hasMore && afterPosition < (end ?? Number.POSITIVE_INFINITY) - 1);
-    thread = page.thread;
+    // Only the first read carries pull request previews; later pages omit them.
+    thread = Object.assign({}, thread, page.thread);
     // A window can hold the whole --messages count, too many to spread as arguments.
     messages = window.concat(messages);
     before = start;
@@ -791,7 +828,7 @@ export const launchModelSelection = Effect.fn("cli.thread.launchModelSelection")
   };
 });
 
-const jsonFlag = Flag.Boolean("json").pipe(
+export const jsonFlag = Flag.Boolean("json").pipe(
   Flag.withDescription("Print JSON instead of text."),
   Flag.withDefault(false),
 );
@@ -853,10 +890,12 @@ const threadListCommand = Command.make("list", {
         while (cursor !== null) {
           const page: OrchestratorMcpThreadListResult = yield* tools.call(
             "t3_thread_list",
-            { projectId: project.id, includeSubagents: false, limit: 100, cursor },
+            { projectId: project.id, includeSubagents: true, limit: 100, cursor },
             OrchestratorMcpThreadListResult,
           );
-          threads.push(...page.threads);
+          threads.push(
+            ...page.threads.filter((thread) => thread.relationshipToParent !== "subagent"),
+          );
           cursor = page.nextCursor;
         }
         if (flags.json) {
@@ -1024,7 +1063,12 @@ const threadShowCommand = Command.make("show", {
           const messages = yield* Effect.forEach(latest, (item) =>
             readFullText(tools, threadId, item).pipe(
               Effect.map((text) => ({
-                role: item.type === "user_message" ? "user" : "assistant",
+                role:
+                  item.type === "assistant_message"
+                    ? "assistant"
+                    : item.createdBy === "system"
+                      ? "system"
+                      : "user",
                 runId: item.runId,
                 text,
               })),
