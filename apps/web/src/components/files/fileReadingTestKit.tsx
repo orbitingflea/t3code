@@ -16,6 +16,7 @@ import appCss from "~/index.css?inline";
 import { selectActiveRightPanelSurface, useRightPanelStore } from "~/rightPanelStore";
 
 import FilePreviewPanel from "./FilePreviewPanel";
+import { FULL_TEXT_MAX_BYTES } from "./largeTextProtocol";
 import { resetState, state } from "./fileReadingTestMocks";
 
 export { state };
@@ -279,6 +280,9 @@ export function lines(count: number) {
   return Array.from({ length: count }, (_, index) => `log line ${index + 1}`).join("\n");
 }
 
+/** Past the full-text read, so the worker-backed rows viewer shows the file. */
+export const LARGE_TEXT_BYTES = FULL_TEXT_MAX_BYTES + 1;
+
 /** A large text file the panel streams from its asset URL. */
 export function largeText(
   reading: { readonly serve: (path: string, contents: string) => void },
@@ -286,7 +290,12 @@ export function largeText(
   contents: string,
 ) {
   reading.serve(path, contents);
-  state.files[path] = { relativePath: path, contents, byteLength: 2_000_000, truncated: true };
+  state.files[path] = {
+    relativePath: path,
+    contents,
+    byteLength: LARGE_TEXT_BYTES,
+    truncated: true,
+  };
 }
 
 /**

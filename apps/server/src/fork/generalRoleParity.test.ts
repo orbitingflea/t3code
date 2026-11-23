@@ -47,6 +47,7 @@ import { ThreadDashboard } from "./threadDashboard/ThreadDashboard.ts";
 import { UserView } from "./userView/UserView.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
 import * as EnvironmentTheme from "../environmentTheme.ts";
+import { FeedbackStore } from "../feedback/FeedbackStore.ts";
 import { GitManager } from "../git/GitManager.ts";
 import { GitWorkflowService } from "../git/GitWorkflowService.ts";
 import { IssueService } from "../issue/IssueService.ts";
@@ -91,6 +92,7 @@ import * as ServerSettings from "../serverSettings.ts";
 import { SourceControlRepositoryService } from "../sourceControl/SourceControlRepositoryService.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
 import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
+import { Workflows } from "../workflows/Workflows.ts";
 import { TaskFolders } from "../workspace/TaskFolders.ts";
 
 const projectId = ProjectId.make("project:general-role-parity");
@@ -693,6 +695,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(UserView)({}),
   Layer.mock(DisplayModeWrap)({ forgetNotesAfterCompaction: () => (ingest) => ingest }),
   Layer.mock(DocumentText)({}),
+  Layer.mock(FeedbackStore)({}),
   Layer.mock(EnvironmentTheme.EnvironmentThemeService)({}),
   Layer.mock(GitVcsDriver.GitVcsDriver)({}),
   Layer.mock(GitManager)({}),
@@ -730,6 +733,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(TaskFolders)({}),
   Layer.mock(ThreadSearch)({}),
   Layer.mock(VcsStatusBroadcaster)({}),
+  Layer.mock(Workflows)({}),
 ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 
 const decodeToolsList = Schema.decodeUnknownEffect(

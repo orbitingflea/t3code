@@ -21,20 +21,7 @@ import {
   AuthOrchestrationOperateScope,
   SOURCE_CONTROL_MEDIA_ASSET,
 } from "@t3tools/contracts";
-<<<<<<< origin/main
-import {
-  CHAT_MARKDOWN_REMARK_PLUGINS,
-  CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-  CHAT_MARKDOWN_REHYPE_PLUGINS,
-  chatMarkdownImageSource,
-  decodeMarkdownLinkEscapes,
-  ASSISTANT_MARKDOWN_REMARK_PLUGINS,
-  ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-  remarkAssistantInsights,
-} from "@t3tools/shared/markdownPipeline";
-=======
 import { chatMarkdownImageSource } from "@t3tools/shared/markdownHast";
->>>>>>> upstream/main
 import { useAtomValue } from "@effect/atom-react";
 import {
   COMPOSER_CONTEXT_CLIPBOARD_MIME,
@@ -100,24 +87,12 @@ import React, {
   useState,
   type ReactNode,
 } from "react";
-<<<<<<< origin/main
-import type {
-  Components,
-  ExtraProps as ReactMarkdownExtraProps,
-  Options as ReactMarkdownOptions,
-} from "react-markdown";
-import { createIncrementalMarkdownPlugin } from "../markdown-incremental";
-import { postWhiteboardHover, remarkWhiteboardLinks } from "../fork/whiteboard/markdown-whiteboard";
+import { postWhiteboardHover } from "../fork/whiteboard/boardChannel";
 import { chatAnchorPanelLinks } from "../fork/rightPanelSplit/chatAnchorLink";
 import { openedSync } from "../fork/rightPanelSplit/linkSources";
 import { type OpenedSurface, startPanelLinkDrag } from "../fork/rightPanelSplit/panelLinkDrag";
 import { showBoardRef } from "../fork/whiteboard/boardChannel";
-import { remarkEndLinksAtCjkPunctuation } from "../fork/cjkLinkEnd";
 import { DashboardLinkChip, parseDashboardHref } from "../fork/dashboard/dashboardLink";
-import type { Pluggable, PluggableList } from "unified";
-import { defaultUrlTransform } from "react-markdown";
-=======
->>>>>>> upstream/main
 import { parseAssistantCitationHref } from "@t3tools/shared/assistantCitations";
 import { parseComposerContextHref } from "@t3tools/shared/composerContextReferences";
 import { parseThreadLinkHref } from "@t3tools/shared/threadLinks";
@@ -463,7 +438,7 @@ type MarkdownComponents = {
 
 // react-markdown's defaultUrlTransform: relative URLs, and absolute ones with a safe protocol.
 const SAFE_PROTOCOL = /^(?:https?|ircs?|mailto|xmpp)$/i;
-function safeUrl(value: string): string {
+export function safeUrl(value: string): string {
   const colon = value.indexOf(":");
   const before = (character: string) => {
     const at = value.indexOf(character);
@@ -538,13 +513,8 @@ function blockFileLinkSources(
   text: string,
   cwd: string | undefined,
   imageBaseDir: string | undefined,
-<<<<<<< origin/main
-  peerPaths: readonly string[] = [],
-  hostFileOrigins: readonly string[] = [],
-): string {
-=======
+  hostFileOrigins: readonly string[],
 ): BlockFileLinkSources {
->>>>>>> upstream/main
   const hrefs = extractMarkdownLinkHrefs(renderCodexInlineDirectivesAsMarkdown(text))
     .filter((href) => !parseComposerContextHref(href))
     .map(decodeMarkdownLinkEscapes)
@@ -553,9 +523,6 @@ function blockFileLinkSources(
   const spans = extractInlineCodeSpans(text).filter((span) =>
     resolveInlineCodeFileLinkMeta(span, cwd, imageBaseDir ?? cwd),
   );
-<<<<<<< origin/main
-  return JSON.stringify([[...new Set(hrefs)], [...new Set(spans)], peerPaths]);
-=======
   return { hrefs, spans };
 }
 
@@ -569,12 +536,14 @@ function fileLinkSourcesKey(
   cwd: string | undefined,
   imageBaseDir: string | undefined,
   streamingBlocks: ReadonlyArray<string> | null,
+  peerPaths: readonly string[] = [],
+  hostFileOrigins: readonly string[] = [],
 ): string {
   if (!streamingBlocks) {
-    const { hrefs, spans } = blockFileLinkSources(text, cwd, imageBaseDir);
-    return JSON.stringify([[...new Set(hrefs)], [...new Set(spans)]]);
+    const { hrefs, spans } = blockFileLinkSources(text, cwd, imageBaseDir, hostFileOrigins);
+    return JSON.stringify([[...new Set(hrefs)], [...new Set(spans)], peerPaths]);
   }
-  const config = `${cwd ?? ""}\u0000${imageBaseDir ?? ""}\u0000`;
+  const config = `${cwd ?? ""}\u0000${imageBaseDir ?? ""}\u0000${hostFileOrigins.join("\u0001")}\u0000`;
   const hrefs = new Set<string>();
   const spans = new Set<string>();
   const last = streamingBlocks.length - 1;
@@ -583,7 +552,7 @@ function fileLinkSourcesKey(
     const key = config + block;
     let sources = index === last ? undefined : finishedBlockFileLinkSources.get(key);
     if (!sources) {
-      sources = blockFileLinkSources(block, cwd, imageBaseDir);
+      sources = blockFileLinkSources(block, cwd, imageBaseDir, hostFileOrigins);
       if (index !== last) {
         if (cachedBlockChars + key.length > MAX_CACHED_BLOCK_CHARS) {
           finishedBlockFileLinkSources.clear();
@@ -596,8 +565,7 @@ function fileLinkSourcesKey(
     for (const href of sources.hrefs) hrefs.add(href);
     for (const span of sources.spans) spans.add(span);
   }
-  return JSON.stringify([[...hrefs], [...spans]]);
->>>>>>> upstream/main
+  return JSON.stringify([[...hrefs], [...spans], peerPaths]);
 }
 
 function resolveFileLinkSources(
@@ -624,30 +592,6 @@ function resolveFileLinkSources(
   return { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath };
 }
 
-<<<<<<< origin/main
-function useChatMarkdownState({
-  text,
-  inline = false,
-  cwd,
-  agentDirectories,
-  threadRef,
-  pullRequestPanelRef,
-  environmentId: explicitEnvironmentId,
-  onTaskListChange,
-  isStreaming = false,
-  skills = EMPTY_MARKDOWN_SKILLS,
-  onUseArtifactTemplate,
-  onRunShellCommand,
-  imageBaseDir,
-  workspaceMutationId,
-  onImageExpand,
-  renderContextReference,
-  headingLevelOffset = 0,
-  sourceControlMedia = false,
-  sourceControlMediaRepository,
-  fileLinkPeerPaths,
-}: ChatMarkdownProps) {
-=======
 function useChatMarkdownState(
   {
     text,
@@ -669,10 +613,10 @@ function useChatMarkdownState(
     headingLevelOffset = 0,
     sourceControlMedia = false,
     sourceControlMediaRepository,
+    fileLinkPeerPaths,
   }: ChatMarkdownProps,
   streamingBlocks: ReadonlyArray<string> | null,
 ) {
->>>>>>> upstream/main
   const gt = useGT();
   const messages = useMessages();
   const resolvedTheme = useRenderedAppearance();
@@ -870,13 +814,9 @@ function useChatMarkdownState(
   // Keyed by the file links found, not the text, so streamed text that adds none keeps the
   // renderer context, and every block reading it, unchanged.
   // A template literal marks the key as a string, so the compiler memoizes the maps on its value.
-<<<<<<< origin/main
   // A file chip opens in a thread, so only a thread's links to its environment's files become chips.
   const hostFileOrigins = useHostFileOrigins(threadRef?.environmentId ?? null);
-  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, fileLinkPeerPaths, hostFileOrigins)}`;
-=======
-  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, isStreaming ? (streamingBlocks ?? splitMarkdownBlocks(text) ?? [text]) : null)}`;
->>>>>>> upstream/main
+  const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, isStreaming ? (streamingBlocks ?? splitMarkdownBlocks(text) ?? [text]) : null, fileLinkPeerPaths, hostFileOrigins)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
   const fileLinkPrefix = useFileLinkPrefix(fileLinkParentSuffixByPath);
@@ -1035,20 +975,12 @@ function useChatMarkdownState(
     }
     return findAgentDirectoryMatch(workspaceRelativePath, agentRoots, searchRoot);
   };
-<<<<<<< origin/main
   const openFileInPanel = (
     fileLinkMeta: MarkdownFileLinkMeta,
     panelPath: string,
     ...options: [OpenFileOptions?]
   ): OpenedSurface | Promise<OpenedSurface> => {
     if (!threadRef) return null;
-    const openAt = (path: string) =>
-      openedSync(rightPanelHostRef(threadRef), () =>
-        useRightPanelStore.getState().openFile(threadRef, path, fileLinkMeta.line, ...options),
-      );
-=======
-  const openFileInPanel = (fileLinkMeta: MarkdownFileLinkMeta, panelPath: string) => {
-    if (!threadRef) return;
     // The panel reads relative paths from the thread's folder. A pull request body's `cwd` is the
     // checkout of its repository, which can be another folder.
     const shell = readThreadShell(threadRef);
@@ -1058,16 +990,18 @@ function useChatMarkdownState(
         (project) => project.environmentId === environmentId && project.id === shell?.projectId,
       )?.workspaceRoot;
     const openAt = (path: string) =>
-      useRightPanelStore
-        .getState()
-        .openFile(
-          threadRef,
-          cwd && panelRoot !== undefined && cwd !== panelRoot
-            ? resolveWorkspaceFilePath(path, cwd)
-            : path,
-          fileLinkMeta.line,
-        );
->>>>>>> upstream/main
+      openedSync(rightPanelHostRef(threadRef), () =>
+        useRightPanelStore
+          .getState()
+          .openFile(
+            threadRef,
+            cwd && panelRoot !== undefined && cwd !== panelRoot
+              ? resolveWorkspaceFilePath(path, cwd)
+              : path,
+            fileLinkMeta.line,
+            ...options,
+          ),
+      );
     if (
       fileLinkMeta.workspaceLookupPath === null ||
       !cwd ||
@@ -2024,29 +1958,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
   },
 } satisfies MarkdownComponents;
 
-<<<<<<< origin/main
-const REMARK_MATH: Pluggable = [remarkMath, { singleDollarTextMath: true }];
-const FORK_REMARK_PLUGINS = [remarkWhiteboardLinks, remarkEndLinksAtCjkPunctuation];
-// Shared lists, so every message with the same options shares a processor and its cache.
-const CHAT_MARKDOWN_REMARK_PLUGIN_SETS = {
-  plain: [...CHAT_MARKDOWN_REMARK_PLUGINS, ...FORK_REMARK_PLUGINS],
-  breaks: [...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, ...FORK_REMARK_PLUGINS],
-  math: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS, ...FORK_REMARK_PLUGINS],
-  mathBreaks: [REMARK_MATH, ...CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, ...FORK_REMARK_PLUGINS],
-} satisfies Record<string, PluggableList>;
-const ASSISTANT_MARKDOWN_REMARK_PLUGIN_SETS = {
-  plain: [...ASSISTANT_MARKDOWN_REMARK_PLUGINS, ...FORK_REMARK_PLUGINS],
-  breaks: [...ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS, ...FORK_REMARK_PLUGINS],
-  math: [REMARK_MATH, ...ASSISTANT_MARKDOWN_REMARK_PLUGINS, ...FORK_REMARK_PLUGINS],
-  mathBreaks: [
-    REMARK_MATH,
-    ...ASSISTANT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS,
-    ...FORK_REMARK_PLUGINS,
-  ],
-} satisfies Record<string, PluggableList>;
-=======
 const markdownOptions = new WeakMap<MarkdownExtensions, Map<string, WordsHastOptions>>();
->>>>>>> upstream/main
 
 /** One options object per configuration, so equal messages share a renderer and its cache. */
 function wordsOptions(
@@ -2055,7 +1967,7 @@ function wordsOptions(
 ): WordsHastOptions {
   let byFlags = markdownOptions.get(extensions);
   if (!byFlags) markdownOptions.set(extensions, (byFlags = new Map()));
-  const key = `${+flags.math}${+flags.breaks}${+flags.escapeHtml}${+flags.insights}`;
+  const key = `${+flags.math}${+flags.breaks}${+flags.escapeHtml}${+flags.insights}${+!!flags.agentText}${+!!flags.boardLinks}${+!!flags.inline}`;
   let options = byFlags.get(key);
   if (!options) byFlags.set(key, (options = { ...flags, extensions }));
   return options;
@@ -2236,36 +2148,15 @@ function ChatMarkdown({
   const bindMarkdownRef = (node: HTMLElement | null) => {
     markdownRef.current = node;
   };
-<<<<<<< origin/main
-  const sharedRemarkPlugins = (
-    assistantReply ? ASSISTANT_MARKDOWN_REMARK_PLUGIN_SETS : CHAT_MARKDOWN_REMARK_PLUGIN_SETS
-  )[
-    componentState.mathEnabled
-      ? lineBreaks
-        ? "mathBreaks"
-        : "math"
-      : lineBreaks
-        ? "breaks"
-        : "plain"
-  ];
-  // The incremental parser keeps per-instance state, so its output is not shared.
-  const uncachedPlugins = incrementalParsing;
-  const remarkPlugins = incrementalParsing
-    ? [...sharedRemarkPlugins, ...extraRemarkPlugins, createIncrementalMarkdownPlugin()]
-    : withExtraPlugins(
-        hasInsights
-          ? withExtraPlugins(INSIGHT_REMARK_PLUGINS, sharedRemarkPlugins)
-          : sharedRemarkPlugins,
-        extraRemarkPlugins,
-      );
-=======
   const markdown = wordsOptions(extensions, {
     math: componentState.mathEnabled,
     breaks: lineBreaks,
     escapeHtml: !parseRawHtml,
     insights: renderInsights && text.includes("★ Insight"),
+    agentText: assistantReply,
+    boardLinks: true,
+    inline,
   });
->>>>>>> upstream/main
   const blocks = streamingBlocks ?? [text];
 
   return (

@@ -1696,14 +1696,10 @@ export const layerQueryRunner: Layer.Layer<
         ...(resumeSessionAt === undefined ? {} : { resumeSessionAt }),
         env: {
           ...(sdkOptions.env ?? hostEnvironment),
-<<<<<<< origin/main
           ...claudeTerminalToolEnvironment,
           ...DELEGATE_ONLY_PROVIDERS.claudeAgent.hide.environment,
-          ...(input.resume
-=======
           // The CLI would re-run a failed request by itself, then run the resume prompt as a second turn.
           ...(input.resume && !endsOnFailedRequest
->>>>>>> upstream/main
             ? {
                 CLAUDE_CODE_RESUME_INTERRUPTED_TURN: "1",
                 CLAUDE_CODE_RESUME_REASON: "user_resume",
@@ -2559,15 +2555,12 @@ export function makeClaudeQueryOptions(input: {
           },
         } as ClaudeSdkSettings);
   const deviceInstructions = input.mcpServers !== undefined && input.deviceToolsAvailable === true;
-<<<<<<< origin/main
   const hooks = {
     ...input.hooks,
     ...(deviceInstructions ? { SubagentStart: [{ hooks: [subagentDeviceInstructions] }] } : {}),
     ...(input.onStop === undefined ? {} : { Stop: [{ hooks: [input.onStop] }] }),
   };
-=======
   const agentFeedback = input.mcpServers === undefined ? "off" : (input.agentFeedback ?? "off");
->>>>>>> upstream/main
   const options: ClaudeAgentSdkQueryOptions = {
     model: compiledSelection.apiModelId,
     // T3 names threads; a supplied title skips Claude's redundant naming request.

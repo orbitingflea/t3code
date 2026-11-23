@@ -1402,13 +1402,13 @@ it.effect("restarts the turn for an image when native steering takes text only",
 );
 
 it.effect.each(["completed", "interrupted"] as const)(
-  "checkpoints a run that a steer restarted after its first answer was checkpointed (restart %s)",
+  "checkpoints a run that a steer restarted before its first answer was checkpointed (restart %s)",
   (restartEnd) =>
     Effect.gen(function* () {
       const steerReadRunning = yield* Deferred.make<void>();
       const letSteerCommit = yield* Deferred.make<void>();
       const { events, started, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
-        `steer-restart-after-checkpoint-${restartEnd}`,
+        `steer-restart-before-checkpoint-${restartEnd}`,
         true,
         false,
         Effect.void,
@@ -1480,10 +1480,7 @@ it.effect.each(["completed", "interrupted"] as const)(
           })
           .pipe(Effect.forkScoped);
         yield* Deferred.await(steerReadRunning);
-        const firstCompleted = yield* runReaches("completed");
         yield* endTurn(started[0]!, "completed");
-        const firstCapture = yield* worker.drain().pipe(Effect.forkScoped);
-        yield* Fiber.join(firstCompleted);
         const restartRunning = yield* orchestrator.streamDomainEvents.pipe(
           Stream.filter(
             (event) =>
@@ -1497,8 +1494,12 @@ it.effect.each(["completed", "interrupted"] as const)(
         );
         yield* Deferred.succeed(letSteerCommit, undefined);
         yield* Fiber.join(steer);
-        yield* Fiber.join(firstCapture);
-        yield* worker.drain();
+        // The first answer's capture finds the run restarting and retries until it gives up; the
+        // restarted attempt starts behind it on the thread's effect lane.
+        for (const delay of [0, 100, 200, 400, 800]) {
+          yield* TestClock.adjust(delay);
+          yield* worker.drain();
+        }
         yield* Fiber.join(restartRunning);
         yield* (yield* ThreadCommandExecutor.ThreadCommandExecutor).withLock(threadId, Effect.void);
         assert.equal(started.length, 2);

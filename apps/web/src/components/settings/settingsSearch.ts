@@ -74,11 +74,8 @@ export interface SettingsSearchItem {
   readonly managedTunnelOnly?: boolean;
   readonly peerLinksOnly?: boolean;
   readonly fastWorktreeCheckoutOnly?: boolean;
-<<<<<<< origin/main
   readonly reflinkWorktreesOnly?: boolean;
-=======
   readonly agentFeedbackOnly?: boolean;
->>>>>>> upstream/main
   readonly textGeneratorsOnly?: boolean;
   readonly rightPanelMenuOnly?: boolean;
   readonly secondary?: boolean;
@@ -96,11 +93,8 @@ export interface SettingsSearchAvailability {
   readonly managedTunnelActive?: boolean;
   readonly hasPeerLinkHost?: boolean;
   readonly hasFastWorktreeCheckoutEnvironment?: boolean;
-<<<<<<< origin/main
   readonly hasReflinkWorktreesEnvironment?: boolean;
-=======
   readonly hasAgentFeedbackEnvironment?: boolean;
->>>>>>> upstream/main
   /** An environment without a provider allow-list, which hides text generators. */
   readonly hasTextGeneratorsEnvironment?: boolean;
   readonly hasPrimaryEnvironment?: boolean;
@@ -1727,11 +1721,8 @@ export function filterAvailableSettingsSearchItems(
       (!item.peerLinksOnly || availability.hasPeerLinkHost === true) &&
       (!item.fastWorktreeCheckoutOnly ||
         availability.hasFastWorktreeCheckoutEnvironment === true) &&
-<<<<<<< origin/main
       (!item.reflinkWorktreesOnly || availability.hasReflinkWorktreesEnvironment === true) &&
-=======
       (!item.agentFeedbackOnly || availability.hasAgentFeedbackEnvironment === true) &&
->>>>>>> upstream/main
       (!item.textGeneratorsOnly || availability.hasTextGeneratorsEnvironment === true) &&
       (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true) &&
       (!item.rightPanelMenuOnly || availability.hasRightPanelMenu === true),

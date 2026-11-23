@@ -2105,9 +2105,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       ),
   );
 
-<<<<<<< origin/main
-  it.effect("accepts dangerous-command approvals in full-access without asking", () =>
-=======
   it.effect.each([
     { name: "dangerous command", networkApprovalContext: undefined, asks: false },
     {
@@ -2116,7 +2113,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
       asks: true,
     },
   ] as const)("full access asks about a $name: $asks", ({ networkApprovalContext, asks }) =>
->>>>>>> upstream/main
     Effect.gen(function* () {
       const nativeThreadId = "command-approval-thread";
       const nativeTurnId = "command-approval-turn";
@@ -2138,22 +2134,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                   itemId: "exec-rm",
                   command: "/bin/bash -lc 'rm -rf ./node_modules'",
                   startedAtMs: 0,
-<<<<<<< origin/main
-                },
-              },
-            },
-            { type: "expect_outbound", frame: { id: 0, result: { decision: "accept" } } },
-            {
-              type: "emit_inbound",
-              frame: {
-                method: "turn/completed",
-                params: {
-                  threadId: nativeThreadId,
-                  turn: makeCodexReplayTurn({ id: nativeTurnId, status: "completed" }),
-                },
-              },
-            },
-=======
                   ...(networkApprovalContext === undefined ? {} : { networkApprovalContext }),
                 },
               },
@@ -2173,7 +2153,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
                     },
                   },
                 ] as const)),
->>>>>>> upstream/main
           ],
         }),
         (event) =>
@@ -2196,14 +2175,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
         harness.firstTerminal.pipe(Effect.as(undefined)),
         Queue.take(pending),
       );
-<<<<<<< origin/main
-      assert.isUndefined(request, "Full access must not wait for a command approval");
-      assert.equal(yield* Queue.size(pending), 0, "Full access must not show a command approval");
-      assert.deepEqual(
-        harness.terminalEvents().map((event) => event.status),
-        ["completed"],
-      );
-=======
       assert.equal(request?.kind, asks ? "command" : undefined);
       if (!asks) {
         assert.deepEqual(
@@ -2211,7 +2182,6 @@ describe("CodexAdapterV2 post-settle continuation", () => {
           ["completed"],
         );
       }
->>>>>>> upstream/main
     }).pipe(
       Effect.scoped,
       Effect.provide(

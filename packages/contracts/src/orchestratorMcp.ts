@@ -573,7 +573,7 @@ export const OrchestratorMcpThreadSendInput = Schema.Struct({
 });
 export type OrchestratorMcpThreadSendInput = typeof OrchestratorMcpThreadSendInput.Type;
 
-const OrchestratorMcpThreadSendRunResult = Schema.Struct({
+export const OrchestratorMcpThreadSendRunResult = Schema.Struct({
   threadId: ThreadId,
   link: Schema.optional(Schema.String),
   messageId: MessageId,

@@ -19,6 +19,12 @@ import {
 } from "@t3tools/shared/markdownHast";
 
 import { rehypeChipPunctuation } from "../components/chat/markdownChipPunctuation";
+import {
+  forkHast,
+  forkRenderOptions,
+  forkSource,
+  type ForkWordsOptions,
+} from "../fork/forkMarkdown";
 import { rehypeHeadingIds } from "../components/chat/markdownFragments";
 import { rehypeTextDirection } from "../components/chat/markdownTextDirection";
 
@@ -44,7 +50,7 @@ export interface MarkdownExtensions {
   readonly githubEmoji?: boolean;
 }
 
-export interface WordsHastOptions {
+export interface WordsHastOptions extends ForkWordsOptions {
   /** `$…$`, `$$…$$` and `math` code blocks render as SVG. */
   readonly math: boolean;
   /** Soft line breaks render as `<br>`, as remark-breaks does. */
@@ -1098,14 +1104,15 @@ function makeInert(node: Root | Element) {
 }
 
 /** ChatMarkdown's sanitized hast for `text`, rendered by Words. */
-export function wordsHast(text: string, options: WordsHastOptions): Root {
+export function wordsHast(written: string, options: WordsHastOptions): Root {
   const { extensions } = options;
+  const text = forkSource(written, options.math ? markdownMathRanges : null);
   const renderOptions: RenderOptions = {
     math: options.math,
     // llm-math's `\(…\)` and `\[…\]`, which agents write as often as `$`.
     texDelimiters: options.math,
     autolinkBoundaries: true,
-    singleTilde: !extensions.userMessage,
+    ...forkRenderOptions(options),
     leadingWhitespace: extensions.leadingWhitespace === true,
     windowsPaths: true,
     codeMeta: true,
@@ -1136,6 +1143,7 @@ export function wordsHast(text: string, options: WordsHastOptions): Root {
   const hast = sanitizeChatHast(tree);
   if (walk.math.size > 0) restoreMath(hast, walk.math);
   if (insights) restorePositions(hast, insights.toOriginal);
+  forkHast(hast, written, text, options);
   if (extensions.inert) makeInert(hast);
   if (extensions.preview) return flattenPreview(hast, extensions.preview);
   addHeadingIds(hast);

@@ -57,18 +57,6 @@ function resolveFinalAssistantTextForTurn(
   return finalAssistantText;
 }
 
-<<<<<<< origin/main
-const markdownPreviewParser = unified()
-  .use(remarkParse)
-  .use(remarkGfm, { singleTilde: false })
-  .freeze();
-
-const INLINE_PARENT_TYPES = new Set<Nodes["type"]>([
-  "paragraph",
-  "heading",
-  "tableCell",
-  "emphasis",
-=======
 // Elements whose children run together; every other element is separated by a space.
 const INLINE_PARENTS = new Set([
   "p",
@@ -81,7 +69,6 @@ const INLINE_PARENTS = new Set([
   "td",
   "th",
   "em",
->>>>>>> upstream/main
   "strong",
   "del",
   "a",
@@ -106,13 +93,15 @@ function markdownNodeText(node: Nodes): string {
 
 /** Markdown as one line of the text it renders, without markup or link targets. */
 export function markdownPlainText(markdown: string): string {
-  return markdownNodeText(markdownTree(markdown)).replace(/\s+/g, " ").trim();
+  return markdownNodeText(markdownTree(markdown, { singleTilde: false }))
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 // The tooltip shows a few lines; bound parsing work for long messages and streaming responses.
 function markdownMinimapPreview(markdown: string | null) {
   if (markdown === null) return null;
-  const compact = markdownNodeText(markdownTree(markdown.slice(0, 1_500)))
+  const compact = markdownNodeText(markdownTree(markdown.slice(0, 1_500), { singleTilde: false }))
     .replace(/\s+/g, " ")
     .trim();
   return compact.length > 0 ? compact : null;

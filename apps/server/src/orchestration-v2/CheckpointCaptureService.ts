@@ -208,15 +208,7 @@ export const layer: Layer.Layer<
           ],
           { concurrency: 2 },
         );
-<<<<<<< origin/main
-      // Omit delegatedCompletion to preserve cohort writes made after capture loaded the run.
-      const { delegatedCompletion: _delegatedCompletion, ...runWithoutDelegatedCompletion } = run;
-      const commandId = CommandId.make(
-        `command:effect:checkpoint.capture:${run.activeAttemptId ?? run.id}`,
-      );
-=======
       const commandId = CommandId.make(`command:effect:checkpoint.capture:${run.id}`);
->>>>>>> upstream/main
       const checkpointEvent = (payload: OrchestrationV2Checkpoint) =>
         Effect.map(ids.allocate.event({ threadId: input.threadId, commandId }), (id) => ({
           id,

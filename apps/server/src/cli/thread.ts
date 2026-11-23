@@ -250,15 +250,11 @@ export type ThreadTools = ReturnType<typeof makeThreadTools>;
  * outside agent does, and revokes that session when the command ends.
  */
 export const withThreadTools = Effect.fn("cli.thread.withThreadTools")(function* <A, E, R>(
-<<<<<<< origin/main
-  flags: { readonly baseDir: Option.Option<string>; readonly json: boolean },
-=======
   flags: {
     readonly baseDir: Option.Option<string>;
     readonly json: boolean;
     readonly clientLabel?: string;
   },
->>>>>>> upstream/main
   run: (tools: ThreadTools) => Effect.Effect<A, E, R>,
 ) {
   const logLevel = yield* GlobalFlag.LogLevel;

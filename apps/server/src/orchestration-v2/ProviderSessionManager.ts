@@ -2766,83 +2766,12 @@ export const layerWithOptions = (
               Effect.map(({ loaded }) => loaded),
             ),
           startTurn: (input) =>
-<<<<<<< origin/main
             startBusyTurn(
               input,
-              runtime.startTurn(input).pipe(turnMetrics("send", input.modelSelection.model)),
-=======
-            observeActivity(
-              providerSessionId,
-              ensureThreadAttached({
-                providerSessionId,
-                threadId: input.threadId,
-                providerInstanceId: runtime.instanceId,
-              }),
-            ).pipe(
-              // Failed or stopped starts may omit turn.terminal; clear their turns so sessions can idle.
-              Effect.andThen(
-                holdThreadLoaded({
-                  providerSessionId,
-                  threadId: input.threadId,
-                  providerThread: input.providerThread,
-                }),
+              agentFeedbackMode.pipe(
+                Effect.flatMap((agentFeedback) => runtime.startTurn({ ...input, agentFeedback })),
+                turnMetrics("send", input.modelSelection.model),
               ),
-              Effect.andThen(
-                Effect.acquireUseRelease(
-                  markBusy(
-                    providerSessionId,
-                    busyTurnKey(input.providerThread.id, input.runOrdinal),
-                    runtime,
-                  ).pipe(
-                    Effect.catchCause((cause) =>
-                      Effect.logWarning("orchestration-v2.driver-session.activity-failed", {
-                        providerSessionId,
-                        cause,
-                      }).pipe(Effect.as(true)),
-                    ),
-                    // A release between attach and markBusy leaves nothing to mark: fail the
-                    // start instead of running it on a runtime being torn down.
-                    Effect.flatMap((marked) =>
-                      marked
-                        ? Effect.void
-                        : Effect.fail(
-                            new ProviderAdapter.ProviderAdapterTurnStartError({
-                              driver: runtime.driver,
-                              threadId: input.threadId,
-                              providerThreadId: input.providerThread.id,
-                              runId: input.runId,
-                              cause: "The provider session was released while the turn started.",
-                            }),
-                          ),
-                    ),
-                  ),
-                  () =>
-                    agentFeedbackMode.pipe(
-                      Effect.flatMap((agentFeedback) =>
-                        runtime.startTurn({ ...input, agentFeedback }),
-                      ),
-                      turnMetrics("send", input.modelSelection.model),
-                    ),
-                  (_, exit) =>
-                    Exit.isFailure(exit)
-                      ? observeActivity(
-                          providerSessionId,
-                          markIdle(providerSessionId, input.providerThread.id, input.runOrdinal),
-                        ).pipe(
-                          // A failed start can leave its native thread gone (Claude rejecting a
-                          // resume), so the next start must ask the adapter to resume it again.
-                          Effect.andThen(
-                            forgetProviderThreadLoaded({
-                              providerSessionId,
-                              threadId: input.threadId,
-                              runtime,
-                            }),
-                          ),
-                        )
-                      : Effect.void,
-                ),
-              ),
->>>>>>> upstream/main
             ),
           ...(compactThread === undefined
             ? {}

@@ -6,23 +6,17 @@ import {
   isWindowsDrivePathHref,
   normalizeMarkdownLinkDestination,
 } from "@t3tools/shared/markdownLinks";
-import {
-  ASSISTANT_MARKDOWN_REMARK_PLUGINS,
-  CHAT_MARKDOWN_REHYPE_PLUGINS,
-} from "@t3tools/shared/markdownPipeline";
-import type { Root } from "mdast";
 import { createContext, use } from "react";
-import { defaultUrlTransform } from "react-markdown";
 
-import ChatMarkdown from "../../components/ChatMarkdown";
+import ChatMarkdown, { safeUrl } from "../../components/ChatMarkdown";
 import { nodeToPlainText } from "../../components/chat/MarkdownCodeBlock.logic";
 import { createMarkdownRenderer } from "../../components/chat/markdownRenderer";
+import type { WordsHastOptions } from "../../markdown/wordsHast";
 import {
   resolveInlineCodeFileLinkMeta,
   resolveMarkdownFileLinkMeta,
   rewriteMarkdownFileUriHref,
 } from "../../markdown-links";
-import { remarkEndLinksAtCjkPunctuation } from "../cjkLinkEnd";
 import {
   hostFileAnchorHref,
   hostFileLinkHref,
@@ -48,16 +42,6 @@ interface SlotCopy {
 
 const SlotCopyContext = createContext<SlotCopy>({ text: "", filePaths: [], hostFileOrigins: [] });
 
-function remarkUnwrapSoleParagraph() {
-  return (tree: Root) => {
-    const [only] = tree.children;
-    if (tree.children.length === 1 && only?.type === "paragraph") tree.children = only.children;
-  };
-}
-
-// A chip sits inside the slot's own paragraph, so its markdown must not add another `<p>`.
-const CHIP_PLUGINS = [remarkUnwrapSoleParagraph];
-
 /**
  * Chat's own file chip. `markdown` is a code span or an empty-label link built here, never
  * text from the slot, so nothing in it can suspend or parse differently from the slot.
@@ -70,7 +54,6 @@ function ChatFileChip(props: { readonly markdown: string; readonly scope: LinkSc
       text={props.markdown}
       cwd={props.scope.cwd}
       threadRef={props.scope.threadRef}
-      extraRemarkPlugins={CHIP_PLUGINS}
       fileLinkPeerPaths={filePaths}
     />
   );
@@ -113,9 +96,18 @@ function slotFilePaths(
   return [...paths];
 }
 
+// Agent text without math, breaks or insights; no board on the Dashboard.
+const DASHBOARD_MARKDOWN: WordsHastOptions = {
+  math: false,
+  breaks: false,
+  escapeHtml: false,
+  insights: false,
+  extensions: {},
+  agentText: true,
+};
+
 const renderMarkdown = createMarkdownRenderer({
-  remarkPlugins: [...ASSISTANT_MARKDOWN_REMARK_PLUGINS, remarkEndLinksAtCjkPunctuation],
-  rehypePlugins: CHAT_MARKDOWN_REHYPE_PLUGINS,
+  markdown: DASHBOARD_MARKDOWN,
   components: {
     a: function DashboardLink({ node, children, ...props }) {
       const scope = use(DashboardLinkScope);
@@ -164,7 +156,7 @@ const renderMarkdown = createMarkdownRenderer({
   },
   urlTransform: (url) =>
     rewriteMarkdownFileUriHref(url) ??
-    (isWindowsDrivePathHref(url) || parseDashboardHref(url) ? url : defaultUrlTransform(url)),
+    (isWindowsDrivePathHref(url) || parseDashboardHref(url) ? url : safeUrl(url)),
 });
 
 /**
@@ -179,11 +171,11 @@ export function DashboardMarkdown(props: { readonly text: string; readonly paire
     scope?.cwd,
     hostFileOrigins,
   );
-  const element = renderMarkdown(props.text);
-  renderMarkdown.remember(props.text, element);
+  const entry = renderMarkdown.parse(props.text);
+  renderMarkdown.remember(props.text, entry);
   return (
     <SlotCopyContext value={{ text: props.text, filePaths, hostFileOrigins }}>
-      {element}
+      {renderMarkdown.element(entry)}
     </SlotCopyContext>
   );
 }

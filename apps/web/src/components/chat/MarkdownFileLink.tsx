@@ -361,12 +361,24 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   const chip = hasPrimaryAction ? (
     <ContextChip
       {...nativeDrag}
+      onDragStart={(event) => {
+        if (nativeDrag.draggable) nativeDrag.onDragStart(event);
+        else
+          startPanelLinkDrag(
+            event,
+            fileChipPanelLink(threadRef, panelPath, (path, options) =>
+              onOpenInPanel(path, line, options),
+            ),
+          );
+      }}
       kind={chipKind}
       dir="ltr"
       render={<a href={href} />}
+      aria-label={labelPrefix === undefined ? undefined : `${labelPrefix}${label}`}
       className={MARKDOWN_FILE_LINK_CLASS_NAME}
       data-markdown-copy={copyMarkdown}
       onClick={(event) => {
+        if (leavesFileChipClickToBrowser(href, event)) return;
         event.preventDefault();
         event.stopPropagation();
         if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
@@ -388,6 +400,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
         path={iconPath}
         environmentId={environmentId}
         label={label}
+        labelPrefix={labelPrefix}
         theme={theme}
       />
     </ContextChip>
@@ -397,7 +410,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
       kind={chipKind}
       dir="ltr"
       render={<button type="button" />}
-      aria-label={gt("File options for {label}", { label })}
+      aria-label={gt("File options for {label}", { label: `${labelPrefix ?? ""}${label}` })}
       aria-haspopup="menu"
       className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
       data-markdown-copy={copyMarkdown}
@@ -411,6 +424,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
         path={iconPath}
         environmentId={environmentId}
         label={label}
+        labelPrefix={labelPrefix}
         theme={theme}
       />
     </ContextChip>
@@ -418,89 +432,7 @@ export const MarkdownFileLink = memo(function MarkdownFileLink({
   if (sharedTooltip) return withSharedTooltip(chip, sharedTooltip);
   return (
     <Tooltip>
-<<<<<<< origin/main
-      <TooltipTrigger
-        render={
-          hasPrimaryAction ? (
-            <ContextChip
-              {...nativeDrag}
-              onDragStart={(event) => {
-                if (nativeDrag.draggable) nativeDrag.onDragStart(event);
-                else
-                  startPanelLinkDrag(
-                    event,
-                    fileChipPanelLink(threadRef, panelPath, (path, options) =>
-                      onOpenInPanel(path, line, options),
-                    ),
-                  );
-              }}
-              kind={chipKind}
-              dir="ltr"
-              render={<a href={href} />}
-              aria-label={labelPrefix === undefined ? undefined : `${labelPrefix}${label}`}
-              className={MARKDOWN_FILE_LINK_CLASS_NAME}
-              data-markdown-copy={copyMarkdown}
-              onClick={(event) => {
-                if (leavesFileChipClickToBrowser(href, event)) return;
-                event.preventDefault();
-                event.stopPropagation();
-                if (onOpen && shouldOpenMarkdownFileLinkInEditor(event)) {
-                  handleOpenInEditor();
-                  return;
-                }
-                if (useBrowserPrimaryAction) {
-                  handleOpenInBrowser();
-                  return;
-                }
-                handleOpenInFilePreview();
-              }}
-              onContextMenu={handleContextMenu}
-            >
-              <FileTagChipContent
-                icon={
-                  isAppBundle ? (
-                    <AppBundleIcon environmentId={environmentId} path={iconPath} />
-                  ) : undefined
-                }
-                path={iconPath}
-                environmentId={environmentId}
-                label={label}
-                labelPrefix={labelPrefix}
-                theme={theme}
-              />
-            </ContextChip>
-          ) : (
-            <ContextChip
-              {...nativeDrag}
-              kind={chipKind}
-              dir="ltr"
-              render={<button type="button" />}
-              aria-label={gt("File options for {label}", { label: `${labelPrefix ?? ""}${label}` })}
-              aria-haspopup="menu"
-              className={cn(MARKDOWN_FILE_LINK_CLASS_NAME, "select-text")}
-              data-markdown-copy={copyMarkdown}
-              onClick={handleContextMenu}
-              onContextMenu={handleContextMenu}
-            >
-              <FileTagChipContent
-                icon={
-                  isAppBundle ? (
-                    <AppBundleIcon environmentId={environmentId} path={iconPath} />
-                  ) : undefined
-                }
-                path={iconPath}
-                environmentId={environmentId}
-                label={label}
-                labelPrefix={labelPrefix}
-                theme={theme}
-              />
-            </ContextChip>
-          )
-        }
-      />
-=======
       <TooltipTrigger render={chip} />
->>>>>>> upstream/main
       <TooltipPopup side="top" variant="code" className="pointer-events-auto">
         {tooltipContent}
       </TooltipPopup>

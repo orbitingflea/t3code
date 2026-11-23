@@ -1049,7 +1049,6 @@ export const layer: Layer.Layer<
         projection.providerTurns,
         projection.attempts,
       );
-<<<<<<< origin/main
       const turnFyi = yield* fyiDelivery.forTurn({
         threadId: run.threadId,
         message: providerMessage,
@@ -1058,13 +1057,11 @@ export const layer: Layer.Layer<
           (run.restartContinuationOfRunId !== undefined && !noteContinuation) ||
           (manualResume && unsentResumeMessage === undefined),
       });
-=======
       let compactionMessageIdSet: ReadonlySet<string> | undefined;
       const compactionMessageIds = () =>
         (compactionMessageIdSet ??= new Set(
           projection.messages.filter(isSlashCommandMessage).map((candidate) => candidate.id),
         ));
->>>>>>> upstream/main
       const restartCancelledWork = pendingRestartCancelledBackgroundWork({
         runs: projection.runs,
         providerTurns: projection.providerTurns,
@@ -1929,6 +1926,7 @@ export const layer: Layer.Layer<
         retryHandoff.attachments.length > 0 ||
         sideChatHandoff !== undefined ||
         restartNote !== "" ||
+        turnFyi.text !== "" ||
         noteContinuation;
       // Pending context turns the resume into a prompted turn, which needs no native resume.
       if (
@@ -1947,7 +1945,6 @@ export const layer: Layer.Layer<
         });
         return;
       }
-<<<<<<< origin/main
       const noteContext = DisplayModeWrap.noteContextAtTurnStart({
         sameNativeThread,
         handoffCount: effectiveHandoffs.length,
@@ -1958,9 +1955,6 @@ export const layer: Layer.Layer<
         wrapped = yield* displayModeWrap.wrapUserText({ ...wrapInput, context: noteContext });
         userText = wrapped.text;
       }
-      const retryHandoff = resumedRetryHandoff ?? (yield* prepareRetryHandoff(handoffContext));
-=======
->>>>>>> upstream/main
       const runningProviderThread: OrchestrationV2ProviderThread = {
         ...loadedProviderThread,
         contextUsage: handoffUsage,
@@ -2130,14 +2124,11 @@ export const layer: Layer.Layer<
           ],
         });
       });
-<<<<<<< origin/main
       const acceptingSession = DisplayModeWrap.deliveringNote(session, wrapped);
-=======
       let inlineDeliveredHandoffs: ReadonlyArray<OrchestrationV2ContextHandoff> = [];
       let promptDroppedOnTerminal = false;
       const inlineDeliveryLock = yield* Semaphore.make(1);
       const retryHandoffIds = new Set(retryHandoff.handoffs.map((handoff) => handoff.id));
->>>>>>> upstream/main
       const startWithHandoffs = Effect.fn("ProviderTurnStartService.startWithHandoffs")(
         function* (turnInput: Parameters<typeof session.startTurn>[0], compact = false) {
           const delivery = yield* deliverContextHandoffs({
@@ -2170,9 +2161,6 @@ export const layer: Layer.Layer<
             sideChatHandoff === undefined || compact || slashCommand
               ? ""
               : sideChatHandoff.summaryText;
-<<<<<<< origin/main
-          const context = [delivery.context, sideChatContext, restartNote, turnFyi.text]
-=======
           // Record inline handoffs before startTurn so an immediate dropped terminal can restore them.
           inlineDeliveredHandoffs = [
             ...delivery.inlineHandoffs.map((handoff) =>
@@ -2182,8 +2170,7 @@ export const layer: Layer.Layer<
             ),
             ...(sideChatContext === "" || sideChatHandoff === undefined ? [] : [sideChatHandoff]),
           ];
-          const context = [delivery.context, sideChatContext, restartNote]
->>>>>>> upstream/main
+          const context = [delivery.context, sideChatContext, restartNote, turnFyi.text]
             .filter((part) => part !== "")
             .join("\n\n");
           const { restartContinuationOfRunId: _resumedRunId, ...promptedInput } = turnInput;
@@ -2286,22 +2273,9 @@ export const layer: Layer.Layer<
               }),
         ),
       );
-<<<<<<< origin/main
-      const deliverySession =
-        effectiveHandoffs.length === 0 &&
-        retryHandoff.handoffs.length === 0 &&
-        retryHandoff.attachments.length === 0 &&
-        sideChatHandoff === undefined &&
-        restartNote === "" &&
-        turnFyi.text === "" &&
-        !noteContinuation
-          ? acceptingSession
-          : makeDeliverySession(acceptingSession, startWithHandoffs);
-=======
       const deliverySession = carriesPendingContext
-        ? makeDeliverySession(session, startWithHandoffs)
-        : session;
->>>>>>> upstream/main
+        ? makeDeliverySession(acceptingSession, startWithHandoffs)
+        : acceptingSession;
       return runExecution.startRootRun({
         commandId: CommandId.make(`command:effect:provider-turn.start:${run.id}`),
         appThread: projection.thread,

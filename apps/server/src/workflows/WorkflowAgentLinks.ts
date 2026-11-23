@@ -4,7 +4,7 @@ import {
   OrchestratorMcpFailure,
   OrchestratorMcpThreadInterruptResult,
   OrchestratorMcpThreadReadResult,
-  OrchestratorMcpThreadSendResult,
+  OrchestratorMcpThreadSendRunResult,
   OrchestratorMcpThreadWaitResult,
 } from "@t3tools/contracts";
 import * as Duration from "effect/Duration";
@@ -170,7 +170,7 @@ export const make = Effect.gen(function* () {
       input.outputSchema === undefined ? {} : { outputSchema: input.outputSchema };
     if (input.thread !== undefined) {
       if (input.launch !== undefined) return yield* launchOnContinue;
-      const sent = yield* call(environment, "t3_thread_send", OrchestratorMcpThreadSendResult, {
+      const sent = yield* call(environment, "t3_thread_send", OrchestratorMcpThreadSendRunResult, {
         threadId: input.thread,
         message: input.prompt,
         mode: "queue",

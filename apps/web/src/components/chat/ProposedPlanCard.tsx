@@ -213,7 +213,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               threadRef={threadRef}
               isStreaming={false}
               headingLevelOffset={3}
-              // Fork: selects the agent-text single-tilde list, so a plan's "1~2" keeps its tilde.
+              // Fork: agent text, so a plan's "1~2" keeps its tilde.
               assistantReply
             />
           ) : (
@@ -224,7 +224,7 @@ export const ProposedPlanCard = memo(function ProposedPlanCard({
               threadRef={threadRef}
               isStreaming={false}
               headingLevelOffset={3}
-              // Fork: selects the agent-text single-tilde list, so a plan's "1~2" keeps its tilde.
+              // Fork: agent text, so a plan's "1~2" keeps its tilde.
               assistantReply
             />
           )}

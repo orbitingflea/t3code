@@ -168,12 +168,9 @@ describe("searchSettings", () => {
       "auto-settle-merged-threads",
       "days-before-auto-settle",
       "linked-environments",
-<<<<<<< origin/main
       "worktree-reflink",
       "right-panel-menu",
-=======
       "agent-feedback",
->>>>>>> upstream/main
     ]);
     expect(available.map((item) => item.id).filter((id) => gatedIds.has(id))).toEqual([]);
   });

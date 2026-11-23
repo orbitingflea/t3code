@@ -311,11 +311,8 @@ export const make = Effect.gen(function* () {
       mcpHostedApproval: true,
       shellThreadFamilies: true,
       shellOlderSettled: true,
-<<<<<<< origin/main
-      ...(yield* whiteboardPanelCapabilities()),
-=======
       agentFeedback: true,
->>>>>>> upstream/main
+      ...(yield* whiteboardPanelCapabilities()),
     },
   };
 

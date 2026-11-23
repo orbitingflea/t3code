@@ -102,11 +102,8 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
-<<<<<<< origin/main
 import { SEND_TO_USER_PAYLOAD_LIKE } from "@t3tools/shared/displayModes";
-=======
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
->>>>>>> upstream/main
 import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import * as ShownHistory from "../fork/shownHistory/ShownHistory.ts";
 import { DELEGATED_TASK_MESSAGE_CONDITION } from "./delegatedTaskMessage.ts";

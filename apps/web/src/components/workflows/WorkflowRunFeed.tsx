@@ -1718,6 +1718,8 @@ function WorkflowAgentCard({
             text={start !== null && !all ? start : summary.said}
             cwd={undefined}
             className="text-sm"
+            // Fork: the agent's reply, so a single "~" stays text as in its thread.
+            assistantReply
           />
           {start !== null ? (
             <button

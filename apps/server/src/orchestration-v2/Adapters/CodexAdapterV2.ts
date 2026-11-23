@@ -6128,12 +6128,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
                 payload,
               );
             }
-<<<<<<< origin/main
-            // Codex still asks for commands it deems dangerous under the granular full-access policy.
-            if (
-              context.input.runtimePolicy.runtimeMode === "full-access" &&
-              context.input.runtimePolicy.approvalPolicy === undefined
-=======
             // T3's Full access policy is granular, under which Codex still asks before commands it
             // deems dangerous. Managed-network asks enforce the user's allowlist, so they still ask.
             if (
@@ -6142,7 +6136,6 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               context.input.runtimePolicy.sandboxPolicy === undefined &&
               payload.networkApprovalContext == null &&
               (payload.proposedNetworkPolicyAmendments ?? []).length === 0
->>>>>>> upstream/main
             ) {
               return {
                 decision: "accept",
@@ -7873,17 +7866,13 @@ export const makeCodexAdapterV2 = Effect.fn("makeCodexAdapterV2")(function* (
               ...(yield* Ref.get(settledTurns)),
               ...(yield* Ref.get(activeTurns)),
             ]);
-<<<<<<< origin/main
-            const started = yield* client.request(
-              "turn/start",
-              withCodexCommandNote(turnStartParams, turnInput.message.messageId, commandNote),
-            );
-            if (commandNote !== undefined) yield* commandNote.delivered;
-=======
             const started = yield* client
-              .request("turn/start", turnStartParams)
+              .request(
+                "turn/start",
+                withCodexCommandNote(turnStartParams, turnInput.message.messageId, commandNote),
+              )
               .pipe(withAppServerDeadline("turn/start"));
->>>>>>> upstream/main
+            if (commandNote !== undefined) yield* commandNote.delivered;
             const previousTurn =
               previousTurns.get(started.turn.id) ??
               (yield* Ref.get(activeTurns)).get(started.turn.id);

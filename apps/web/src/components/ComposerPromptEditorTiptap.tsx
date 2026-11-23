@@ -126,7 +126,7 @@ import { primaryServerKeybindingsAtom } from "~/state/server";
 import { hasCommandForKeyDown } from "~/shortcuts/dispatcher";
 import { basenameOfPath } from "~/pierre-icons";
 import { WorkspaceEntryTooltip } from "./chat/WorkspaceEntryIcon";
-import { postWhiteboardHover } from "../fork/whiteboard/markdown-whiteboard";
+import { postWhiteboardHover } from "../fork/whiteboard/boardChannel";
 import { FileTagChipContent } from "./chat/FileTagChip";
 import { SkillChipPopover, skillPopoverDescription } from "./chat/SkillInlineText";
 import { AssistantCitationChip } from "./chat/AssistantCitationChip";

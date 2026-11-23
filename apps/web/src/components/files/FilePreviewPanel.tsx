@@ -123,12 +123,9 @@ import {
   FileSurfaceLoading,
 } from "./fileSurfaceChrome";
 import SourceFilePreview from "./ReadOnlySourcePreview";
-<<<<<<< origin/main
 import { pathReadingKey, useFileReadingPosition } from "./fileReadingPosition";
-=======
 import LargeFilePreview from "./LargeFilePreview";
 import { FULL_TEXT_MAX_BYTES } from "./largeTextProtocol";
->>>>>>> upstream/main
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
 import { DiffCommentAnnotation } from "../diffs/DiffCommentAnnotation";
 import { projectFileCacheKey } from "./fileContentRevision";
@@ -1382,15 +1379,10 @@ export default function FilePreviewPanel({
   });
   const revealHandled =
     revealLine === null ||
-<<<<<<< origin/main
     reading.renderedAllowed ||
     (handledReveal?.path === relativePath && handledReveal.requestId === reading.revealKey);
-  const renderMarkdown = isMarkdown && renderMarkdownPreferred && revealHandled;
-=======
-    (handledReveal?.path === relativePath && handledReveal.requestId === revealRequestId);
   const markdownRenderable = isMarkdown && (file.data?.byteLength ?? 0) <= FULL_TEXT_MAX_BYTES;
   const renderMarkdown = markdownRenderable && renderMarkdownPreferred && revealHandled;
->>>>>>> upstream/main
   const renderMermaid = isMermaid && renderMermaidPreferred && revealHandled;
   const renderBrowserFile = isPdf || (isHtml && renderBrowserFilePreferred && revealHandled);
   const renderTable = tableDelimiter !== null && renderTablePreferred && revealHandled;

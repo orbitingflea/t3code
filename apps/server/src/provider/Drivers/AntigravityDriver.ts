@@ -603,10 +603,6 @@ export const AntigravityDriver: ProviderDriver<
       probeUsage: usage.probe,
       clearUsage: usage.clear,
       auth: { type: auth.authMethod, label: antigravityAuthLabel(auth.authMethod) },
-<<<<<<< origin/main
-      supportsTextGeneration: runtimeState.pipe(
-        Effect.flatMap((state) => isAntigravityTextGenerationAvailable(state.root)),
-=======
       ...(rememberedRuntimeModes ? { rememberedRuntimeModes } : {}),
       rememberRuntimeModes: (modes) =>
         writeFileStringAtomically({
@@ -617,8 +613,8 @@ export const AntigravityDriver: ProviderDriver<
           Effect.provideService(Path.Path, path),
           Effect.catch(() => Effect.logWarning("Could not save Antigravity permission modes.")),
         ),
-      supportsTextGeneration: isAntigravityTextGenerationAvailable(profileDirectory).pipe(
->>>>>>> upstream/main
+      supportsTextGeneration: runtimeState.pipe(
+        Effect.flatMap((state) => isAntigravityTextGenerationAvailable(state.root)),
         Effect.provideService(FileSystem.FileSystem, fileSystem),
         Effect.provideService(Path.Path, path),
         Effect.orElseSucceed(() => false),

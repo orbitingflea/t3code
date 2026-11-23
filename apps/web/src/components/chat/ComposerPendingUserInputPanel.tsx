@@ -268,7 +268,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
               text={activeQuestion.question}
               cwd={cwd}
               threadRef={threadRef}
-              // Fork: selects the agent-text single-tilde list, so a question's "1~2" keeps its tilde.
+              // Fork: agent text, so a question's "1~2" keeps its tilde.
               assistantReply
               lineBreaks
               className={cn("pt-0.5 text-foreground/85", questionTextAlign)}
