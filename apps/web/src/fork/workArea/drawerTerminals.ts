@@ -14,6 +14,7 @@ import {
 } from "~/rightPanelStore";
 import { useKnownTerminalSessions } from "~/state/terminalSessions";
 import { useTerminalUiStateStore } from "~/terminalUiStateStore";
+import type { ThreadTerminalGroup } from "~/types";
 
 import { panelHostedElsewhere } from "./chatFileOpener";
 import { adoptedTerminals, reusableTabTerminal, tabTerminalIds } from "./drawerTerminals.logic";
@@ -39,20 +40,36 @@ function showTerminalTab(threadRef: ScopedThreadRef, terminalId: string) {
   }
 }
 
-// Writes to the PTY's own thread record: a host's record would attach the host's shell.
-const showInOwnRecord = (threadRef: ScopedThreadRef, terminalId: string) =>
-  panelHostedElsewhere(threadRef)
-    ? runWithOpenOrigin({ record: threadRef, guest: threadRef }, () =>
-        showTerminalTab(threadRef, terminalId),
-      )
-    : showTerminalTab(threadRef, terminalId);
+// The drawer drew every group, so each becomes one tab, split as the drawer split it.
+function openGroupTabs(threadRef: ScopedThreadRef, groups: ReadonlyArray<ThreadTerminalGroup>) {
+  const store = useRightPanelStore.getState();
+  for (const group of groups) {
+    const held = tabTerminalIds(recordOf(threadRef).surfaces);
+    const [first, ...rest] = group.terminalIds.filter((id) => !held.includes(id));
+    if (first === undefined) continue;
+    const tab = `terminal:${first}`;
+    store.openTerminal(threadRef, first);
+    for (const id of rest) store.splitTerminal(threadRef, tab, id, group.splitDirection);
+    store.activateTerminal(threadRef, tab, first);
+  }
+}
 
+// Writes to the PTY's own thread record: a host's record would attach the host's shell.
+const inOwnRecord = (threadRef: ScopedThreadRef, show: () => void) =>
+  panelHostedElsewhere(threadRef)
+    ? runWithOpenOrigin({ record: threadRef, guest: threadRef }, show)
+    : show();
+
+// A drawer saved open opens all its groups; a later request opens only its terminal.
 function showDrawerRequests(next: DrawerStates, previous?: DrawerStates) {
   for (const [threadKey, state] of Object.entries(next)) {
     if (previous?.[threadKey] === state || !state.terminalOpen) continue;
     const threadRef = parseScopedThreadKey(threadKey);
     if (threadRef === null) continue;
-    showInOwnRecord(threadRef, state.activeTerminalId);
+    inOwnRecord(threadRef, () => {
+      if (previous === undefined) openGroupTabs(threadRef, state.terminalGroups);
+      showTerminalTab(threadRef, state.activeTerminalId);
+    });
     useTerminalUiStateStore.getState().setTerminalOpen(threadRef, false);
   }
 }
