@@ -29,13 +29,13 @@ function showingPrimaryChat(layout: WorkAreaLayout, view: WorkAreaView): WorkAre
   );
 }
 
-// Repair returns an earlier floating tab, now in no pane, to the background.
 export function floatTab(layout: WorkAreaLayout, tab: TabId, view: WorkAreaView): WorkAreaLayout {
-  const pane = paneHolding(layout.root, tab);
-  if (!pane) return layout;
+  if (!paneHolding(layout.root, tab)) return layout;
+  const docked = layout.floating ? unfloatTab(layout, layout.floating.tab) : layout;
+  const pane = paneHolding(docked.root, tab)!;
   const before = pane.tabs[pane.tabs.indexOf(tab) + 1] ?? null;
   const floating = { tab, pane: pane.id, before };
-  return showingPrimaryChat({ ...removeTabs(layout, new Set([tab])), floating }, view);
+  return showingPrimaryChat({ ...removeTabs(docked, new Set([tab])), floating }, view);
 }
 
 export const withoutFloating = (layout: WorkAreaLayout): WorkAreaLayout => {

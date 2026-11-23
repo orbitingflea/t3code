@@ -101,15 +101,24 @@ describe("a floating tab", () => {
     expect(resolveLayout(record()).floating).toBeUndefined();
   });
 
-  it("returns to a pane as a background tab when a second tab floats", async () => {
+  it("returns to its own pane as a background tab when a second tab floats", async () => {
     publishWorkAreaView(WIDE);
+    store().openFile(ref, "left.ts");
     store().openBrowser(ref, "t1");
-    pictureInPicture("t1");
     store().openBrowser(ref, "t2");
+    store().openFile(ref, "right.ts");
+    change({
+      type: "place",
+      source: { tabs: [tab("browser:t1"), tab("file:right.ts")] },
+      at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
+    });
+    const home = paneHolding(layout().root, tab("browser:t1"))!.id;
+    expect(paneHolding(layout().root, tab("browser:t2"))?.id).not.toBe(home);
+    pictureInPicture("t1");
     pictureInPicture("t2");
     await settled();
     expect(floated()).toBe("t2");
-    expect(placedTabs()).toContain("browser:t1");
+    expect(paneHolding(layout().root, tab("browser:t1"))?.id).toBe(home);
     expect(placedTabs()).not.toContain("browser:t2");
     expect(shownIds()).not.toContain("browser:t1");
   });
