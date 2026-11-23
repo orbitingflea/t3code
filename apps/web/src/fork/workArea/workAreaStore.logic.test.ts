@@ -480,17 +480,51 @@ describe("a link dropped on a pane", () => {
       expect(fitsView(layout(), wide(2000))).toBe(true);
     };
 
+    // [chat d.ts | a.ts] | [b.ts | c.ts] at 1,350 px; the Chat's own column is wide.
+    const fourColumns = () => {
+      publishWorkAreaView(wide(2000));
+      chatBeside("a.ts", "b.ts", "c.ts", "d.ts");
+      change({
+        type: "place",
+        source: { tabs: [tab("file:c.ts")] },
+        at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
+      });
+      change({
+        type: "place",
+        source: { tabs: [tab("file:a.ts")] },
+        at: { kind: "edge", pane: paneAt(0).id, edge: "right" },
+      });
+      change({
+        type: "place",
+        source: { tabs: [tab("file:d.ts")] },
+        at: { kind: "join", pane: paneAt(0).id },
+      });
+      const root = layout().root;
+      if (root.kind !== "split" || root.first.kind !== "split" || root.second.kind !== "split") {
+        throw new Error("two columns of two");
+      }
+      change({ type: "ratio", split: root.first.id, ratio: 0.74 });
+      change({ type: "ratio", split: root.second.id, ratio: 0.5 });
+      change({ type: "ratio", split: root.id, ratio: 0.63 });
+      expect(fitsView(layout(), wide(1350))).toBe(true);
+    };
+    const sideChat = () => {
+      change({ type: "open-thread", thread: other });
+      const chat = secondaryChatTabId(other);
+      expect(paneAt(0).tabs).toContain(chat);
+      return chat;
+    };
+
     it.each([
-      ["two panes", narrowFilePane, 1, WIDE],
-      ["three panes", threeColumns, 2, wide(2000)],
+      ["two panes", narrowFilePane, sideChat, 1, WIDE],
+      ["three panes", threeColumns, sideChat, 2, wide(2000)],
+      ["four panes, the Chat leaving its branch,", fourColumns, () => PRIMARY_CHAT, 3, wide(1350)],
     ])(
       "makes room for a Chat moved onto its strip in the strip view, so the %s come back",
-      (_, panes, target, restored) => {
+      (_, panes, moving, target, restored) => {
         panes();
         const unpublish = publishWorkAreaView({ narrow: true, size: { width: 640, height: 800 } });
-        change({ type: "open-thread", thread: other });
-        const chat = secondaryChatTabId(other);
-        expect(paneAt(0).tabs).toContain(chat);
+        const chat = moving();
         change({ type: "place", source: { tabs: [chat] }, at: onStrip(target) });
         unpublish();
         expect(paneAt(target).tabs).toContain(chat);

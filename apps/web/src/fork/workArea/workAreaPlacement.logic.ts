@@ -59,7 +59,9 @@ import {
   paneRects,
   type Rect,
   settleAround,
+  settleInnermostFirst,
   settleSplit,
+  splitsAbove,
   tabShown,
   type WorkAreaView,
 } from "./workAreaGeometry.logic";
@@ -896,12 +898,21 @@ function moveTabs(
     ...setPane(next, insertTabs(target, moving, before, true)),
     focused: target.id,
   };
-  // The strip view has no fit check and hides the divider, so make room for a Chat that joins.
+  // The strip view has no fit check and hides the divider, so make room for a Chat that joins,
+  // and let the branches the moved tabs left use their freed room.
   const gainsChat =
     !holdsComposer(next, target) && moving.some((tab) => tabTraits(next, tab).composer);
+  const sources = moving.flatMap((tab) => paneHolding(layout.root, tab)?.id ?? []);
   const joined =
     gainsChat && isStripView(layout, view)
-      ? settleAround(inserted, target.id, view, "pane")
+      ? settleInnermostFirst(
+          inserted,
+          new Set([
+            ...splitsAbove(inserted.root, target.id),
+            ...sources.flatMap((pane) => splitsAbove(layout.root, pane)),
+          ]),
+          view,
+        )
       : inserted;
   if (launcherPick(layout, "chat")?.id !== target.id) return withoutArmed(joined);
   // The launcher's Chat pick takes the launcher's place when that pane can be made wide enough.

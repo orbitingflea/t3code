@@ -374,27 +374,48 @@ export function settleSplit(
   return { ...layout, root };
 }
 
-/**
- * Settles every split above `pane`, outermost first, so the pane gets its minimum when it can.
- * From the pane up when no ratio fits now: each outer split then counts the inner ratios it keeps.
- */
+/** The splits from the root down to `pane`; empty when `pane` is not in the tree. */
+export function splitsAbove(root: LayoutNode, pane: PaneId): SplitId[] {
+  if (root.kind === "pane") return [];
+  for (const side of [root.first, root.second]) {
+    const below = splitsAbove(side, pane);
+    if (below.length > 0 || (side.kind === "pane" && side.id === pane)) return [root.id, ...below];
+  }
+  return [];
+}
+
+/** Settles every split above `pane`, outermost first, so the pane gets its minimum when it can. */
 export function settleAround(
   layout: WorkAreaLayout,
   pane: PaneId,
   view: WorkAreaView,
-  from: "root" | "pane" = "root",
 ): WorkAreaLayout {
-  const path: SplitId[] = [];
-  const find = (node: LayoutNode): boolean => {
-    if (node.kind === "pane") return node.id === pane;
-    path.push(node.id);
-    if (find(node.first) || find(node.second)) return true;
-    path.pop();
-    return false;
+  return splitsAbove(layout.root, pane).reduce(
+    (settled, split) => settleSplit(settled, split, view),
+    layout,
+  );
+}
+
+/**
+ * Settles `splits`, innermost first, for when no ratio may fit now: each outer split then counts
+ * the inner ratios it keeps.
+ */
+export function settleInnermostFirst(
+  layout: WorkAreaLayout,
+  splits: ReadonlySet<SplitId>,
+  view: WorkAreaView,
+): WorkAreaLayout {
+  const depths: [SplitId, number][] = [];
+  const walk = (node: LayoutNode, depth: number) => {
+    if (node.kind === "pane") return;
+    if (splits.has(node.id)) depths.push([node.id, depth]);
+    walk(node.first, depth + 1);
+    walk(node.second, depth + 1);
   };
-  find(layout.root);
-  if (from === "pane") path.reverse();
-  return path.reduce((settled, split) => settleSplit(settled, split, view), layout);
+  walk(layout.root, 0);
+  return depths
+    .toSorted((a, b) => b[1] - a[1])
+    .reduce((settled, [split]) => settleSplit(settled, split, view), layout);
 }
 
 /** Whether `tab` is on screen: the active tab of a drawn pane, or of the one strip. */
