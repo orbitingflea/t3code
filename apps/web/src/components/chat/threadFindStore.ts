@@ -10,6 +10,7 @@ import {
   messageSearchTokens,
 } from "@t3tools/shared/paletteSearch";
 import { create } from "zustand";
+import { openingThreadPage } from "~/fork/workArea/findOpensThread";
 import type { ThemeAppearance } from "~/themePalette";
 import type { ThreadFindPositionReader, ThreadFindStart } from "./threadFind";
 
@@ -119,17 +120,19 @@ export interface PendingThreadFind {
 export function openThreadFindOnQuery(threadKey: string, find: PendingThreadFind): void {
   const previous = useThreadFindStore.getState();
   announceOpening(previous, threadKey);
-  useThreadFindStore.setState({
-    ...(previous.threadKey === threadKey ? previous : CLOSED_THREAD_FIND),
-    threadKey,
-    query: find.query,
-    offset: 0,
-    start: find.start,
-    localSelection: null,
-    focusRequestId: previous.focusRequestId + 1,
-    navigationId: previous.navigationId + 1,
-    requestId: previous.navigationId + 1,
-  });
+  openingThreadPage(() =>
+    useThreadFindStore.setState({
+      ...(previous.threadKey === threadKey ? previous : CLOSED_THREAD_FIND),
+      threadKey,
+      query: find.query,
+      offset: 0,
+      start: find.start,
+      localSelection: null,
+      focusRequestId: previous.focusRequestId + 1,
+      navigationId: previous.navigationId + 1,
+      requestId: previous.navigationId + 1,
+    }),
+  );
 }
 
 export function setThreadFindQuery(threadKey: string, query: string): void {

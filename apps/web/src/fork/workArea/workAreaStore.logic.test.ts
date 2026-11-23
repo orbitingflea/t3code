@@ -2,7 +2,7 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { type EnvironmentId, RunId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { openThreadFind } from "~/components/chat/threadFindStore";
+import { openThreadFind, openThreadFindOnQuery } from "~/components/chat/threadFindStore";
 import { useClosedViewStore } from "~/closedViewStore";
 import { planNextReopen, reopenClosedView } from "~/reopenClosedView";
 import {
@@ -286,7 +286,18 @@ describe("Find", () => {
     expect(focusedTab(layout())).toBe(PRIMARY_CHAT);
   });
 
-  it("leaves the own layout of a thread it searches as a side Chat alone", () => {
+  it.each<[string, (threadKey: string) => void, boolean]>([
+    [
+      "leaves alone the own layout of a thread it searches in place as a side Chat",
+      openThreadFind,
+      false,
+    ],
+    [
+      "shows the Chat in the own layout of a side Chat's thread when a search result opens it",
+      (threadKey) => openThreadFindOnQuery(threadKey, { query: "needle" }),
+      true,
+    ],
+  ])("%s", (_, open, routes) => {
     followFindRequests();
     publishWorkAreaView({ narrow: true, size: null });
     store().openFile(other, "a.ts");
@@ -297,11 +308,12 @@ describe("Find", () => {
     expect(focusedTab(resolveLayout(before))).toBe(tab("file:a.ts"));
     const unhost = hostRightPanel(other, ref);
     try {
-      openThreadFind(scopedThreadKey(other));
+      open(scopedThreadKey(other));
     } finally {
       unhost();
     }
-    expect(own()).toBe(before);
+    if (routes) expect(focusedTab(resolveLayout(own()))).toBe(PRIMARY_CHAT);
+    else expect(own()).toBe(before);
   });
 });
 
