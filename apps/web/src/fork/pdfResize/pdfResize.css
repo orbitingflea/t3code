@@ -1,0 +1,7 @@
+/* The text layer keeps the layout of the paint width; a width change only rescales it. */
+[data-pdf-text-scale] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+}

@@ -9,12 +9,14 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { TextLayer, type PDFDocumentProxy } from "pdfjs-dist";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 import { msg, useGT } from "gt-react";
 import { m } from "~/i18n/messages";
 import { ChevronDownIcon, ChevronUpIcon, MinusIcon, PlusIcon, ScanIcon } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { observeResize } from "~/lib/observeResize";
+import { usePdfPagePaint } from "~/fork/pdfResize/usePdfPagePaint";
+import { usePdfResize } from "~/fork/pdfResize/usePdfResize";
 import { FileSurfaceAction, FileSurfaceFailure, FileSurfaceLoading } from "./fileSurfaceChrome";
 import { readBoundedDocument } from "./readBoundedDocument";
 import { previewErrorText } from "./previewFailureMessages";
@@ -43,13 +45,13 @@ type PdfPosition = PdfViewState & { width: number; ratios: readonly number[] };
 // Thread switches unmount the preview; retain only the most recent documents.
 const positions = new Map<string, PdfPosition>();
 
-type PdfLink = { box: readonly [number, number, number, number] } & (
+export type PdfLink = { box: readonly [number, number, number, number] } & (
   | { url: string }
   | { page: number }
 );
 
 // Resolves a link annotation's destination, named or explicit, to a page index.
-async function pdfLinkPage(pdf: PDFDocumentProxy, dest: unknown): Promise<number | null> {
+export async function pdfLinkPage(pdf: PDFDocumentProxy, dest: unknown): Promise<number | null> {
   const explicit: unknown = typeof dest === "string" ? await pdf.getDestination(dest) : dest;
   if (!Array.isArray(explicit)) return null;
   const [ref] = explicit as unknown[];
@@ -70,6 +72,8 @@ function PdfPage(props: {
   document: PDFDocumentProxy;
   index: number;
   width: number;
+  paintWidth: number;
+  defer: boolean;
   query: string;
   onSize: (index: number, ratio: number) => void;
   onError: (error: string) => void;
@@ -77,99 +81,10 @@ function PdfPage(props: {
   onOpenLink: ((url: string, event: MouseEvent) => void) | undefined;
 }) {
   const gt = useGT();
-  const [links, setLinks] = useState<readonly PdfLink[]>([]);
   const canvas = useRef<HTMLCanvasElement>(null);
   const text = useRef<HTMLDivElement>(null);
-  const painted = useRef<PDFDocumentProxy>(null);
-  const { document: pdf, index, width, onSize, onError } = props;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Render the PDF page canvas and text layer, cancelling tasks and releasing pdf.js page resources on cleanup.
-  useEffect(() => {
-    let cancelled = false;
-    let paint: ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | undefined;
-    let layer: TextLayer | undefined;
-    let loadedPage: Awaited<ReturnType<PDFDocumentProxy["getPage"]>> | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    void (async () => {
-      // A drag changes the width every frame. CSS scales the painted page until the width settles.
-      if (painted.current === pdf)
-        await new Promise((resolve) => (timer = setTimeout(resolve, 150)));
-      const page = await pdf.getPage(index + 1);
-      loadedPage = page;
-      if (cancelled || !canvas.current || !text.current) {
-        page.cleanup();
-        return;
-      }
-      const natural = page.getViewport({ scale: 1 });
-      onSize(index, natural.height / natural.width);
-      const viewport = page.getViewport({ scale: width / natural.width });
-      const ratio = Math.min(
-        2,
-        window.devicePixelRatio || 1,
-        Math.sqrt((8 * 1024 * 1024) / (viewport.width * viewport.height)),
-      );
-      // Resizing a canvas blanks it, so the page paints off screen and replaces the old one whole.
-      const buffer = document.createElement("canvas");
-      buffer.width = Math.ceil(viewport.width * ratio);
-      buffer.height = Math.ceil(viewport.height * ratio);
-      paint = page.render({
-        canvas: buffer,
-        viewport,
-        transform: [ratio, 0, 0, ratio, 0, 0],
-        background: "white",
-      });
-      text.current.replaceChildren();
-      text.current.style.setProperty("--total-scale-factor", String(viewport.scale));
-      layer = new TextLayer({
-        container: text.current,
-        viewport,
-        textContentSource: page.streamTextContent(),
-      });
-      const shown = paint.promise.then(() => {
-        if (cancelled || !canvas.current) return;
-        canvas.current.width = buffer.width;
-        canvas.current.height = buffer.height;
-        canvas.current.getContext("2d", { alpha: false })?.drawImage(buffer, 0, 0);
-        buffer.width = 0;
-        painted.current = pdf;
-      });
-      const linked = page.getAnnotations({ intent: "display" }).then(async (annotations) => {
-        const found: PdfLink[] = [];
-        for (const annotation of annotations) {
-          if (annotation.subtype !== "Link") continue;
-          const [x1, y1] = viewport.convertToViewportPoint(annotation.rect[0], annotation.rect[1]);
-          const [x2, y2] = viewport.convertToViewportPoint(annotation.rect[2], annotation.rect[3]);
-          const box = [
-            Math.min(x1, x2) / viewport.width,
-            Math.min(y1, y2) / viewport.height,
-            Math.abs(x2 - x1) / viewport.width,
-            Math.abs(y2 - y1) / viewport.height,
-          ] as const;
-          if (typeof annotation.url === "string" && /^https?:\/\//i.test(annotation.url)) {
-            found.push({ box, url: annotation.url });
-            continue;
-          }
-          const target = await pdfLinkPage(pdf, annotation.dest).catch(() => null);
-          if (target !== null && target >= 0 && target < pdf.numPages)
-            found.push({ box, page: target });
-        }
-        if (!cancelled) setLinks(found);
-      });
-      // A page whose annotations cannot be read still renders, without links.
-      const linkedOrNone = linked.catch(() => undefined);
-      await Promise.all([shown, layer.render(), linkedOrNone]);
-    })().catch((cause: unknown) => {
-      if (!cancelled)
-        onError(thrownErrorMessage(cause, m) ?? m(msg("This PDF page could not render.")));
-    });
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-      paint?.cancel();
-      layer?.cancel();
-      // Release operator lists when virtual pages leave the viewport.
-      void Promise.allSettled([paint?.promise]).then(() => loadedPage?.cleanup());
-    };
-  }, [pdf, index, width, onSize, onError]);
+  const { links, textStyle } = usePdfPagePaint(canvas, text, props);
+  const { index } = props;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Highlight pdf.js-owned text nodes and observe asynchronous text layer mutations for the current search query.
   useEffect(() => {
     const node = text.current;
@@ -194,7 +109,9 @@ function PdfPage(props: {
         aria-label={gt("Page {number}", { number: String(index + 1) })}
         className="block h-full w-full"
       />
-      <div ref={text} data-pdf-text-layer />
+      <div data-pdf-text-scale style={textStyle}>
+        <div ref={text} data-pdf-text-layer />
+      </div>
       {links.length ? (
         <div className="pointer-events-none absolute inset-0">
           {links.map((link) => {
@@ -340,8 +257,18 @@ export default function PdfViewer(props: {
   }, []);
   const { scale, width } = pdfPageWidth(viewport.width, pageWidth, zoom);
   const offsets = pdfPageOffsets(ratios, width);
-  const current = currentPdfPage(offsets, ratios.length, scrollTop);
-  const visible = visiblePdfPages(ratios, offsets, scrollTop, viewport.height);
+  const resize = usePdfResize(scroll, {
+    pdf,
+    zoom,
+    pageWidth,
+    ratios,
+    viewport,
+    width,
+    offsets,
+    scrollTop,
+  });
+  const current = currentPdfPage(offsets, ratios.length, resize.top);
+  const visible = visiblePdfPages(ratios, offsets, resize.top, viewport.height);
   // Stable callbacks let page canvases survive scroll and find updates.
   const [onSize] = useState(
     () => (index: number, ratio: number) =>
@@ -350,14 +277,16 @@ export default function PdfViewer(props: {
       ),
   );
   const jumpToPage = useEffectEvent((index: number) => {
+    resize.drop();
     scroll.current?.scrollTo({ top: pdfPageScrollTop(offsets, index) });
   });
   const saveView = (node: HTMLDivElement, notify = true) => {
-    const page = currentPdfPage(offsets, ratios.length, node.scrollTop);
+    const top = resize.readTop(node);
+    const page = currentPdfPage(offsets, ratios.length, top);
     if (!pdf) return;
     const view = {
       page,
-      offset: Math.max(0, node.scrollTop - (offsets[page]! - 16)),
+      offset: Math.max(0, top - (offsets[page]! - 16)),
       zoom,
       left: node.scrollLeft,
       width,
@@ -373,10 +302,9 @@ export default function PdfViewer(props: {
   const restoreView = useEffectEvent(() => {
     const node = scroll.current;
     if (!pdf || !node) return;
-    node.scrollTo({
-      top: pdfRestoredScrollTop(ratios, width, initialView, initialView.width),
-      left: initialView.left,
-    });
+    const top = pdfRestoredScrollTop(ratios, width, initialView, initialView.width);
+    node.scrollTo({ top, left: initialView.left });
+    resize.restore(node, top);
     restored.current = { top: node.scrollTop, left: node.scrollLeft };
     setScrollTop(node.scrollTop);
     saveView(node, false);
@@ -386,9 +314,11 @@ export default function PdfViewer(props: {
     if (pdf) restoreView();
   }, [pdf]);
   const showPage = (index: number) => {
+    resize.drop();
     scroll.current?.scrollTo({ top: pdfPageScrollTop(offsets, index) });
   };
   const changeZoom = (value: number | null) => {
+    resize.drop();
     zoomAnchor.current = {
       page: current,
       offset: (scroll.current?.scrollTop ?? 0) - (offsets[current]! - 16),
@@ -567,6 +497,7 @@ export default function PdfViewer(props: {
         onScroll={(event) => {
           const top = event.currentTarget.scrollTop;
           setScrollTop(top);
+          resize.onScroll(event.currentTarget);
           // The restore's own scroll event lands where the restore put the view.
           const echo = restored.current;
           restored.current = null;
@@ -620,6 +551,8 @@ export default function PdfViewer(props: {
                   document={pdf}
                   index={index}
                   width={width}
+                  paintWidth={resize.paintWidth}
+                  defer={resize.defer(index)}
                   query={query}
                   onSize={onSize}
                   onError={setError}
