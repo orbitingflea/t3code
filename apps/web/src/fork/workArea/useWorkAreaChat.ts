@@ -1,8 +1,8 @@
-import { scopedThreadKey } from "@t3tools/client-runtime/environment";
+import { parseScopedThreadKey, scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { HTMLAttributes, SyntheticEvent } from "react";
 
-import { useThreadFindOpen } from "~/components/chat/threadFindStore";
+import { useThreadFindOpen, useThreadFindStore } from "~/components/chat/threadFindStore";
 import { shouldRenderPreviewMiniPlayer } from "~/components/ChatView.logic";
 import type { PreviewMiniPlayerSource } from "~/previewMiniPlayerStore";
 import {
@@ -11,14 +11,21 @@ import {
   useRightPanelStore,
 } from "~/rightPanelStore";
 
-import { focusedTab, paneHolding, PRIMARY_CHAT, resolveLayout } from "./workArea.logic";
+import {
+  focusedTab,
+  paneHolding,
+  PRIMARY_CHAT,
+  resolveLayout,
+  type WorkAreaLayout,
+} from "./workArea.logic";
 import {
   chatColumnBox,
   type CssBox,
+  isStripView,
   primaryChatRect,
   shownSurfaces,
 } from "./workAreaGeometry.logic";
-import { drawModeView, useStripView } from "./workAreaView";
+import { currentWorkAreaView, drawModeView, useStripView } from "./workAreaView";
 
 const PANE_COLUMN_CLASS =
   "absolute z-[1] @container/chat [&>[data-chat-header]]:[-webkit-app-region:no-drag]! [&>[data-chat-header]]:pl-(--workspace-gutter-start)! [&>[data-chat-header]]:h-9! [&>[data-chat-header]]:min-h-9!";
@@ -55,6 +62,36 @@ const FIND_OVER: ChatColumnPlacement = {
   away: true,
   inert: false,
 };
+
+// One strip draws a reply of `thread`, which Find covers with its bar instead of showing the Chat.
+const replyUnderFind = (layout: WorkAreaLayout, strip: boolean, thread: ScopedThreadRef) => {
+  const reply = layout.tabs[focusedTab(layout)];
+  return (
+    strip &&
+    reply?.kind === "sub-thread" &&
+    scopedThreadKey(reply.thread) === scopedThreadKey(thread)
+  );
+};
+
+let followingFind = false;
+
+// Find searches the primary Chat, so each request shows it. Zustand runs this inside `set`, before
+// the Find field's focus effect, which focuses nothing in an inert column.
+export function followFindRequests(): void {
+  if (followingFind) return;
+  followingFind = true;
+  useThreadFindStore.subscribe((next, previous) => {
+    if (next.focusRequestId === previous.focusRequestId || next.threadKey === null) return;
+    const thread = parseScopedThreadKey(next.threadKey);
+    if (thread === null) return;
+    const store = useRightPanelStore.getState();
+    const layout = resolveLayout(selectThreadRightPanelState(store.byThreadKey, thread));
+    const view = currentWorkAreaView();
+    if (primaryChatRect(layout, view) !== null) return;
+    if (replyUnderFind(layout, isStripView(layout, view), thread)) return;
+    store.updateWorkArea(thread, { type: "open-thread", thread });
+  });
+}
 
 function focusChatPane(owner: ScopedThreadRef) {
   const store = useRightPanelStore.getState();
@@ -108,13 +145,7 @@ export function useWorkAreaChat(
   if (embedded) return { column: DOCKED, columnFocus: {}, miniPlayerVisible: playable };
   const drawn = drawModeView(strip);
   const rect = primaryChatRect(layout, drawn);
-  const reply = layout.tabs[focusedTab(layout)];
-  const findOver =
-    strip &&
-    findOpen &&
-    thread !== null &&
-    reply?.kind === "sub-thread" &&
-    scopedThreadKey(reply.thread) === scopedThreadKey(thread);
+  const findOver = findOpen && thread !== null && replyUnderFind(layout, strip, thread);
   return {
     column: rect
       ? { className: PANE_COLUMN_CLASS, style: chatColumnBox(rect), away: false, inert: false }

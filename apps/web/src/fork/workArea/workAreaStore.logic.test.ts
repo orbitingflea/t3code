@@ -1,7 +1,8 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { type EnvironmentId, RunId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
+import { openThreadFind } from "~/components/chat/threadFindStore";
 import { useClosedViewStore } from "~/closedViewStore";
 import { planNextReopen, reopenClosedView } from "~/reopenClosedView";
 import {
@@ -38,6 +39,7 @@ import {
   tab,
   WIDE,
 } from "./workAreaTestKit";
+import { followFindRequests } from "./useWorkAreaChat";
 import { publishWorkAreaView } from "./workAreaView";
 
 // Right-panel store cases whose behavior diverges under the work area: proactive opens,
@@ -260,6 +262,26 @@ describe("Reopen Closed Tab", () => {
     change({ type: "link-file", source: other, ...linked });
     expect(nextReopen()).toMatchObject({ kind: "panel-tab", surface: { id: "file:older.ts" } });
     expect(useClosedViewStore.getState().entries).toHaveLength(1);
+  });
+});
+
+describe("Find", () => {
+  it.each<[string, () => void]>([
+    ["a Files tab is active", () => store().open(ref, "files")],
+    [
+      "the primary Chat is closed",
+      () => {
+        change({ type: "open-thread", thread: other });
+        change({ type: "close", tab: PRIMARY_CHAT });
+      },
+    ],
+  ])("shows the primary Chat it searches when %s in one strip", (_, arrange) => {
+    followFindRequests();
+    publishWorkAreaView({ narrow: true, size: null });
+    arrange();
+    expect(focusedTab(layout())).not.toBe(PRIMARY_CHAT);
+    openThreadFind(scopedThreadKey(ref));
+    expect(focusedTab(layout())).toBe(PRIMARY_CHAT);
   });
 });
 

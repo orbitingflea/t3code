@@ -70,6 +70,7 @@ import {
 } from "./tabStrip";
 import { dragShieldProps, registerThreadDragFallback } from "./threadDragFallback";
 import { useLinkDrops } from "./useLinkDrops";
+import { followFindRequests } from "./useWorkAreaChat";
 import {
   type ArmKind,
   type Edge,
@@ -145,6 +146,7 @@ type Point = { readonly x: number; readonly y: number };
 
 // ChatView imports this module statically, so the drawer never draws before this runs.
 followDrawerTerminals();
+followFindRequests();
 
 const REPLIES_SURFACE: RightPanelSurface = { id: "replies", kind: "replies" };
 
