@@ -2,7 +2,11 @@ import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environ
 import { type EnvironmentId, RunId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { openThreadFind, openThreadFindOnQuery } from "~/components/chat/threadFindStore";
+import {
+  openThreadFind,
+  openThreadFindOnQuery,
+  useThreadFindStore,
+} from "~/components/chat/threadFindStore";
 import { useClosedViewStore } from "~/closedViewStore";
 import { planNextReopen, reopenClosedView } from "~/reopenClosedView";
 import {
@@ -290,6 +294,17 @@ describe("Find", () => {
     [
       "leaves alone the own layout of a thread it searches in place as a side Chat",
       openThreadFind,
+      false,
+    ],
+    [
+      "leaves alone the own layout of a side Chat's thread searched in place while a search result opens another thread",
+      (threadKey) => {
+        const off = useThreadFindStore.subscribe(() => {
+          off();
+          openThreadFind(threadKey);
+        });
+        openThreadFindOnQuery(scopedThreadKey(ref), { query: "needle" });
+      },
       false,
     ],
     [

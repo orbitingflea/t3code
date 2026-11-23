@@ -86,7 +86,8 @@ export function followFindRequests(): void {
   useThreadFindStore.subscribe((next, previous) => {
     if (next.focusRequestId === previous.focusRequestId || next.threadKey === null) return;
     const thread = parseScopedThreadKey(next.threadKey);
-    if (thread === null || (panelHostedElsewhere(thread) && !findOpensThreadPage())) return;
+    if (thread === null || (panelHostedElsewhere(thread) && !findOpensThreadPage(next.threadKey)))
+      return;
     const store = useRightPanelStore.getState();
     const layout = resolveLayout(selectThreadRightPanelState(store.byThreadKey, thread));
     const view = currentWorkAreaView();

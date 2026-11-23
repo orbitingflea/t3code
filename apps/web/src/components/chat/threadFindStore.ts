@@ -120,7 +120,7 @@ export interface PendingThreadFind {
 export function openThreadFindOnQuery(threadKey: string, find: PendingThreadFind): void {
   const previous = useThreadFindStore.getState();
   announceOpening(previous, threadKey);
-  openingThreadPage(() =>
+  openingThreadPage(threadKey, () =>
     useThreadFindStore.setState({
       ...(previous.threadKey === threadKey ? previous : CLOSED_THREAD_FIND),
       threadKey,
