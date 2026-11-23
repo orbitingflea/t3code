@@ -12,6 +12,7 @@ import { useGT } from "gt-react";
 import { useEffect, useEffectEvent, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
+import { partitionOpenLinkedFiles } from "../fork/workArea/closedLinkedFiles";
 import { useClosedViewStore } from "../closedViewStore";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentCatalog } from "../connection/catalog";
@@ -108,7 +109,11 @@ export function ReopenClosedViewShortcut() {
     const catalog = appAtomRegistry.get(environmentCatalog.catalogValueAtom);
     const drafts = useComposerDraftStore.getState();
     const panelsByThread = useRightPanelStore.getState().byThreadKey;
-    const { drop, restore } = planNextReopen(useClosedViewStore.getState().entries, (entry) => {
+    const closedViews = partitionOpenLinkedFiles(
+      useClosedViewStore.getState().entries,
+      panelsByThread,
+    );
+    const { drop, restore } = planNextReopen(closedViews.closed, (entry) => {
       const ref = entry.threadRef;
       const panel = selectThreadRightPanelState(panelsByThread, ref);
       if (isGlobalPullRequests(ref) || isGlobalIssues(ref)) {
@@ -137,7 +142,8 @@ export function ReopenClosedViewShortcut() {
         panel,
       };
     });
-    for (const entry of drop) useClosedViewStore.getState().remove(entry.id);
+    for (const entry of [...closedViews.open, ...drop])
+      useClosedViewStore.getState().remove(entry.id);
     if (!restore) return;
 
     const ref = restore.threadRef;

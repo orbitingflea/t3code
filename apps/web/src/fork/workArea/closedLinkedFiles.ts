@@ -1,10 +1,11 @@
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import { ChatFileAttachment, ScopedThreadRef } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 
-import type { ClosedView } from "~/closedViewStore";
+import type { ClosedView, ClosedViewEntry } from "~/closedViewStore";
 import type { ThreadRightPanelState } from "~/rightPanelStore";
 
-import { asTabId, resolveLayout } from "./workArea.logic";
+import { asTabId, linkedFileTabId, resolveLayout } from "./workArea.logic";
 import type { WorkAreaChange } from "./workAreaPlacement.logic";
 
 // Closed-tab history keeps file surfaces, and Reopen Closed Tab passes `openFile` only the path
@@ -71,4 +72,29 @@ export function reopenedLinkedFile(
     line: line ?? null,
     ...(linked.attachment === undefined ? {} : { attachment: linked.attachment }),
   };
+}
+
+// `planNextReopen` skips an entry whose surface is open again, which a linked file never has, so
+// its entries are matched here against the linked tabs open in their owner's layout.
+export function partitionOpenLinkedFiles(
+  entries: readonly ClosedViewEntry[],
+  byThreadKey: Record<string, ThreadRightPanelState>,
+): { readonly closed: ClosedViewEntry[]; readonly open: ClosedViewEntry[] } {
+  const closed: ClosedViewEntry[] = [];
+  const open: ClosedViewEntry[] = [];
+  for (const entry of entries) {
+    const linked =
+      entry.kind === "panel-tab" && entry.surface.kind === "file"
+        ? reopenedLinkedFile(entry.surface.relativePath, undefined)
+        : null;
+    const record = byThreadKey[scopedThreadKey(entry.threadRef)];
+    const isOpen =
+      linked?.type === "link-file" &&
+      record !== undefined &&
+      resolveLayout(record).tabs[
+        linkedFileTabId(linked.source, linked.path, linked.attachment?.id)
+      ] !== undefined;
+    (isOpen ? open : closed).push(entry);
+  }
+  return { closed, open };
 }

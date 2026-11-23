@@ -12,6 +12,7 @@ import {
 } from "~/rightPanelStore";
 
 import { chatFileTarget } from "./chatFileOpener";
+import { partitionOpenLinkedFiles } from "./closedLinkedFiles";
 import { LINK_PROBE, probeLayout } from "./linkDrop.logic";
 import { fileRowPanelLink, linkedTreeOwner } from "./linkSources";
 import {
@@ -211,6 +212,24 @@ describe("Reopen Closed Tab", () => {
 
   beforeEach(() => useClosedViewStore.setState({ entries: [] }));
 
+  // What the Reopen Closed Tab shortcut does before it restores an entry.
+  const nextReopen = () => {
+    const history = partitionOpenLinkedFiles(
+      useClosedViewStore.getState().entries,
+      store().byThreadKey,
+    );
+    const { drop, restore } = planNextReopen(history.closed, () => ({
+      environmentKnown: true,
+      catalogReady: true,
+      ownerExists: true,
+      sideChatExists: true,
+      shellLive: true,
+      panel: recordOf(ref),
+    }));
+    for (const entry of [...history.open, ...drop]) useClosedViewStore.getState().remove(entry.id);
+    return restore;
+  };
+
   it.each<[string, { path: string; line: number | null; attachment?: typeof notes }]>([
     ["a file at its line", { path: "src/current.ts", line: 12 }],
     ["an attachment", { path: "notes.md", line: null, attachment: notes }],
@@ -226,21 +245,21 @@ describe("Reopen Closed Tab", () => {
     const entries = JSON.parse(JSON.stringify(useClosedViewStore.getState().entries));
     useClosedViewStore.setState({ entries });
 
-    const { restore } = planNextReopen(useClosedViewStore.getState().entries, () => ({
-      environmentKnown: true,
-      catalogReady: true,
-      ownerExists: true,
-      sideChatExists: true,
-      shellLive: true,
-      panel: recordOf(ref),
-    }));
+    const restore = nextReopen();
     if (restore === null) throw new Error("nothing to reopen");
     expect(restore.threadRef).toEqual(ref);
     expect(
       await reopenClosedView(restore, { openPreview: vi.fn(), workspaceAvailable: true }),
     ).toBe(true);
+    useClosedViewStore.getState().remove(restore.id);
     expect(layout().tabs[target]).toMatchObject({ kind: "linked-file", source: other, ...linked });
     expect(focusedTab(layout())).toBe(target);
+
+    // Closed again, then opened again by hand: the next reopen skips it, as it does a regular tab.
+    expect(closeFocusedTab(ref, (surface) => store().closeSurface(ref, surface.id))).toBe(true);
+    change({ type: "link-file", source: other, ...linked });
+    expect(nextReopen()).toMatchObject({ kind: "panel-tab", surface: { id: "file:older.ts" } });
+    expect(useClosedViewStore.getState().entries).toHaveLength(1);
   });
 });
 
