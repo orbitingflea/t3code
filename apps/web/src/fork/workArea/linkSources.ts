@@ -6,7 +6,7 @@ import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 import { canOpenThreadInPanel } from "~/lib/sideChatPane";
 import { type OpenFileOptions, rightPanelHostRef, useRightPanelStore } from "~/rightPanelStore";
 
-import type { ChatFileOpener } from "./chatFileOpener";
+import { type ChatFileOpener, fromChatOrigin } from "./chatFileOpener";
 import { openThreadTab } from "./chatOpenerContext";
 import type { PanelLink, PanelLinkOwner } from "./panelLinkDrag";
 
@@ -77,8 +77,8 @@ export function fileChipPanelLink(
  */
 export function anchorPanelLink(input: {
   readonly href: string;
-  /** The layout the click opens in. */
-  readonly panelRef: ScopedThreadRef | undefined;
+  readonly threadRef: ScopedThreadRef | undefined;
+  readonly opener: ChatFileOpener | null;
   /** The anchor's `data-pull-request-autolink`: "", "reference", "mention" or "commit". */
   readonly autolink: string;
   /** Whether a click on this `board://` link would show the board in this panel. */
@@ -91,8 +91,10 @@ export function anchorPanelLink(input: {
   readonly openChangeRequest: () => boolean;
   readonly openInPreview: () => Promise<unknown>;
 }): PanelLink | null {
-  const { href, panelRef } = input;
-  if (panelRef === undefined) return null;
+  const { href, threadRef } = input;
+  if (threadRef === undefined) return null;
+  // The record the click's store write lands in, which a guest's origin routes to its owner.
+  const panelRef = fromChatOrigin(input.opener, () => rightPanelHostRef(threadRef));
   if (href.startsWith("board://")) {
     return input.boardInPanel() ? { panelRef, open: input.showBoard } : null;
   }

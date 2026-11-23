@@ -68,7 +68,8 @@ export function chatAnchorPanelLinks(input: {
     const { environmentId } = threadRef;
     return anchorPanelLink({
       href,
-      panelRef: opener?.().panel(),
+      threadRef,
+      opener,
       autolink,
       boardInPanel: () => canShowBoardRefInPanel(threadRef),
       showBoard: () => (opener ? opener().openBoardRef(href) : showBoardRef(href, threadRef)),

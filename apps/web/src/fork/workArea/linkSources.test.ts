@@ -1,10 +1,10 @@
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
-import { chatFileTarget } from "./chatFileOpener";
+import { chatFileTarget, fromChatOrigin } from "./chatFileOpener";
 import {
   anchorPanelLink,
   fileChipPanelLink,
@@ -67,7 +67,8 @@ describe("anchorPanelLink", () => {
     const calls: string[] = [];
     const link = anchorPanelLink({
       href: row.href ?? PR,
-      panelRef: ref,
+      threadRef: ref,
+      opener: (target = ref) => chatFileTarget(null, target),
       autolink: row.autolink ?? "",
       boardInPanel: () => row.board ?? false,
       showBoard: () => {
@@ -94,10 +95,44 @@ describe("anchorPanelLink", () => {
     expect(calls).toEqual(expected);
   });
 
+  it.each([
+    ["the same environment, with the source Chat hidden", "env"],
+    ["another environment", "env-2"],
+  ])("drags a PR link shown from %s to the record its click writes", (_, environment) => {
+    const source = scopeThreadRef(EnvironmentId.make(environment), ThreadId.make("source"));
+    const shown = { kind: "shown", owner: ref, tab: surfaceTabId("file:notes.md") } as const;
+    const opener = (target = source) => chatFileTarget(shown, target);
+    const link = anchorPanelLink({
+      href: PR,
+      threadRef: source,
+      opener,
+      autolink: "",
+      boardInPanel: () => false,
+      showBoard: () => {},
+      changeRequestInPanel: () => true,
+      canOpenInPreview: false,
+      // useOpenChangeRequestLink with no panel ref of its own.
+      openChangeRequest: () =>
+        fromChatOrigin(opener, () => {
+          useRightPanelStore
+            .getState()
+            .openPullRequest(source, { projectId: "p", repository: "acme/app", number: 7 });
+          return true;
+        }),
+      openInPreview: async () => {},
+    });
+    void link?.open();
+    const written = Object.entries(useRightPanelStore.getState().byThreadKey)
+      .filter(([, record]) => record.surfaces.some((surface) => surface.kind === "pull-request"))
+      .map(([key]) => key);
+    expect(written).toEqual([scopedThreadKey(link!.panelRef)]);
+  });
+
   it("is null outside a thread", () => {
     const link = anchorPanelLink({
       href: PR,
-      panelRef: undefined,
+      threadRef: undefined,
+      opener: null,
       autolink: "",
       boardInPanel: () => true,
       showBoard: () => {},
