@@ -56,7 +56,7 @@ import {
   SimpleWorkEntryRow,
 } from "./TimelineWorkEntryRow";
 import {
-  thoughtPreviewPlugins,
+  thoughtPreviewMarkdown,
   THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
   toolGroupSummaryIconName,
   workEntryIconName,
@@ -640,9 +640,13 @@ export function LiveWorkEntryTimelineRow({
                 text={thoughtLine}
                 cwd={ctx.markdownCwd}
                 parseRawHtml={false}
+<<<<<<< origin/main
                 // Fork: selects the agent-text single-tilde list, so a thinking line's "1~2" keeps its tilde.
                 assistantReply
                 extraRemarkPlugins={thoughtPreviewPlugins(gt("Thought"))}
+=======
+                extensions={thoughtPreviewMarkdown(gt("Thought"))}
+>>>>>>> upstream/main
               />
             </span>
           }
@@ -663,12 +667,16 @@ export function LiveWorkEntryTimelineRow({
               text={(row.entry.detail ?? label).slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH)}
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
+<<<<<<< origin/main
               // Fork: selects the agent-text single-tilde list, so a thinking line's "1~2" keeps its tilde.
               assistantReply
               extraRemarkPlugins={
+=======
+              extensions={
+>>>>>>> upstream/main
                 row.active
-                  ? thoughtPreviewPlugins(gt("Thinking"))
-                  : thoughtPreviewPlugins(gt("Thought"))
+                  ? thoughtPreviewMarkdown(gt("Thinking"))
+                  : thoughtPreviewMarkdown(gt("Thought"))
               }
             />
           ) : threadLabel ? (

@@ -1,4 +1,3 @@
-import { isLocalEditorFileUrl, LOCAL_FILE_LINK_SCHEMES } from "@t3tools/contracts";
 import type {
   Heading,
   Link,
@@ -15,7 +14,7 @@ import remarkParse from "remark-parse";
 import remarkRehype from "remark-rehype";
 import { find, html } from "property-information";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSanitize from "rehype-sanitize";
 import remarkBreaks from "remark-breaks";
 import remarkCjkFriendly from "remark-cjk-friendly";
 import remarkGfm from "remark-gfm";
@@ -26,17 +25,18 @@ import {
   remarkEnableLeadingWhitespace,
   remarkKeepLeadingWhitespace,
 } from "./markdownLeadingWhitespace.ts";
-import {
-  CODEX_ARTIFACT_TEMPLATE_HAST_PROPERTIES,
-  remarkCodexDirectives,
-} from "./codexMarkdownDirectives.ts";
-import {
-  absoluteFilePathMatches,
-  isWindowsDrivePathHref,
-  normalizeMarkdownLinkDestination,
-} from "./markdownLinks.ts";
+import { remarkCodexDirectives } from "./codexMarkdownDirectives.ts";
+import { absoluteFilePathMatches } from "./markdownLinks.ts";
 import { isWindowsAbsolutePath } from "./path.ts";
-import { THREAD_LINK_PROTOCOL } from "./threadLinks.ts";
+import {
+  CHAT_MARKDOWN_SANITIZE_SCHEMA,
+  chatMarkdownImageSource,
+  rehypeNormalizeLocalEditorLinks,
+  rehypePreserveImageSourceMeta,
+  type ChatMarkdownImageProperties,
+} from "./markdownHast.ts";
+
+export { chatMarkdownImageSource, type ChatMarkdownImageProperties };
 
 export { remarkEnableOrderedListNumbers } from "./markdownOrderedListNumbers.ts";
 
@@ -47,44 +47,6 @@ type MarkdownImageHastNode = {
   properties?: Record<string, unknown>;
   children?: MarkdownImageHastNode[];
 };
-
-function meaningfulHastChildren(node: MarkdownImageHastNode): MarkdownImageHastNode[] {
-  return (node.children ?? []).filter(
-    (child) => !(child.type === "text" && (child as { value?: string }).value?.trim() === ""),
-  );
-}
-
-const STANDALONE_IMAGE_BLOCKS = new Set([
-  "p",
-  "div",
-  "li",
-  "td",
-  "th",
-  "figure",
-  "center",
-  "blockquote",
-]);
-
-function soleImageDescendant(node: MarkdownImageHastNode): MarkdownImageHastNode | undefined {
-  const children = meaningfulHastChildren(node);
-  if (children.length !== 1) return undefined;
-  const only = children[0];
-  if (only?.type !== "element") return undefined;
-  if (only.tagName === "img") return only;
-  return only.tagName === "a" || only.tagName === "strong" || only.tagName === "em"
-    ? soleImageDescendant(only)
-    : undefined;
-}
-
-function markStandaloneImages(node: MarkdownImageHastNode) {
-  if (node.type === "root" || (node.tagName && STANDALONE_IMAGE_BLOCKS.has(node.tagName))) {
-    const image = soleImageDescendant(node);
-    if (image) image.properties = { ...image.properties, dataStandalone: true };
-  }
-  node.children?.forEach((child) => {
-    if (child.type === "element") markStandaloneImages(child);
-  });
-}
 
 // Whole tags, attributes, and comments, so closing-anchor text inside them never counts as a tag.
 const RAW_HTML_TAG_PATTERN = /<!--[\s\S]*?(?:-->|$)|<\/?[A-Za-z](?:[^"'<>]|"[^"]*"|'[^']*')*>/g;
@@ -134,6 +96,7 @@ function rehypePreserveBareAnchorPlaceholders() {
   };
 }
 
+<<<<<<< origin/main
 const COLOR_SCHEME_MEDIA = /^\(\s*prefers-color-scheme\s*:\s*(dark|light)\s*\)$/i;
 
 /**
@@ -251,6 +214,8 @@ const CHAT_MARKDOWN_SANITIZE_SCHEMA = {
   },
 } satisfies Parameters<typeof rehypeSanitize>[0];
 
+=======
+>>>>>>> upstream/main
 export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkGfm,
   remarkEndAutolinksAtScriptPunctuation,
@@ -767,10 +732,6 @@ function remarkNormalizeLinksAndTagInlineCode() {
   };
 }
 
-export function shouldPreserveAssistantLineBreaks(text: string): boolean {
-  return /^★ Insight(?:\s|─)/mu.test(text);
-}
-
 export function remarkAssistantInsights(this: Processor) {
   return (tree: Root, file: { value: unknown }) => {
     const source = String(file.value);
@@ -854,37 +815,6 @@ const imageSourceProcessor = unified()
   .use(CHAT_MARKDOWN_REMARK_PLUGINS)
   .use(remarkRehype, { allowDangerousHtml: true })
   .use(CHAT_MARKDOWN_REHYPE_PLUGINS);
-
-export type ChatMarkdownImageProperties = {
-  readonly src?: unknown;
-  readonly dataLocalSrc?: unknown;
-  readonly dataDarkSrc?: unknown;
-  readonly dataLightSrc?: unknown;
-};
-
-/** Keep the authored path for file links and normalize Windows separators for classification. */
-export function chatMarkdownImageSource(
-  properties?: ChatMarkdownImageProperties,
-  theme?: "dark" | "light",
-) {
-  const themeSrc =
-    theme === undefined
-      ? undefined
-      : properties?.[theme === "dark" ? "dataDarkSrc" : "dataLightSrc"];
-  const localSrc = typeof themeSrc === "string" ? undefined : properties?.dataLocalSrc;
-  const source =
-    typeof themeSrc === "string"
-      ? themeSrc
-      : typeof localSrc === "string"
-        ? localSrc
-        : properties?.src;
-  if (typeof source !== "string") return null;
-  const authoredSrc = normalizeMarkdownLinkDestination(source);
-  return {
-    authoredSrc,
-    classifiedSrc: typeof localSrc === "string" ? authoredSrc.replaceAll("\\", "/") : authoredSrc,
-  };
-}
 
 interface ImageSourceNode {
   readonly type: string;

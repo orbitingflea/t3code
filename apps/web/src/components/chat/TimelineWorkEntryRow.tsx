@@ -73,7 +73,7 @@ import {
   workEntryRawCommand,
   buildToolCallExpandedBody,
   workEntryIconName,
-  thoughtPreviewPlugins,
+  thoughtPreviewMarkdown,
   THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
 } from "./TimelineWorkEntryRow.logic";
 
@@ -592,12 +592,16 @@ function WorkEntryLogRow(props: WorkEntryRowProps) {
                   )}
                   cwd={ctx.markdownCwd}
                   parseRawHtml={false}
+<<<<<<< origin/main
                   // Fork: selects the agent-text single-tilde list, so a thinking line's "1~2" keeps its tilde.
                   assistantReply
                   extraRemarkPlugins={
+=======
+                  extensions={
+>>>>>>> upstream/main
                     workEntry.toolLifecycleStatus === "inProgress"
-                      ? thoughtPreviewPlugins(gt("Thinking"))
-                      : thoughtPreviewPlugins(gt("Thought"))
+                      ? thoughtPreviewMarkdown(gt("Thinking"))
+                      : thoughtPreviewMarkdown(gt("Thought"))
                   }
                 />
               ) : threadLabel ? (
