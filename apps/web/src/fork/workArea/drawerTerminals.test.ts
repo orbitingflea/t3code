@@ -1,5 +1,5 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import { revealThreadTerminal } from "~/lib/revealThreadTerminal";
 import { hostRightPanel, selectThreadRightPanelState } from "~/rightPanelStore";
@@ -31,6 +31,34 @@ function reset() {
     suppressedTerminalIdsByThreadKey: {},
     serverObservationsByThreadKey: {},
   });
+}
+
+// One page life: fresh modules, so the stores load what the last page saved.
+async function loadPage() {
+  vi.resetModules();
+  const terminalStore = await import("~/terminalUiStateStore");
+  const panelStore = await import("~/rightPanelStore");
+  const layout = await import("./workArea.logic");
+  const drawer = await import("./drawerTerminals");
+  const record = () =>
+    panelStore.selectThreadRightPanelState(
+      panelStore.useRightPanelStore.getState().byThreadKey,
+      ref,
+    );
+  return {
+    drawer,
+    terminals: terminalStore.useTerminalUiStateStore.getState(),
+    panels: () => panelStore.useRightPanelStore.getState(),
+    record,
+    focused: () => layout.focusedTab(layout.resolveLayout(record())),
+    drawerOpen: () =>
+      terminalStore.selectThreadTerminalUiState(
+        terminalStore.useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+        ref,
+      ).terminalOpen,
+    list: (sessionIds: string[]) =>
+      drawer.adoptServerTerminals(ref, { sessionIds, surfaces: record().surfaces, suppressed: [] }),
+  };
 }
 
 // The follower starts once per page, so the saved state it meets at start comes first here.
@@ -74,6 +102,48 @@ describe("the terminal drawer as a request for a terminal tab", () => {
     list();
     expect(recordOf(ref)).toBe(after);
   });
+
+  it.each([["shows the saved active terminal when nothing took focus", false, "terminal:t1"]])(
+    "converts a drawer saved open after a reload before its first session list, and %s",
+    async (_, openFile, focused) => {
+      const saved = new Map<string, string>();
+      vi.stubGlobal("window", {
+        localStorage: {
+          getItem: (key: string) => saved.get(key) ?? null,
+          setItem: (key: string, value: string) => void saved.set(key, value),
+          removeItem: (key: string) => void saved.delete(key),
+        },
+      });
+      try {
+        const old = await loadPage();
+        old.terminals.ensureTerminal(ref, "t1", { open: true });
+        old.terminals.splitTerminalVertical(ref, "t2");
+        old.terminals.setActiveTerminal(ref, "t2");
+        const first = await loadPage();
+        first.drawer.followDrawerTerminals();
+        expect(first.drawerOpen()).toBe(false);
+        if (openFile) first.panels().openFile(ref, "picked.ts");
+        const second = await loadPage();
+        second.drawer.followDrawerTerminals();
+        expect(second.drawerOpen()).toBe(false);
+        expect(second.record().surfaces.filter((s) => s.kind === "terminal")).toEqual([]);
+        second.list(["t1", "t2"]);
+        expect(second.record().surfaces.filter((s) => s.kind === "terminal")).toEqual([
+          expect.objectContaining({
+            id: "terminal:t1",
+            terminalIds: ["t1", "t2"],
+            splitDirection: "vertical",
+          }),
+        ]);
+        expect(second.focused()).toBe(focused);
+        const after = second.record();
+        second.list(["t1", "t2"]);
+        expect(second.record()).toBe(after);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
 
   it("opens a new script terminal as an active terminal tab", () => {
     reset();
