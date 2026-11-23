@@ -439,6 +439,18 @@ describe("a link dropped on a pane", () => {
         expect(fitsView(layout(), WIDE)).toBe(true);
       },
     );
+
+    it("makes room for a Chat moved onto its strip in the strip view, so the panes come back", () => {
+      narrowFilePane();
+      const unpublish = publishWorkAreaView({ narrow: true, size: { width: 640, height: 800 } });
+      change({ type: "open-thread", thread: other });
+      const chat = secondaryChatTabId(other);
+      expect(paneAt(0).tabs).toContain(chat);
+      change({ type: "place", source: { tabs: [chat] }, at: onStrip() });
+      unpublish();
+      expect(paneAt(1).tabs).toContain(chat);
+      expect(fitsView(layout(), WIDE)).toBe(true);
+    });
   });
 
   it.each<[string, () => boolean, () => Placement]>([

@@ -355,7 +355,10 @@ export function fittedRatio(
   return Math.min(bounds.max, Math.max(bounds.min, ratio));
 }
 
-/** A split's ratio, moved just far enough that both sides keep their minimum at this size. */
+/**
+ * A split's ratio, moved just far enough that both sides keep their minimum at this size. When no
+ * ratio does, the one that fits at the smallest size, so the panes come back once there is room.
+ */
 export function settleSplit(
   layout: WorkAreaLayout,
   id: SplitId,
@@ -363,8 +366,10 @@ export function settleSplit(
 ): WorkAreaLayout {
   const split = view.size === null ? undefined : dividerOf(layout, id)?.split;
   if (split === undefined) return layout;
-  const ratio = fittedRatio(layout, id, split.ratio, view);
-  if (ratio === null || ratio === split.ratio) return layout;
+  const first = minExtent(layout, split.first, split.axis);
+  const second = minExtent(layout, split.second, split.axis) + DIVIDER_SIZE;
+  const ratio = fittedRatio(layout, id, split.ratio, view) ?? clampRatio(first / (first + second));
+  if (ratio === split.ratio) return layout;
   const root = mapSplits(layout.root, (node) => (node.id === id ? { ...node, ratio } : node));
   return { ...layout, root };
 }
