@@ -896,8 +896,11 @@ function moveTabs(
     ...setPane(next, insertTabs(target, moving, before, true)),
     focused: target.id,
   };
-  // The strip view has no fit check and hides the divider, so make room for the panes it hides.
-  const joined = isStripView(layout, view) ? settleAround(inserted, target.id, view) : inserted;
+  // The strip view has no fit check and hides the divider, so make room for a Chat that joins.
+  const gainsChat =
+    !holdsComposer(next, target) && moving.some((tab) => tabTraits(next, tab).composer);
+  const joined =
+    gainsChat && isStripView(layout, view) ? settleAround(inserted, target.id, view) : inserted;
   if (launcherPick(layout, "chat")?.id !== target.id) return withoutArmed(joined);
   // The launcher's Chat pick takes the launcher's place when that pane can be made wide enough.
   const launched = settleAround(removeTabs(joined, new Set([LAUNCHER])), target.id, view);

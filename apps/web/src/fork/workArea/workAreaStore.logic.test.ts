@@ -403,7 +403,11 @@ describe("a link dropped on a pane", () => {
     };
     const openThreadLink = () =>
       chatFileTarget({ kind: "own", tab: PRIMARY_CHAT }, ref).openThread(other);
-    const onStrip = (): Placement => ({ kind: "strip", pane: paneAt(1).id, before: null });
+    const onStrip = (index = 1): Placement => ({
+      kind: "strip",
+      pane: paneAt(index).id,
+      before: null,
+    });
     const inMiddle = (): Placement => ({ kind: "join", pane: paneAt(1).id });
 
     it.each([
@@ -440,18 +444,43 @@ describe("a link dropped on a pane", () => {
       },
     );
 
-    it("makes room for a Chat moved onto its strip in the strip view, so the panes come back", () => {
-      narrowFilePane();
-      const unpublish = publishWorkAreaView({ narrow: true, size: { width: 640, height: 800 } });
-      change({ type: "open-thread", thread: other });
-      const chat = secondaryChatTabId(other);
-      expect(paneAt(0).tabs).toContain(chat);
-      change({ type: "place", source: { tabs: [chat] }, at: onStrip() });
-      unpublish();
-      expect(paneAt(1).tabs).toContain(chat);
-      expect(fitsView(layout(), WIDE)).toBe(true);
-    });
+    it.each([["two panes", narrowFilePane, 1, WIDE]])(
+      "makes room for a Chat moved onto its strip in the strip view, so the %s come back",
+      (_, panes, target, restored) => {
+        panes();
+        const unpublish = publishWorkAreaView({ narrow: true, size: { width: 640, height: 800 } });
+        change({ type: "open-thread", thread: other });
+        const chat = secondaryChatTabId(other);
+        expect(paneAt(0).tabs).toContain(chat);
+        change({ type: "place", source: { tabs: [chat] }, at: onStrip(target) });
+        unpublish();
+        expect(paneAt(target).tabs).toContain(chat);
+        expect(fitsView(layout(), restored)).toBe(true);
+      },
+    );
   });
+
+  it.each([
+    ["narrow", { narrow: true, size: { width: 640, height: 800 } }],
+    ["too small", { narrow: false, size: { width: 640, height: 800 } }],
+  ])(
+    "keeps the split's ratio when a file tab moves on a strip in the %s strip view",
+    (_, strip) => {
+      chatBeside("a.ts", "b.ts");
+      const split = layout().root;
+      if (split.kind !== "split") throw new Error("expected two panes");
+      change({ type: "ratio", split: split.id, ratio: 0.75 });
+      publishWorkAreaView(strip);
+      change({
+        type: "place",
+        source: { tabs: [tab("file:b.ts")] },
+        at: { kind: "strip", pane: paneAt(1).id, before: tab("file:a.ts") },
+      });
+      expect(paneAt(1).tabs).toEqual(["file:b.ts", "file:a.ts"]);
+      const after = layout().root;
+      expect(after.kind === "split" ? after.ratio : null).toBe(0.75);
+    },
+  );
 
   it.each<[string, () => boolean, () => Placement]>([
     ["cancelled by a later press", () => false, rightOf(1)],
