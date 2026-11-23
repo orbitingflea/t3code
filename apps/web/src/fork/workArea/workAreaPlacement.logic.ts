@@ -63,7 +63,13 @@ import {
   tabShown,
   type WorkAreaView,
 } from "./workAreaGeometry.logic";
-import { floatedByClose, floatTab, keptFloat, unfloatTab } from "./workAreaFloat.logic";
+import {
+  floatedByClose,
+  floatTab,
+  keptFloat,
+  unfloatTab,
+  withoutFloating,
+} from "./workAreaFloat.logic";
 
 /** Origin of a store write: "activate" is a tab press; "reveal" is an agent's forced show. */
 export type LayoutWriteKind = "user" | "close" | "automatic" | "activate" | "reveal";
@@ -479,7 +485,7 @@ function placeWrite(
   const removed = placed.filter((tab) => !byId.has(tab));
   const added = surfaces.flatMap((surface) => {
     const tab = surfaceTabId(surface.id);
-    return placedSet.has(tab) || tab === layout.floating ? [] : [tab];
+    return placedSet.has(tab) || tab === layout.floating?.tab ? [] : [tab];
   });
   const target =
     requested !== null && requested !== prevLive && byId.has(requested)
@@ -503,7 +509,7 @@ function placeWrite(
       : null;
   // Only a real activation docks the floating tab; a fallback after a removal leaves it floating.
   const shows = activated ?? dropped;
-  const docked = shows !== null && shows === layout.floating;
+  const docked = shows !== null && shows === layout.floating?.tab;
   let next = docked ? unfloatTab(layout, shows) : layout;
   let slot: TabId | null = null;
   const sourced = sourcePane(layout, write, origin) !== undefined;
@@ -549,7 +555,7 @@ function placeWrite(
     const pane = paneHolding(next.root, activated)!;
     if (write === "automatic") return next;
     next = { ...setPane(next, { ...pane, active: activated }), focused: pane.id };
-  } else if (docked || added.includes(activated)) {
+  } else if (added.includes(activated) || (docked && !paneHolding(next.root, activated))) {
     const from = sourcePane(next, write, origin);
     next = from
       ? placeBeside(next, activated, from.id, view)
@@ -573,10 +579,11 @@ function revealed(
   const surface = surfaces.find((candidate) => candidate.id === requested);
   if (surface === undefined) return layout;
   const tab = surfaceTabId(surface.id);
+  const docked = unfloatTab(layout, tab);
   const placed =
-    layout.floating === tab
-      ? placeNew(unfloatTab(layout, tab), tab, surface.kind, "automatic", view)
-      : layout;
+    layout.floating?.tab === tab && !paneHolding(docked.root, tab)
+      ? placeNew(docked, tab, surface.kind, "automatic", view)
+      : docked;
   const pane = paneHolding(placed.root, tab);
   if (!pane || tabShown(placed, view, tab)) return placed;
   const shown = setPane(placed, { ...pane, active: tab });
@@ -666,12 +673,12 @@ export function repairWorkArea(
     next = { ...layout, root: clamped, focused };
   }
   const floating =
-    layout.floating !== undefined && surfaceIds.has(layout.floating) && !seen.has(layout.floating)
-      ? layout.floating
+    layout.floating !== undefined &&
+    surfaceIds.has(layout.floating.tab) &&
+    !seen.has(layout.floating.tab)
+      ? layout.floating.tab
       : undefined;
-  if (floating === undefined && next.floating !== undefined) {
-    next = unfloatTab(next, next.floating);
-  }
+  if (floating === undefined && next.floating !== undefined) next = withoutFloating(next);
   for (const surface of surfaces) {
     const tab = surfaceTabId(surface.id);
     if (!seen.has(tab) && tab !== floating && !paneHolding(next.root, tab)) {

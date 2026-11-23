@@ -39,7 +39,7 @@ export function playingTab(threadKey: string): TabId | null {
     : surfaceTabId(previewMiniPlayerSourceKey(source));
 }
 
-const floatingIn = (record: ThreadRightPanelState) => resolveLayout(record).floating;
+const floatingIn = (record: ThreadRightPanelState) => resolveLayout(record).floating?.tab;
 
 // Forced reveals of new browsers by thread key, held from `revealServerTabs` until
 // `followPreviewSessions` adds their tabs right after.
@@ -119,10 +119,10 @@ function unfloatStrandedTabs(): void {
     const layout = record.workArea;
     const threadRef = parseScopedThreadKey(threadKey);
     if (layout?.floating === undefined || threadRef === null) continue;
-    if (keptFloat(layout, view) !== layout || playingTab(threadKey) !== layout.floating) {
+    if (keptFloat(layout, view) !== layout || playingTab(threadKey) !== layout.floating.tab) {
       useRightPanelStore
         .getState()
-        .updateWorkArea(threadRef, { type: "unfloat", tab: layout.floating });
+        .updateWorkArea(threadRef, { type: "unfloat", tab: layout.floating.tab });
     }
   }
 }

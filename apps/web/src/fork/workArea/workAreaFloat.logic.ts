@@ -31,14 +31,25 @@ function showingPrimaryChat(layout: WorkAreaLayout, view: WorkAreaView): WorkAre
 
 // Repair returns an earlier floating tab, now in no pane, to the background.
 export function floatTab(layout: WorkAreaLayout, tab: TabId, view: WorkAreaView): WorkAreaLayout {
-  if (!paneHolding(layout.root, tab)) return layout;
-  return showingPrimaryChat({ ...removeTabs(layout, new Set([tab])), floating: tab }, view);
+  const pane = paneHolding(layout.root, tab);
+  if (!pane) return layout;
+  const before = pane.tabs[pane.tabs.indexOf(tab) + 1] ?? null;
+  const floating = { tab, pane: pane.id, before };
+  return showingPrimaryChat({ ...removeTabs(layout, new Set([tab])), floating }, view);
 }
 
-export function unfloatTab(layout: WorkAreaLayout, tab: TabId): WorkAreaLayout {
-  if (layout.floating !== tab) return layout;
+export const withoutFloating = (layout: WorkAreaLayout): WorkAreaLayout => {
   const { floating: _floating, ...rest } = layout;
   return rest;
+};
+
+/** Back into the pane it floated from, in the background; with that pane gone, in no pane. */
+export function unfloatTab(layout: WorkAreaLayout, tab: TabId): WorkAreaLayout {
+  if (layout.floating?.tab !== tab) return layout;
+  const rest = withoutFloating(layout);
+  const home = findPane(rest.root, layout.floating.pane);
+  if (!home) return rest;
+  return setPane(rest, insertTabs(home, [tab], layout.floating.before, false));
 }
 
 // The one way into `floating`: upstream's close (PiP, device Float, Preview toggle) while the
@@ -58,4 +69,4 @@ export function floatedByClose(
 export const keptFloat = (layout: WorkAreaLayout, view: WorkAreaView): WorkAreaLayout =>
   layout.floating === undefined || primaryChatRect(layout, view) !== null
     ? layout
-    : unfloatTab(layout, layout.floating);
+    : unfloatTab(layout, layout.floating.tab);

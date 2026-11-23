@@ -57,14 +57,20 @@ export interface SplitNode {
 
 export type LayoutNode = PaneNode | SplitNode;
 
+export interface Floating {
+  readonly tab: TabId;
+  readonly pane: PaneId;
+  readonly before: TabId | null;
+}
+
 export interface WorkAreaLayout {
   readonly root: LayoutNode;
   readonly tabs: Readonly<Record<TabId, WorkAreaTab>>;
   readonly focused: PaneId;
   readonly seq: number;
   readonly armed?: { readonly pane: PaneId; readonly kind: ArmKind };
-  /** The one tab in no pane because it plays in the mini player. Never saved to storage. */
-  readonly floating?: TabId;
+  /** The one tab in no pane because it plays in the mini player, and where it goes back. Never saved. */
+  readonly floating?: Floating;
   readonly revealed?: TabId;
 }
 

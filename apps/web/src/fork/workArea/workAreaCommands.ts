@@ -96,7 +96,7 @@ export function togglePreview(threadRef: ScopedThreadRef): boolean {
   const floated = player.byThreadKey[scopedThreadKey(threadRef)];
   if (
     floated?.source.kind === "browser" &&
-    resolveLayout(record).floating === surfaceTabId(previewMiniPlayerSourceKey(floated.source))
+    resolveLayout(record).floating?.tab === surfaceTabId(previewMiniPlayerSourceKey(floated.source))
   ) {
     player.close(threadRef);
     useRightPanelStore.getState().openBrowser(threadRef, floated.source.tabId);

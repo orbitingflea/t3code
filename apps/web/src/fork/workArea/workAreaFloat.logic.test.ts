@@ -10,7 +10,7 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import * as entities from "~/state/entities";
 import * as session from "~/state/session";
 
-import { leaves, paneHolding, resolveLayout } from "./workArea.logic";
+import { paneHolding, resolveLayout, type WorkAreaLayout } from "./workArea.logic";
 import { togglePreview } from "./workAreaCommands";
 import { primaryChatRect, shownSurfaces, type WorkAreaView } from "./workAreaGeometry.logic";
 import { persistedRecord, restoredRecord } from "./workAreaStorage.logic";
@@ -19,6 +19,7 @@ import {
   fromChat,
   layout,
   other,
+  paneAt,
   panes,
   record,
   ref,
@@ -119,7 +120,7 @@ describe("a floating tab", () => {
     store().openBrowser(ref, "t2");
     pictureInPicture("t2");
     change({ type: "unfloat", tab: tab("browser:t1") });
-    expect(resolveLayout(record()).floating).toBe("browser:t2");
+    expect(resolveLayout(record()).floating?.tab).toBe("browser:t2");
   });
 
   it("returns to its pane when a tab covers the Chat that draws the mini player", async () => {
@@ -159,14 +160,35 @@ describe("a floating tab", () => {
     expect(floated()).toBeNull();
   });
 
-  it("comes back as a background tab after a reload", () => {
-    publishWorkAreaView(WIDE);
-    store().openBrowser(ref, "t1");
-    pictureInPicture("t1");
+  const reload = () => {
     const stored = JSON.parse(JSON.stringify(persistedRecord(record())));
     expect(stored.workArea?.floating).toBeUndefined();
-    const reloaded = resolveLayout(restoredRecord(stored));
-    expect(leaves(reloaded.root).flatMap((pane) => pane.tabs)).toContain("browser:t1");
+    return resolveLayout(restoredRecord(stored));
+  };
+  it.each<[string, () => void, () => WorkAreaLayout]>([
+    ["its mini player closes", () => pictureInPicture("t1"), layout],
+    [
+      "Preview: Toggle runs from another pane",
+      () => (change({ type: "focus", pane: paneAt(0).id }), togglePreview(ref)),
+      layout,
+    ],
+    ["the page reloads", () => {}, reload],
+  ])("comes back to the pane it floated from when %s", async (_, exit, read) => {
+    publishWorkAreaView(WIDE);
+    store().openFile(ref, "left.ts");
+    store().openBrowser(ref, "t1");
+    store().openFile(ref, "right.ts");
+    change({
+      type: "place",
+      source: { tabs: [tab("browser:t1"), tab("file:right.ts")] },
+      at: { kind: "edge", edge: "right", pane: paneAt(1).id },
+    });
+    const home = paneHolding(layout().root, tab("browser:t1"))!.id;
+    pictureInPicture("t1");
+    expect(paneHolding(layout().root, tab("file:right.ts"))?.id).toBe(home);
+    exit();
+    await settled();
+    expect(paneHolding(read().root, tab("browser:t1"))?.id).toBe(home);
   });
 
   it.each<[string, () => void]>([

@@ -51,7 +51,7 @@ export function persistedRecord(record: ThreadRightPanelState): ThreadRightPanel
     leaves(layout.root)
       .map((pane) => pane.active)
       .find((tab) => surfaceIds.has(tab)) ??
-    record.surfaces.find((surface) => surfaceTabId(surface.id) !== layout.floating)?.id ??
+    record.surfaces.find((surface) => surfaceTabId(surface.id) !== layout.floating?.tab)?.id ??
     null;
   return {
     ...record,
@@ -59,7 +59,7 @@ export function persistedRecord(record: ThreadRightPanelState): ThreadRightPanel
     workArea: withRevealed(
       layout.floating === undefined
         ? withoutArmed(layout)
-        : unfloatTab(withoutArmed(layout), layout.floating),
+        : unfloatTab(withoutArmed(layout), layout.floating.tab),
       undefined,
     ),
   };
