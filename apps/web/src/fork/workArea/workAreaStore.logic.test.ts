@@ -38,6 +38,7 @@ import {
   shape,
   tab,
   WIDE,
+  wide,
 } from "./workAreaTestKit";
 import { followFindRequests } from "./useWorkAreaChat";
 import { publishWorkAreaView } from "./workAreaView";
@@ -444,7 +445,26 @@ describe("a link dropped on a pane", () => {
       },
     );
 
-    it.each([["two panes", narrowFilePane, 1, WIDE]])(
+    // [chat] | [a.ts] | [b.ts] at 2,000 px, the right pane too narrow for a Chat.
+    const threeColumns = () => {
+      publishWorkAreaView(wide(2000));
+      chatBeside("a.ts", "b.ts");
+      change({
+        type: "place",
+        source: { tabs: [tab("file:b.ts")] },
+        at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
+      });
+      const root = layout().root;
+      if (root.kind !== "split" || root.second.kind !== "split") throw new Error("three columns");
+      change({ type: "ratio", split: root.id, ratio: 0.35 });
+      change({ type: "ratio", split: root.second.id, ratio: 0.8 });
+      expect(fitsView(layout(), wide(2000))).toBe(true);
+    };
+
+    it.each([
+      ["two panes", narrowFilePane, 1, WIDE],
+      ["three panes", threeColumns, 2, wide(2000)],
+    ])(
       "makes room for a Chat moved onto its strip in the strip view, so the %s come back",
       (_, panes, target, restored) => {
         panes();

@@ -900,7 +900,9 @@ function moveTabs(
   const gainsChat =
     !holdsComposer(next, target) && moving.some((tab) => tabTraits(next, tab).composer);
   const joined =
-    gainsChat && isStripView(layout, view) ? settleAround(inserted, target.id, view) : inserted;
+    gainsChat && isStripView(layout, view)
+      ? settleAround(inserted, target.id, view, "pane")
+      : inserted;
   if (launcherPick(layout, "chat")?.id !== target.id) return withoutArmed(joined);
   // The launcher's Chat pick takes the launcher's place when that pane can be made wide enough.
   const launched = settleAround(removeTabs(joined, new Set([LAUNCHER])), target.id, view);

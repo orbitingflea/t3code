@@ -374,11 +374,15 @@ export function settleSplit(
   return { ...layout, root };
 }
 
-/** Settles every split above `pane`, outermost first, so the pane gets its minimum when it can. */
+/**
+ * Settles every split above `pane`, outermost first, so the pane gets its minimum when it can.
+ * From the pane up when no ratio fits now: each outer split then counts the inner ratios it keeps.
+ */
 export function settleAround(
   layout: WorkAreaLayout,
   pane: PaneId,
   view: WorkAreaView,
+  from: "root" | "pane" = "root",
 ): WorkAreaLayout {
   const path: SplitId[] = [];
   const find = (node: LayoutNode): boolean => {
@@ -389,6 +393,7 @@ export function settleAround(
     return false;
   };
   find(layout.root);
+  if (from === "pane") path.reverse();
   return path.reduce((settled, split) => settleSplit(settled, split, view), layout);
 }
 
