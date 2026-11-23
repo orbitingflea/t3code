@@ -228,10 +228,14 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
   shellOlderSettled: Schema.optionalKey(Schema.Boolean),
   /** Publishes a pull request refresh when linked-thread answers change; older servers need polling. */
   linkedThreadRefreshes: Schema.optionalKey(Schema.Boolean),
+  /** Honors the `agentFeedback` setting; older servers drop it, so hide its switch where absent. */
+  agentFeedback: Schema.optionalKey(Schema.Boolean),
   /** Answers `issues.linkedThreads`, the threads an issue is linked to. */
   issueLinkedThreads: Schema.optionalKey(Schema.Boolean),
   /** Sent only by a whiteboard board host: the panel board and the machine's menu defaults. */
   whiteboardPanel: Schema.optionalKey(WhiteboardPanelCapability),
+  /** Keeps more than one account per standalone issue tracker; older servers keep one. */
+  issueTrackerAccounts: Schema.optionalKey(Schema.Boolean),
 });
 export type ExecutionEnvironmentCapabilities = typeof ExecutionEnvironmentCapabilities.Type;
 

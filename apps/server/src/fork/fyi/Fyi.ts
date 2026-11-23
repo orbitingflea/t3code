@@ -17,6 +17,8 @@ import {
   type TurnItemId,
 } from "@t3tools/contracts";
 import { SKILL_MENTION_PATTERN } from "@t3tools/shared/composerInlineTokens";
+
+import { isSlashCommandMessage } from "../../orchestration-v2/ContextHandoffDelivery.ts";
 import {
   latestExecutedRun,
   latestRootProviderFailure,
@@ -79,7 +81,8 @@ export function turnCarriesFyi(input: {
     !input.goalCommand &&
     !input.resumesNatively &&
     !(message.createdBy === "agent" && message.creationSource === "provider") &&
-    !(message.attachments.length === 0 && message.text.trimStart().startsWith("/")) &&
+    // A slash command reaches the provider verbatim, attachments or not, so it carries none.
+    !isSlashCommandMessage({ role: "user", text: message.text }) &&
     !LEADING_SKILL_MENTION.test(message.text)
   );
 }

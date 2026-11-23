@@ -1321,6 +1321,27 @@ it.effect("restarts the turn for an image when native steering takes text only",
       const before = yield* orchestrator.getThreadProjection(threadId);
       const originalStart = before.runs[0]!.startedAt;
       assert.isNotNull(originalStart);
+      // A feedback card the run showed before the restart, still waiting for the user.
+      const card = {
+        type: "feedback_request.record" as const,
+        threadId,
+        runId: before.runs[0]!.id,
+        nodeId: before.runs[0]!.rootNodeId!,
+        turnItemId: TurnItemId.make("turn-item:feedback-request:steer"),
+        preview: {
+          kind: "bug" as const,
+          subject: "general",
+          expected: "a",
+          actual: "b",
+          workaround: "",
+          trace: null,
+        },
+      };
+      yield* orchestrator.dispatch({
+        ...card,
+        commandId: CommandId.make("feedback-pending"),
+        feedbackStatus: "pending",
+      });
       yield* TestClock.adjust("10 seconds");
       yield* orchestrator.dispatch({
         type: "message.dispatch",
@@ -1361,18 +1382,33 @@ it.effect("restarts the turn for an image when native steering takes text only",
           ["look at this", 1],
         ],
       );
+      // The restart replaced the root, and the user's answer can still close the card.
+      assert.notEqual(after.runs[0]?.rootNodeId, card.nodeId);
+      yield* orchestrator.dispatch({
+        ...card,
+        commandId: CommandId.make("feedback-sent"),
+        feedbackStatus: "sent",
+      });
+      const closed = (yield* orchestrator.getThreadProjection(threadId)).turnItems.find(
+        (item) => item.id === card.turnItemId,
+      );
+      assert.deepInclude(closed, {
+        status: "completed",
+        feedbackStatus: "sent",
+        nodeId: card.nodeId,
+      });
     }).pipe(Effect.provide(layer));
   }),
 );
 
 it.effect.each(["completed", "interrupted"] as const)(
-  "checkpoints a run that a steer restarted after its first answer was checkpointed (restart %s)",
+  "checkpoints a run that a steer restarted before its first answer was checkpointed (restart %s)",
   (restartEnd) =>
     Effect.gen(function* () {
       const steerReadRunning = yield* Deferred.make<void>();
       const letSteerCommit = yield* Deferred.make<void>();
       const { events, started, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
-        `steer-restart-after-checkpoint-${restartEnd}`,
+        `steer-restart-before-checkpoint-${restartEnd}`,
         true,
         false,
         Effect.void,
@@ -1444,10 +1480,7 @@ it.effect.each(["completed", "interrupted"] as const)(
           })
           .pipe(Effect.forkScoped);
         yield* Deferred.await(steerReadRunning);
-        const firstCompleted = yield* runReaches("completed");
         yield* endTurn(started[0]!, "completed");
-        const firstCapture = yield* worker.drain().pipe(Effect.forkScoped);
-        yield* Fiber.join(firstCompleted);
         const restartRunning = yield* orchestrator.streamDomainEvents.pipe(
           Stream.filter(
             (event) =>
@@ -1461,8 +1494,12 @@ it.effect.each(["completed", "interrupted"] as const)(
         );
         yield* Deferred.succeed(letSteerCommit, undefined);
         yield* Fiber.join(steer);
-        yield* Fiber.join(firstCapture);
-        yield* worker.drain();
+        // The first answer's capture finds the run restarting and retries until it gives up; the
+        // restarted attempt starts behind it on the thread's effect lane.
+        for (const delay of [0, 100, 200, 400, 800]) {
+          yield* TestClock.adjust(delay);
+          yield* worker.drain();
+        }
         yield* Fiber.join(restartRunning);
         yield* (yield* ThreadCommandExecutor.ThreadCommandExecutor).withLock(threadId, Effect.void);
         assert.equal(started.length, 2);

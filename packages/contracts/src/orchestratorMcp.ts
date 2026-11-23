@@ -110,7 +110,7 @@ export const OrchestratorMcpTarget = Schema.Struct({
   options: Schema.optional(
     OrchestratorMcpTargetOptions.annotate({
       description:
-        "Options from `orchestrator_capabilities`, such as {effort:'max'}. Given values override inherited. [] or {} clears.",
+        "Ids vary by provider; see `orchestrator_capabilities`. Given values override inherited. [] or {} clears.",
     }),
   ),
   environmentId: Schema.optional(
@@ -573,7 +573,7 @@ export const OrchestratorMcpThreadSendInput = Schema.Struct({
 });
 export type OrchestratorMcpThreadSendInput = typeof OrchestratorMcpThreadSendInput.Type;
 
-const OrchestratorMcpThreadSendRunResult = Schema.Struct({
+export const OrchestratorMcpThreadSendRunResult = Schema.Struct({
   threadId: ThreadId,
   link: Schema.optional(Schema.String),
   messageId: MessageId,
@@ -980,6 +980,7 @@ export type OrchestratorMcpEnvironmentUnlinkInput =
 export const OrchestratorMcpEnvironmentUnlinkResult = Schema.Struct({
   environmentId: EnvironmentId,
   removed: Schema.Boolean,
+  endedThere: Schema.Boolean,
 });
 export type OrchestratorMcpEnvironmentUnlinkResult =
   typeof OrchestratorMcpEnvironmentUnlinkResult.Type;

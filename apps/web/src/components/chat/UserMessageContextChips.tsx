@@ -4,7 +4,7 @@ import { useNativeFileDrag } from "../../useNativeFileDrag";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { documentChipKindForFileName } from "~/pierre-icons";
 import { isSvgAttachment } from "@t3tools/shared/image";
-import { CHAT_USER_MARKDOWN_REMARK_PLUGINS } from "@t3tools/shared/markdownPipeline";
+import { USER_TEXT_MARKDOWN } from "../../fork/forkMarkdown";
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
@@ -620,7 +620,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
             parseRawHtml={false}
             lineBreaks
             // Fork: a sent "1~2" keeps its tilde, as in the user's message.
-            extraRemarkPlugins={CHAT_USER_MARKDOWN_REMARK_PLUGINS}
+            extensions={USER_TEXT_MARKDOWN}
           />
         </div>
       )}

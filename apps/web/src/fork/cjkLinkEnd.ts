@@ -1,7 +1,4 @@
-import type { Link, Nodes, Paragraph, PhrasingContent, Root, Text } from "mdast";
-import type { Transform } from "mdast-util-from-markdown";
-import type { Processor } from "unified";
-import type { VFile } from "vfile";
+import type { Element, ElementContent, Root, Text } from "hast";
 
 // Each opening bracket is followed by its closing bracket.
 const BRACKETS = "（）［］｛｝｟｠｢｣〈〉《》「」『』【】〔〕〖〗〘〙〚〛";
@@ -72,75 +69,103 @@ function trimTrailingPunctuation(url: string): string {
   }
 }
 
-/** Cuts a bare link at CJK punctuation and returns the cut-off text, or nothing to cut. */
-function cutBareLink(link: Link, source: string): Text | undefined {
-  const label = link.children.length === 1 ? link.children[0] : undefined;
-  if (label?.type !== "text") return undefined;
-  const scheme = link.url === `http://${label.value}` ? "http://" : "";
-  if (link.url !== scheme + label.value) return undefined;
-  const cut = blankCjkPunctuation(label.value).indexOf(" ");
-  if (cut === -1) return undefined;
-  const { position } = link;
-  // `<url>` and `[url](url)` were ended by their author.
-  if (position && source.slice(position.start.offset, position.end.offset) !== label.value) {
-    return undefined;
-  }
-  const kept = trimTrailingPunctuation(label.value.slice(0, cut));
-  const rest: Text = { type: "text", value: label.value.slice(kept.length) };
-  label.value = kept;
-  link.url = scheme + kept;
-  if (position?.start.offset !== undefined) {
-    // A bare link never spans lines.
-    const boundary = {
-      line: position.start.line,
-      column: position.start.column + kept.length,
-      offset: position.start.offset + kept.length,
-    };
-    rest.position = { start: boundary, end: position.end };
-    link.position = { start: position.start, end: boundary };
-    label.position = link.position;
-  }
-  return rest;
-}
-
-// GFM's parser starts an http link after anything but an ASCII letter. Its transform, which is what
-// can run on a text node, needs punctuation first. `www.` is here so a URL inside it stays inside.
+const URL_PREFIX = /^(?:https?:\/\/|www\.)/i;
+// GFM's parser starts an http link after anything but an ASCII letter. `www.` is here so a URL
+// inside it stays inside.
 const URL_START = /(?<![a-z])https?:\/\/|(?<![\p{L}\p{N}])www\./iu;
 
+/** Where a bare link ends: CJK punctuation or any whitespace, then GFM's trailing trim. */
+export function bareLinkEnd(url: string): string {
+  const cut = blankCjkPunctuation(url).search(/\s/u);
+  return trimTrailingPunctuation(cut === -1 ? url : url.slice(0, cut));
+}
+
+// As Words and wordsHast escape a destination; GFM links `www.` as http.
+const hrefOf = (url: string) =>
+  (/^www\./i.test(url) ? `http://${url}` : url).replace(/[^\x21-\x7e]+|[\\[\]`{}|^"<>]/gu, (run) =>
+    encodeURIComponent(run),
+  );
+
+const text = (value: string): Text => ({ type: "text", value });
+
+const anchor = (url: string): Element => ({
+  type: "element",
+  tagName: "a",
+  properties: { href: hrefOf(url) },
+  children: [text(url)],
+});
+
+/** Links the URLs in text cut off a bare link, each ended as bareLinkEnd ends it. */
+function linkRest(rest: string): ElementContent[] {
+  const parts: ElementContent[] = [];
+  let plain = "";
+  let remaining = rest;
+  while (remaining !== "") {
+    const found = URL_START.exec(remaining);
+    if (found === null) break;
+    const url = bareLinkEnd(remaining.slice(found.index));
+    // A bare `https://` or `www.` has no destination, so it stays text.
+    if (url.length <= found[0].length) {
+      plain += remaining.slice(0, found.index + found[0].length);
+      remaining = remaining.slice(found.index + found[0].length);
+      continue;
+    }
+    plain += remaining.slice(0, found.index);
+    if (plain !== "") parts.push(text(plain));
+    plain = "";
+    parts.push(anchor(url));
+    remaining = remaining.slice(found.index + url.length);
+  }
+  plain += remaining;
+  if (plain !== "") parts.push(text(plain));
+  return parts;
+}
+
+/** Cuts one of Words' bare links at CJK punctuation, returning what follows it, or null. */
+function cutBareLink(link: Element, source: string): ElementContent[] | null {
+  const label = link.children.length === 1 ? link.children[0] : undefined;
+  const start = link.position?.start.offset;
+  const end = link.position?.end.offset;
+  if (label?.type !== "text" || start === undefined || end === undefined) return null;
+  // `<url>` and `[url](url)` were ended by their author.
+  if (!URL_PREFIX.test(label.value) || source.slice(start, end) !== label.value) return null;
+  const kept = bareLinkEnd(label.value);
+  if (kept === label.value) return null;
+  label.value = kept;
+  link.properties.href = hrefOf(kept);
+  const position = link.position!;
+  // A bare link never spans lines.
+  link.position = {
+    start: position.start,
+    end: {
+      line: position.start.line,
+      column: position.start.column + kept.length,
+      offset: start + kept.length,
+    },
+  };
+  return linkRest(source.slice(start + kept.length, end));
+}
+
 /**
- * GFM ends a bare link only at whitespace or `<`, so in `（https://example.com/a），然后` the link takes
- * `），然后`. This ends bare links at CJK punctuation and links URLs in the cut-off text as GFM does.
+ * Words ends a bare link at CJK punctuation only when the URL is ASCII up to it, and links across
+ * U+3000. This ends the rest of Words' bare links where bareLinkEnd does.
  */
-export function remarkEndLinksAtCjkPunctuation(this: Processor) {
-  const autolinkTransforms: Transform[] = (this.data().fromMarkdownExtensions ?? [])
-    .flat()
-    .flatMap((extension) => (extension.enter?.literalAutolink ? (extension.transforms ?? []) : []));
-  const linkUrls = (text: Text): PhrasingContent[] => {
-    const start = text.value.search(URL_START);
-    if (start === -1) return [text];
-    // The transform accepts a URL at the start of a text node. Later URLs are found when this link
-    // is cut in turn.
-    const paragraph: Paragraph = {
-      type: "paragraph",
-      children: [
-        { type: "text", value: text.value.slice(0, start) },
-        { type: "text", value: text.value.slice(start) },
-      ],
-    };
-    for (const transform of autolinkTransforms) transform({ type: "root", children: [paragraph] });
-    return paragraph.children;
-  };
-  return (tree: Root, file: VFile) => {
-    const source = String(file);
-    const visit = (node: Nodes) => {
-      if (!("children" in node) || node.type === "link" || node.type === "linkReference") return;
-      for (let index = 0; index < node.children.length; index++) {
-        const child = node.children[index]!;
-        const rest = child.type === "link" ? cutBareLink(child, source) : undefined;
-        if (rest) (node.children as PhrasingContent[]).splice(index + 1, 0, ...linkUrls(rest));
-        else visit(child);
+export function endLinksAtCjkPunctuation(tree: Root, source: string): void {
+  const visit = (node: Root | Element) => {
+    const children = node.children as ElementContent[];
+    for (let index = 0; index < children.length; index++) {
+      const child = children[index]!;
+      if (child.type !== "element") continue;
+      if (child.tagName === "a") {
+        const rest = cutBareLink(child, source);
+        if (rest) {
+          children.splice(index + 1, 0, ...rest);
+          index += rest.length;
+        }
+      } else if (child.tagName !== "code" && child.tagName !== "pre" && child.tagName !== "svg") {
+        visit(child);
       }
-    };
-    visit(tree);
+    }
   };
+  visit(tree);
 }
