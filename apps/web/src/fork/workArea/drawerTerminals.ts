@@ -60,16 +60,44 @@ const inOwnRecord = (threadRef: ScopedThreadRef, show: () => void) =>
     ? runWithOpenOrigin({ record: threadRef, guest: threadRef }, show)
     : show();
 
+// A drawer saved open waits for its thread's first session list, as the drawer did, so a member
+// closed on another client stays closed.
+const savedDrawers = new Map<
+  string,
+  { readonly groups: ReadonlyArray<ThreadTerminalGroup>; readonly active: string }
+>();
+
+function openSavedDrawer(threadRef: ScopedThreadRef, listed: ReadonlyArray<string>): boolean {
+  const threadKey = scopedThreadKey(threadRef);
+  const saved = savedDrawers.get(threadKey);
+  if (saved === undefined) return false;
+  savedDrawers.delete(threadKey);
+  const groups = saved.groups.map((group) => ({
+    ...group,
+    terminalIds: group.terminalIds.filter((id) => listed.includes(id)),
+  }));
+  const members = groups.flatMap((group) => group.terminalIds);
+  const active = members.includes(saved.active) ? saved.active : members[0];
+  if (active === undefined) return false;
+  inOwnRecord(threadRef, () => {
+    openGroupTabs(threadRef, groups);
+    showTerminalTab(threadRef, active);
+  });
+  return true;
+}
+
 // A drawer saved open opens all its groups; a later request opens only its terminal.
 function showDrawerRequests(next: DrawerStates, previous?: DrawerStates) {
   for (const [threadKey, state] of Object.entries(next)) {
     if (previous?.[threadKey] === state || !state.terminalOpen) continue;
     const threadRef = parseScopedThreadKey(threadKey);
     if (threadRef === null) continue;
-    inOwnRecord(threadRef, () => {
-      if (previous === undefined) openGroupTabs(threadRef, state.terminalGroups);
-      showTerminalTab(threadRef, state.activeTerminalId);
-    });
+    if (previous === undefined) {
+      savedDrawers.set(threadKey, {
+        groups: state.terminalGroups,
+        active: state.activeTerminalId,
+      });
+    } else inOwnRecord(threadRef, () => showTerminalTab(threadRef, state.activeTerminalId));
     useTerminalUiStateStore.getState().setTerminalOpen(threadRef, false);
   }
 }
@@ -117,9 +145,12 @@ export function adoptServerTerminals(
     readonly suppressed: ReadonlyArray<string>;
   },
 ): void {
+  const surfaces = openSavedDrawer(threadRef, input.sessionIds)
+    ? recordOf(threadRef).surfaces
+    : input.surfaces;
   const { adopt, seen } = adoptedTerminals({
     sessionIds: input.sessionIds,
-    tabIds: tabTerminalIds(input.surfaces),
+    tabIds: tabTerminalIds(surfaces),
     seen: seenTerminals(threadRef),
     skipped: [...closingTerminalIds(threadRef), ...input.suppressed],
   });

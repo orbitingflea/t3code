@@ -35,10 +35,11 @@ function reset() {
 
 // The follower starts once per page, so the saved state it meets at start comes first here.
 describe("the terminal drawer as a request for a terminal tab", () => {
-  it("turns each group of a drawer saved open into a terminal tab once, and leaves the drawer closed", () => {
+  it("turns each group of a drawer saved open into a terminal tab of its listed members once, and leaves the drawer closed", () => {
     reset();
     terminals().ensureTerminal(ref, "t1", { open: true });
     terminals().splitTerminalVertical(ref, "t2");
+    terminals().splitTerminalVertical(ref, "t5");
     terminals().newTerminal(ref, "t3");
     terminals().newTerminal(ref, "t4");
     terminals().setActiveTerminal(ref, "t2");
@@ -46,6 +47,16 @@ describe("the terminal drawer as a request for a terminal tab", () => {
     store().openTerminal(ref, "t4");
     expect(drawerOpen(ref)).toBe(true);
     followDrawerTerminals();
+    expect(drawerOpen(ref)).toBe(false);
+    expect(terminalTabs(ref)).toEqual(["terminal:t4"]);
+    const list = () =>
+      adoptServerTerminals(ref, {
+        // Another client closed t5 before this session's first list.
+        sessionIds: ["t1", "t2", "t3", "t4"],
+        surfaces: recordOf(ref).surfaces,
+        suppressed: [],
+      });
+    list();
     expect(recordOf(ref).surfaces).toEqual([
       expect.objectContaining({ id: "terminal:t4", terminalIds: ["t4"] }),
       expect.objectContaining({
@@ -60,6 +71,7 @@ describe("the terminal drawer as a request for a terminal tab", () => {
     expect(drawerOpen(ref)).toBe(false);
     const after = recordOf(ref);
     followDrawerTerminals();
+    list();
     expect(recordOf(ref)).toBe(after);
   });
 
