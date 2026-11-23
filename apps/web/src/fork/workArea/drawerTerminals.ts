@@ -20,6 +20,7 @@ import type { ThreadTerminalGroup } from "~/types";
 import { panelHostedElsewhere } from "./chatFileOpener";
 import { adoptedTerminals, reusableTabTerminal, tabTerminalIds } from "./drawerTerminals.logic";
 import { seenTerminals, setSeenTerminals } from "./terminalTabsSeen";
+import { focusedTab, resolveLayout } from "./workArea.logic";
 import { runWithOpenOrigin, shownSurfaceOf } from "./workAreaView";
 
 type DrawerStates = ReturnType<
@@ -42,16 +43,22 @@ function showTerminalTab(threadRef: ScopedThreadRef, terminalId: string) {
 }
 
 // The drawer drew every group, so each becomes one tab, split as the drawer split it.
-function openGroupTabs(threadRef: ScopedThreadRef, groups: ReadonlyArray<ThreadTerminalGroup>) {
+function openGroupTabs(
+  threadRef: ScopedThreadRef,
+  groups: ReadonlyArray<ThreadTerminalGroup>,
+  background: boolean,
+) {
   const store = useRightPanelStore.getState();
   for (const group of groups) {
     const held = tabTerminalIds(recordOf(threadRef).surfaces);
     const [first, ...rest] = group.terminalIds.filter((id) => !held.includes(id));
     if (first === undefined) continue;
     const tab = `terminal:${first}`;
-    store.openTerminal(threadRef, first);
-    for (const id of rest) store.splitTerminal(threadRef, tab, id, group.splitDirection);
-    store.activateTerminal(threadRef, tab, first);
+    store.openTerminal(threadRef, first, background);
+    for (const id of rest) {
+      store.splitTerminal(threadRef, tab, id, group.splitDirection, background);
+    }
+    if (!background) store.activateTerminal(threadRef, tab, first);
   }
 }
 
@@ -63,32 +70,42 @@ const inOwnRecord = (threadRef: ScopedThreadRef, show: () => void) =>
 
 // A drawer saved open waits for its thread's first session list, as the drawer did, so a member
 // closed on another client stays closed. The wait outlives a reload; the store keeps its groups.
+// Each waiting thread keeps the tab focused when its drawer was found open.
 const AWAITING_KEY = "t3code:fork:drawers-awaiting-tabs:v1";
 const awaitingStorage = resolveStorage(
   typeof window === "undefined" ? undefined : window.localStorage,
 );
 
-function loadAwaiting(): ReadonlySet<string> {
+function loadAwaiting(): Readonly<Record<string, string>> {
   const raw = awaitingStorage.getItem(AWAITING_KEY);
   try {
-    const keys: unknown = typeof raw === "string" ? JSON.parse(raw) : [];
-    return new Set(Array.isArray(keys) ? keys.filter((key) => typeof key === "string") : []);
+    const saved: unknown = typeof raw === "string" ? JSON.parse(raw) : {};
+    return typeof saved === "object" && saved !== null && !Array.isArray(saved)
+      ? Object.fromEntries(
+          Object.entries(saved).filter(
+            (entry): entry is [string, string] => typeof entry[1] === "string",
+          ),
+        )
+      : {};
   } catch {
-    return new Set();
+    return {};
   }
 }
 
 let awaiting = loadAwaiting();
 
-function setAwaiting(next: ReadonlySet<string>) {
+function setAwaiting(next: Readonly<Record<string, string>>) {
   awaiting = next;
-  awaitingStorage.setItem(AWAITING_KEY, JSON.stringify([...next]));
+  awaitingStorage.setItem(AWAITING_KEY, JSON.stringify(next));
 }
+
+const focusedTabOf = (threadRef: ScopedThreadRef) => focusedTab(resolveLayout(recordOf(threadRef)));
 
 function openSavedDrawer(threadRef: ScopedThreadRef, listed: ReadonlyArray<string>): boolean {
   const threadKey = scopedThreadKey(threadRef);
-  if (!awaiting.has(threadKey)) return false;
-  setAwaiting(new Set([...awaiting].filter((key) => key !== threadKey)));
+  const { [threadKey]: focusedWhenFound, ...rest } = awaiting;
+  if (focusedWhenFound === undefined) return false;
+  setAwaiting(rest);
   const saved = selectThreadTerminalUiState(
     useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
     threadRef,
@@ -100,9 +117,10 @@ function openSavedDrawer(threadRef: ScopedThreadRef, listed: ReadonlyArray<strin
   const members = groups.flatMap((group) => group.terminalIds);
   const active = members.includes(saved.activeTerminalId) ? saved.activeTerminalId : members[0];
   if (active === undefined) return false;
+  const background = focusedTabOf(threadRef) !== focusedWhenFound;
   inOwnRecord(threadRef, () => {
-    openGroupTabs(threadRef, groups);
-    showTerminalTab(threadRef, active);
+    openGroupTabs(threadRef, groups, background);
+    if (!background) showTerminalTab(threadRef, active);
   });
   return true;
 }
@@ -113,8 +131,9 @@ function showDrawerRequests(next: DrawerStates, previous?: DrawerStates) {
     if (previous?.[threadKey] === state || !state.terminalOpen) continue;
     const threadRef = parseScopedThreadKey(threadKey);
     if (threadRef === null) continue;
-    if (previous === undefined) setAwaiting(new Set([...awaiting, threadKey]));
-    else inOwnRecord(threadRef, () => showTerminalTab(threadRef, state.activeTerminalId));
+    if (previous === undefined) {
+      setAwaiting({ ...awaiting, [threadKey]: focusedTabOf(threadRef) });
+    } else inOwnRecord(threadRef, () => showTerminalTab(threadRef, state.activeTerminalId));
     useTerminalUiStateStore.getState().setTerminalOpen(threadRef, false);
   }
 }

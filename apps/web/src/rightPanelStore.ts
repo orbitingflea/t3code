@@ -276,6 +276,7 @@ interface RightPanelStoreState {
     surfaceId: string,
     terminalId: string,
     direction?: "horizontal" | "vertical",
+    automatic?: boolean,
   ) => void;
   activateTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
   closeTerminal: (ref: ScopedThreadRef, surfaceId: string, terminalId: string) => void;
@@ -1155,12 +1156,12 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
             upsertSurface(current, terminalSurface(terminalId), !automatic),
           ),
         ),
-      splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal") =>
+      splitTerminal: (ref, surfaceId, terminalId, direction = "horizontal", automatic = false) =>
         set((state) =>
-          userAction(state, scopedThreadKey(ref), (current) => ({
+          (automatic ? automaticUpdate : userAction)(state, scopedThreadKey(ref), (current) => ({
             ...current,
             isOpen: true,
-            activeSurfaceId: surfaceId,
+            activeSurfaceId: automatic ? current.activeSurfaceId : surfaceId,
             surfaces: current.surfaces.map((surface) => {
               if (surface.id !== surfaceId || surface.kind !== "terminal") return surface;
               const { splitDirection: _splitDirection, ...baseSurface } = surface;
@@ -1169,7 +1170,7 @@ export const useRightPanelStore = create<RightPanelStoreState>()(
                 terminalIds: surface.terminalIds.includes(terminalId)
                   ? surface.terminalIds
                   : [...surface.terminalIds, terminalId],
-                activeTerminalId: terminalId,
+                activeTerminalId: automatic ? surface.activeTerminalId : terminalId,
                 ...(direction === "vertical" ? { splitDirection: "vertical" as const } : {}),
               };
             }),

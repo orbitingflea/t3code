@@ -103,7 +103,10 @@ describe("the terminal drawer as a request for a terminal tab", () => {
     expect(recordOf(ref)).toBe(after);
   });
 
-  it.each([["shows the saved active terminal when nothing took focus", false, "terminal:t1"]])(
+  it.each([
+    ["shows the saved active terminal when nothing took focus", false, "terminal:t1"],
+    ["keeps a file the user opened meanwhile in focus", true, "file:picked.ts"],
+  ])(
     "converts a drawer saved open after a reload before its first session list, and %s",
     async (_, openFile, focused) => {
       const saved = new Map<string, string>();
@@ -144,6 +147,20 @@ describe("the terminal drawer as a request for a terminal tab", () => {
       }
     },
   );
+
+  it("keeps a file opened before a late first session list in focus", async () => {
+    const page = await loadPage();
+    page.terminals.ensureTerminal(ref, "t1", { open: true });
+    page.terminals.splitTerminalVertical(ref, "t2");
+    page.drawer.followDrawerTerminals();
+    page.panels().openFile(ref, "picked.ts");
+    page.list(["t1", "t2"]);
+    expect(page.record().surfaces.filter((s) => s.kind === "terminal")).toEqual([
+      expect.objectContaining({ id: "terminal:t1", terminalIds: ["t1", "t2"] }),
+    ]);
+    expect(page.record().activeSurfaceId).toBe("file:picked.ts");
+    expect(page.focused()).toBe("file:picked.ts");
+  });
 
   it("opens a new script terminal as an active terminal tab", () => {
     reset();
