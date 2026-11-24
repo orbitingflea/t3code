@@ -54,6 +54,7 @@ import { useDiffPanelStore } from "../diffPanelStore";
 import { usePreviewMiniPlayerStore } from "../previewMiniPlayerStore";
 import { clearThreadPreviewState } from "../previewStateStore";
 import { useRightPanelStore } from "../rightPanelStore";
+import { isWorkAreaTabStep, markTabHistoryThreadDeleted } from "../fork/workArea/tabHistory";
 import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { formatWorktreePathForDisplay, getOrphanedWorktreePathForThread } from "../worktreeCleanup";
@@ -269,6 +270,7 @@ function expireThreadUndos(target: ScopedThreadRef, kinds: readonly string[]) {
 function clearDeletedThreadPanelState(ref: ScopedThreadRef) {
   clearThreadPreviewState(ref);
   useRightPanelStore.getState().removeThread(ref);
+  markTabHistoryThreadDeleted(ref);
   useDiffPanelStore.getState().removeThread(ref);
   usePreviewMiniPlayerStore.getState().removeThread(ref);
 }
@@ -501,6 +503,7 @@ export function useThreadActions() {
         ]) {
           releaseComposerDraftUploads(ref);
           clearComposerDraftForThread(ref);
+          markTabHistoryThreadDeleted(ref);
         }
         expireThreadUndos(target, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
         refreshArchivedThreadsForEnvironment(target.environmentId);
@@ -623,9 +626,10 @@ export function useThreadActions() {
     });
     let navigatedDuringDelete = false;
     // The missing-thread redirect and the index draft replace this entry; any other history
-    // action while the delete is pending is the user's own choice, which must win.
-    const stopWatchingHistory = router.history.subscribe(({ action }) => {
-      if (action.type !== "REPLACE") navigatedDuringDelete = true;
+    // action while the delete is pending, other than a work-area tab step, is the user's own
+    // choice, which must win.
+    const stopWatchingHistory = router.history.subscribe(({ action, location }) => {
+      if (action.type !== "REPLACE" && !isWorkAreaTabStep(location)) navigatedDuringDelete = true;
     });
     const deleteResult = await deleteThreadMutation({
       environmentId: threadRef.environmentId,
@@ -646,6 +650,7 @@ export function useThreadActions() {
       const sideChatRef = scopeThreadRef(threadRef.environmentId, entry.id);
       releaseComposerDraftUploads(sideChatRef);
       clearComposerDraftForThread(sideChatRef);
+      markTabHistoryThreadDeleted(sideChatRef);
     }
     clearProjectDraftThreadById(
       scopeProjectRef(threadRef.environmentId, thread.projectId),

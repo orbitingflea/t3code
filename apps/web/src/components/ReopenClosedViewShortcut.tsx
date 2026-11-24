@@ -13,6 +13,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { partitionOpenLinkedFiles } from "../fork/workArea/closedLinkedFiles";
+import { onlyOwnTabPushesSince } from "../fork/workArea/tabHistory";
 import { useClosedViewStore } from "../closedViewStore";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentCatalog } from "../connection/catalog";
@@ -157,7 +158,8 @@ export function ReopenClosedViewShortcut() {
       return;
     }
     useClosedViewStore.getState().remove(restore.id);
-    if (router.history.location !== request.location) return;
+    if (router.history.location !== request.location && !onlyOwnTabPushesSince(request.location))
+      return;
 
     let destination;
     if (globalPullRequests) {

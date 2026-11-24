@@ -1,5 +1,6 @@
 import { useNavigate, useRouter, type AnyRouter } from "@tanstack/react-router";
 
+import { noteAppModalClose } from "../../fork/workArea/tabHistory";
 import { GUEST_PAGE_PATH } from "../../guestPage";
 import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
 import { resolveThreadRouteTarget, type ThreadRouteTarget } from "../../threadRoutes";
@@ -76,6 +77,7 @@ export function useCloseAppModal() {
       unsubscribe();
       void navigate({ href });
     });
+    noteAppModalClose(router.history, href);
     router.history.go(-(steps + 1));
   };
 }
