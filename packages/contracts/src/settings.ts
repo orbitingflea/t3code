@@ -625,6 +625,10 @@ export const ClientSettingsSchema = Schema.Struct({
   ),
   // Fork: how many path segments chat file links show in this browser.
   fileLinkPathDepth: StoredFileLinkPathDepth,
+  // Fork: per-browser toggle to show the sidebar Pull requests and Issues buttons on a board host.
+  sidebarPullRequestsAndIssuesShown: Schema.Boolean.pipe(
+    Schema.withDecodingDefault(Effect.succeed(false)),
+  ),
 });
 export type ClientSettings = typeof ClientSettingsSchema.Type;
 
@@ -2215,5 +2219,6 @@ export const ClientSettingsPatch = Schema.Struct({
   mathRenderingEnabled: Schema.optionalKey(Schema.Boolean),
   rightPanelMenuOverrides: Schema.optionalKey(RightPanelMenuOverrides),
   fileLinkPathDepth: Schema.optionalKey(FileLinkPathDepth),
+  sidebarPullRequestsAndIssuesShown: Schema.optionalKey(Schema.Boolean),
 });
 export type ClientSettingsPatch = typeof ClientSettingsPatch.Type;

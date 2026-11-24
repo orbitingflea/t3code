@@ -3,7 +3,7 @@
 This is a fork of T3 Code that integrates a few additional features, including:
 
 - **Whiteboard:** A tldraw whiteboard that sits side-by-side with T3 Code, allowing users to interact with agents (or other users) by editing and pointing to the whiteboard. Both the user and the agents can conveniently write links that point to a rectangular region on the whiteboard. Agents can also draw Mermaid diagrams on it, such as flowcharts and statecharts.
-  - When the whiteboard's config maps T3 Code's hostname to `"app"`, that hostname opens T3 Code itself, and the project's board opens as a Whiteboard tab in its right panel (+ → Whiteboard). There, Settings → Right panel lets each browser hide items of the + menu or change their letters, over machine defaults set in the whiteboard's config.
+  - When the whiteboard's config maps T3 Code's hostname to `"app"`, that hostname opens T3 Code itself, and the project's board opens as a Whiteboard tab in its right panel (+ → Whiteboard). There, the + menu hides Diff, Pull request, Linked items, and Device by default, and the sidebar hides its Pull requests and Issues buttons by default. In Settings → Right panel, each browser can show or hide + menu items and change their letters over machine defaults from the whiteboard's config. Each browser can show the Pull requests and Issues buttons from Settings → General → Sidebar.
 - **Better support for manually switching accounts mid-session:**
   - After hitting the usage limit of an account, the thread now retries after 2 minutes and 30 minutes in addition to the default retry behavior of T3 Code. This allows the thread to recover earlier if the user manually switches the account.
   - New Codex/Antigravity logins are picked up mid-session without a full restart.

@@ -5,7 +5,7 @@ import { AuthEnvironmentMaintainScope } from "@t3tools/contracts";
 import { usePrimaryCloudLinkState } from "~/cloud/cloudLinkState";
 import { hasCloudPublicConfig } from "~/cloud/publicConfig";
 import { isElectron } from "~/env";
-import { useRightPanelSettingsOffered } from "~/fork/rightPanelMenu/rightPanelMenu";
+import { useIsBoardHost } from "~/fork/whiteboard/role";
 import { isLocalEnvironmentDisabled } from "~/localEnvironment";
 import { desktopWslStateAtom } from "~/state/desktopWslState";
 import { useEnvironments, usePrimaryEnvironmentId } from "~/state/environments";
@@ -82,7 +82,7 @@ export function useAvailableSettingsSearchItems() {
     useMessages(),
   );
   const cloudPublicConfig = hasCloudPublicConfig() === true;
-  const hasRightPanelMenu = useRightPanelSettingsOffered();
+  const isBoardHost = useIsBoardHost();
   const wslSettingsRowVisible =
     isWslSettingsRowVisible({ state: desktopWsl.data, error: desktopWsl.error }) === true;
 
@@ -102,6 +102,6 @@ export function useAvailableSettingsSearchItems() {
     hasTextGeneratorsEnvironment,
     hasPrimaryEnvironment: primaryEnvironmentId !== null,
     hasSecretProvidersEnvironment,
-    hasRightPanelMenu,
+    isBoardHost,
   });
 }

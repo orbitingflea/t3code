@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/button";
 import { MenuItem } from "../../components/ui/menu";
 import type { SettingsPath } from "../../components/settings/settingsSearch";
 import { useClientSettings } from "../../hooks/useSettings";
-import { isBoardHost, useBoardHostRole } from "../whiteboard/role";
+import { isBoardHost, useBoardHostRole, useIsBoardHost } from "../whiteboard/role";
 import {
   type ArrangedAction,
   arrangeSurfaceActions,
@@ -14,7 +14,10 @@ import {
 
 const RIGHT_PANEL_SETTINGS_PATH = "/settings/right-panel" satisfies SettingsPath;
 
-/** The "+" menu or launcher items after the machine's and this browser's menu choices. */
+/**
+ * The "+" menu or launcher items after built-in defaults, the machine's choices, and this
+ * browser's choices. Off a board host, this hook returns upstream's list unchanged.
+ */
 export function useArrangedSurfaceActions<A extends MenuAction>(
   actions: ReadonlyArray<A>,
 ): ReadonlyArray<ArrangedAction<A>> {
@@ -27,14 +30,11 @@ export function useArrangedSurfaceActions<A extends MenuAction>(
   return arrangeSurfaceActions(actions, machine, parseMenuLayer(browser));
 }
 
-/** Settings > Right panel exists only on a board host; its nav, search and palette entries too. */
-export const useRightPanelSettingsOffered = (): boolean => isBoardHost(useBoardHostRole());
-
 /** The settings nav with Right panel after Keybindings, on a board host only. */
 export function useForkSettingsNavGroups<
   Group extends { readonly paths: ReadonlyArray<SettingsPath> },
 >(groups: ReadonlyArray<Group>): ReadonlyArray<Group> {
-  const offered = useRightPanelSettingsOffered();
+  const offered = useIsBoardHost();
   if (!offered) return groups;
   return groups.map((group) => ({
     ...group,

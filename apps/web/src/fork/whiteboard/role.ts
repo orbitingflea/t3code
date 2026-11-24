@@ -36,6 +36,8 @@ const readBoardHostRole = (): BoardHostRole => appAtomRegistry.get(boardHostRole
 export const isBoardHost = (role: BoardHostRole): role is { readonly menu: RightPanelMenuLayer } =>
   typeof role === "object";
 
+export const useIsBoardHost = (): boolean => isBoardHost(useBoardHostRole());
+
 /** False inside the board page's chat slot, where the board already sits beside the chat. */
 export const isTopWindow = (): boolean => window.parent === window;
 
