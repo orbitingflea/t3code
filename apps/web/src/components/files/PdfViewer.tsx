@@ -15,6 +15,7 @@ import { m } from "~/i18n/messages";
 import { ChevronDownIcon, ChevronUpIcon, MinusIcon, PlusIcon, ScanIcon } from "lucide-react";
 import { Input } from "~/components/ui/input";
 import { observeResize } from "~/lib/observeResize";
+import { usePdfResize } from "~/fork/pdfResize/usePdfResize";
 import { FileSurfaceAction, FileSurfaceFailure, FileSurfaceLoading } from "./fileSurfaceChrome";
 import { readBoundedDocument } from "./readBoundedDocument";
 import { previewErrorText } from "./previewFailureMessages";
@@ -32,7 +33,6 @@ import {
   PDF_MAX_ZOOM,
   PDF_MIN_ZOOM,
   stepPdfZoom,
-  visiblePdfPages,
 } from "./pdfLayout";
 import "./pdfViewer.css";
 
@@ -345,7 +345,8 @@ export default function PdfViewer(props: {
   const resized = pdf !== null && scrolled.pdf === pdf && scrolled.width !== width;
   const scrollTop = resized ? pdfResizedScrollTop(ratios, scrolled, width) : scrolled.top;
   const current = currentPdfPage(offsets, ratios.length, scrollTop);
-  const visible = visiblePdfPages(ratios, offsets, scrollTop, viewport.height);
+  const resize = usePdfResize({ scroll, pdf, zoom, width, viewport, ratios, offsets, scrollTop });
+  const visible = resize.visible;
   // Stable callbacks let page canvases survive scroll and find updates.
   const [onSize] = useState(
     () => (index: number, ratio: number) =>
@@ -632,7 +633,7 @@ export default function PdfViewer(props: {
                 <PdfPage
                   document={pdf}
                   index={index}
-                  width={width}
+                  width={resize.paintWidth}
                   query={query}
                   onSize={onSize}
                   onError={setError}
