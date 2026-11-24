@@ -48,9 +48,6 @@ export const replyContextField = (first: string | null) => {
 export const addsContext = (context: OrchestrationMessageContext | undefined): boolean =>
   context?.records.some((record) => record.kind !== SUB_THREAD_RECORD_KIND) === true;
 
-/** Why a reply box does not edit a queued message: the thread keeps one edit, in the main box. */
-export const REPLY_BOX_QUEUE_EDIT_BLOCKED = "Edit a queued message from the main message box.";
-
 /**
  * The draft of a sub-thread's reply box, or null for the main list. It holds the box's text and
  * attachments; the model and the modes are the thread's (subThreadDraft.ts). It takes the thread's
