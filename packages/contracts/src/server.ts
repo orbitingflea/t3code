@@ -713,6 +713,8 @@ export const ServerConfig = Schema.Struct({
   cwd: TrimmedNonEmptyString,
   /** The machine's own name, which file URIs from its shells may carry. Older servers omit it. */
   hostname: Schema.optionalKey(Schema.String),
+  /** The server machine's home folder, which chat file links shorten to `~/`. Older servers omit it. */
+  homeDirectory: Schema.optionalKey(Schema.String),
   keybindingsConfigPath: TrimmedNonEmptyString,
   keybindings: ResolvedKeybindingsConfig,
   issues: ServerConfigIssues,

@@ -1911,6 +1911,7 @@ export const layerWsRpc = (
           auth,
           cwd: config.cwd,
           hostname: yield* HostProcess.Hostname,
+          homeDirectory: yield* HostProcess.HomeDirectory,
           keybindingsConfigPath: config.keybindingsConfigPath,
           keybindings: keybindingsConfig.keybindings,
           issues: keybindingsConfig.issues,
