@@ -20,9 +20,11 @@ export function useArrangedSurfaceActions<A extends MenuAction>(
 ): ReadonlyArray<ArrangedAction<A>> {
   const role = useBoardHostRole();
   const browser = useClientSettings((settings) => settings.rightPanelMenuOverrides);
-  // Off a board host the menu is exactly upstream's.
-  if (!isBoardHost(role)) return actions as ReadonlyArray<ArrangedAction<A>>;
-  return arrangeSurfaceActions(actions, parseMenuLayer(role.menu), parseMenuLayer(browser));
+  // Off a board host, return the upstream list unchanged. While the role is unknown, apply
+  // the built-in defaults and browser choices with no machine layer.
+  if (role === "off") return actions as ReadonlyArray<ArrangedAction<A>>;
+  const machine = isBoardHost(role) ? parseMenuLayer(role.menu) : {};
+  return arrangeSurfaceActions(actions, machine, parseMenuLayer(browser));
 }
 
 /** Settings > Right panel exists only on a board host; its nav, search and palette entries too. */
