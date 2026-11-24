@@ -106,7 +106,6 @@ import {
   workflowOpeningParentThreadId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
-  getUserQueuedThreadRuns,
   threadCanSteer,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
@@ -400,9 +399,15 @@ import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useSplitRendered } from "../fork/rightPanelSplit/renderedSplit";
 import { unfocusedPaneSurface } from "../fork/rightPanelSplit/splitLayout.logic";
 import { useModeSurfaceActions } from "../fork/dashboard/dashboardSurface";
-import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThreads/subThreadReply";
+import { subThreadDraftId } from "../fork/subThreads/subThreadReply";
 import { useSubThreadCite } from "../fork/subThreads/subThreadCite";
 import { SubThreadViewContext } from "../fork/subThreads/subThreadsState";
+import {
+  QUEUE_EDIT_OPEN_ELSEWHERE,
+  useGuestMessagesInView,
+  useQueuedRunsInView,
+  useQueueShortcutLabels,
+} from "../fork/subThreads/queuedRunsScope";
 import { useThreadShownView } from "../fork/displayMode/threadView";
 import { ChatWorkingIndicator } from "../fork/displayMode/ChatWorkingIndicator";
 import {
@@ -559,12 +564,14 @@ export default function ChatView(props: ChatViewProps) {
   const promptRef = useRef("");
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const queuedRunsInView = useQueuedRunsInView(routeThreadDetailRef, serverProjection);
   const queuedRunEdit = useQueuedRunEdit({
     environmentId,
     routeThreadRef,
     threadDraftTarget: baseComposerDraftTarget,
-    activeThreadId:
-      (serverThread !== null || draftThread !== null) && subThreadDraft === null ? threadId : null,
+    activeThreadId: serverThread !== null || draftThread !== null ? threadId : null,
+    ownsEdit: queuedRunsInView.ownsEdit,
+    recoveryTarget: queuedRunsInView.recoveryTarget,
     serverProjection,
     promptRef,
     composerRef,
@@ -3215,7 +3222,7 @@ export default function ChatView(props: ChatViewProps) {
   const onComposerCompactContextStable = useStableCallback(onCompactContext);
   // Read from the projection the footer renders, so the scroll below sees the new message.
   const pendingGuestMessageIds =
-    serverProjection?.thread.guestShare?.messages.flatMap((message) =>
+    useGuestMessagesInView(serverProjection?.thread.guestShare?.messages)?.flatMap((message) =>
       message.status === "pending" ? [message.id] : [],
     ) ?? [];
   const pendingGuestMessageCount = pendingGuestMessageIds.length;
@@ -3246,28 +3253,25 @@ export default function ChatView(props: ChatViewProps) {
     openExpandedImagePreview(routeThreadKey, preview);
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
+  const queueShortcutLabels = useQueueShortcutLabels(keybindings);
   const queuedRunsControl =
     isServerThread && activeThread ? (
       <>
         <QueuedRunsControl
           ref={queuedRunsControlRef}
-          steerShortcutLabel={shortcutLabelForCommand(keybindings, "thread.steerQueuedMessage", {
-            context: { terminalFocus: false },
-          })}
-          editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
-            context: { composerFocus: true },
-          })}
+          steerShortcutLabel={queueShortcutLabels.steer}
+          editShortcutLabel={queueShortcutLabels.edit}
           environmentId={activeThread.environmentId}
           threadId={activeThread.id}
           optimisticMessages={optimisticUserMessages}
           editingRunId={queuedRunEdit.editingRunId}
           editBlockedReason={
-            subThreadDraft === null
-              ? queuedRunEditBlockedReason(
+            queuedRunEdit.isEditingElsewhere
+              ? QUEUE_EDIT_OPEN_ELSEWHERE
+              : queuedRunEditBlockedReason(
                   { openQuestionCount: pendingUserInputs.length },
                   messages,
                 )
-              : REPLY_BOX_QUEUE_EDIT_BLOCKED
           }
           onEditQueuedRun={queuedRunEdit.beginEdit}
           onCancelEdit={queuedRunEdit.cancelEdit}
@@ -3322,7 +3326,7 @@ export default function ChatView(props: ChatViewProps) {
   const shownThreadSyncPhase = activeEnvironmentUnavailable ? null : delayedThreadSyncPhase;
   const hasThreadNow =
     attentionNow !== null || workNow !== null || goalNow !== null || shownThreadSyncPhase !== null;
-  const queuedRunCount = serverProjection ? getUserQueuedThreadRuns(serverProjection).length : 0;
+  const queuedRunCount = queuedRunsInView.count;
   // The queue control is mounted for every server thread but joins the footer only while it shows
   // something, by its own rule: an optimistic message stops counting once the server has it.
   const hasQueuedTurns =

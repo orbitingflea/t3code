@@ -15,7 +15,9 @@ import { create } from "zustand";
 import { connectionAtomRuntime } from "../../connection/runtime";
 import { useRightPanelStore } from "../../rightPanelStore";
 import { deriveTimelineEntriesFromVisibleTurnItems } from "../../session-logic";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
 import { useQuietThreadVisibleTurnItems } from "../../state/entities";
+import { environmentThreadDetails } from "../../state/threads";
 import { useEnvironmentQuery } from "../../state/query";
 import { timelineSubThreads } from "../displayMode/displayModeTimeline";
 
@@ -96,6 +98,17 @@ export function useSubThreadSummaries(threadRef: ScopedThreadRef | null): SubThr
   const items = useQuietThreadVisibleTurnItems(threadRef);
   return threadRef === null ? NO_SUMMARIES : summariesOf(scopedThreadKey(threadRef), items);
 }
+
+/**
+ * Returns `threadRef`'s sub-thread summaries from loaded history, keyed by first message id.
+ * Reads loaded turn items from the app's atom registry outside React. Shares the per-thread fold
+ * cache with `useSubThreadSummaries`, so it works even when no view has rendered the thread.
+ */
+export const readSubThreadSummaries = (threadRef: ScopedThreadRef): SubThreadSummaries =>
+  summariesOf(
+    scopedThreadKey(threadRef),
+    appAtomRegistry.get(environmentThreadDetails.quietVisibleTurnItemsAtom(threadRef)),
+  );
 
 /**
  * Opens the thread's Replies tab on one sub-thread, or on the list with `first` null. With
