@@ -819,7 +819,7 @@ function useChatMarkdownState(
   const fileLinksKey = `${fileLinkSourcesKey(text, cwd, imageBaseDir, isStreaming ? (streamingBlocks ?? splitMarkdownBlocks(text) ?? [text]) : null, fileLinkPeerPaths, hostFileOrigins)}`;
   const { markdownFileLinkMetaByHref, inlineCodeFileLinkMetaByText, fileLinkParentSuffixByPath } =
     resolveFileLinkSources(fileLinksKey, cwd, imageBaseDir);
-  const fileLinkPrefix = useFileLinkPrefix(fileLinkParentSuffixByPath);
+  const fileLinkPrefix = useFileLinkPrefix(fileLinkParentSuffixByPath, environmentId);
   const resolveThreadPullRequest = (
     href: string,
   ): (ThreadPullRequestKey & { readonly url: string }) | null => {
