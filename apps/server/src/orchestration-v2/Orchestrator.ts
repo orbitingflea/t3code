@@ -3578,22 +3578,31 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
   // completed, and one Stop dropped cancelled. It runs next, in its place among waiting messages.
   // A run completes before its turn-end checkpoint capture. Steers and queued turns advance when
   // the capture commits and repeats the update, after the deliveries ahead of it on the lane.
-  const awaitsCheckpointCapture = (run: OrchestrationV2Run) =>
+  const unsettledCheckpointCapture = (run: OrchestrationV2Run) =>
     run.status !== "completed" || run.checkpointId !== null
-      ? Effect.succeed(false)
-      : effectOutbox.get(`effect:checkpoint.capture:${run.id}`).pipe(
-          Effect.map(
-            Option.exists((effect) => effect.status === "pending" || effect.status === "running"),
-          ),
-          Effect.orElseSucceed(() => false),
-        );
+      ? Effect.succeed(Option.none<string>())
+      : effectOutbox
+          .listByCommandId(CommandId.make(`command:effect:checkpoint.capture:${run.id}`))
+          .pipe(
+            Effect.map((effects) =>
+              Option.fromNullishOr(
+                effects.find((effect) => effect.status === "pending" || effect.status === "running")
+                  ?.id,
+              ),
+            ),
+            Effect.orElseSucceed(() => Option.none<string>()),
+          );
+  const awaitsCheckpointCapture = (run: OrchestrationV2Run) =>
+    Effect.map(unsettledCheckpointCapture(run), Option.isSome);
 
   const awaitLatestRunCapture = Effect.fn("Orchestrator.awaitLatestRunCapture")(
     function* (threadId: ThreadId) {
       const { runs } = yield* projectionStore.getThreadRecords(threadId, ["runs"]);
       const latest = latestStartedRun(runs);
-      if (latest === undefined || !(yield* awaitsCheckpointCapture(latest))) return;
-      yield* effectOutbox.awaitSettled(`effect:checkpoint.capture:${latest.id}`);
+      if (latest === undefined) return;
+      const capture = yield* unsettledCheckpointCapture(latest);
+      if (Option.isNone(capture)) return;
+      yield* effectOutbox.awaitSettled(capture.value);
     },
     (effect) => Effect.ignore(effect),
   );
@@ -13579,7 +13588,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       yield* Ref.update(input.effects, (effects) => [
         ...effects,
         {
-          id: `effect:checkpoint.capture:${run.id}`,
+          id: `effect:checkpoint.capture:${attempt.id}`,
           commandId: CommandId.make(`command:effect:checkpoint.capture:${run.id}`),
           threadId: input.command.threadId,
           request: {
