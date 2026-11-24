@@ -718,7 +718,9 @@ function WorkAreaPane(props: {
     <div
       data-work-area-pane={pane.id}
       className={cn(
-        "absolute flex min-h-0 min-w-0 flex-col",
+        // Its own layout root: the box comes from `pane.box`, not content. On a touch screen a pane
+        // holding the Files tree stays as it was, since the tree's touch drag preview is fixed.
+        "absolute flex min-h-0 min-w-0 flex-col contain-size contain-layout any-pointer-coarse:has-[[data-file-browser-panel]]:contain-none",
         !pane.focused && UNFOCUSED_PANE_CLASS,
       )}
       style={pane.box}
