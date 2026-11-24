@@ -29,8 +29,9 @@ import {
 } from "./workAreaGeometry.logic";
 import { currentWorkAreaView, drawModeView, useStripView } from "./workAreaView";
 
+// The column's box comes from its style, so it can be its own layout root, as the panes are (WorkArea.tsx).
 const PANE_COLUMN_CLASS =
-  "absolute z-[1] @container/chat [&>[data-chat-header]]:[-webkit-app-region:no-drag]! [&>[data-chat-header]]:pl-(--workspace-gutter-start)! [&>[data-chat-header]]:h-9! [&>[data-chat-header]]:min-h-9!";
+  "absolute z-[1] contain-size contain-layout @container/chat [&>[data-chat-header]]:[-webkit-app-region:no-drag]! [&>[data-chat-header]]:pl-(--workspace-gutter-start)! [&>[data-chat-header]]:h-9! [&>[data-chat-header]]:min-h-9!";
 
 type ChatColumnFocus = Pick<
   HTMLAttributes<HTMLElement>,
@@ -52,7 +53,7 @@ const DOCKED: ChatColumnPlacement = {
   inert: false,
 };
 const AWAY: ChatColumnPlacement = {
-  className: "absolute top-0 left-0 h-full w-0",
+  className: "absolute top-0 left-0 h-full w-0 contain-size contain-layout",
   style: undefined,
   away: true,
   inert: true,

@@ -2,10 +2,12 @@ import "~/index.css";
 
 import { createMemoryHistory } from "@tanstack/react-router";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { WS_METHODS } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import * as Effect from "effect/Effect";
 import type * as Context from "effect/Context";
 import { describe, expect, it, vi } from "vite-plus/test";
-import { page, userEvent } from "vite-plus/test/browser";
+import { cdp, page, userEvent } from "vite-plus/test/browser";
 
 import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily, and its first transform takes seconds; see ChatView.browser.test.tsx.
@@ -25,6 +27,9 @@ import {
   useRightPanelStore,
 } from "~/rightPanelStore";
 import {
+  answerRpc,
+  assistantItem,
+  emitThreadEvent,
   ENVIRONMENT_ID,
   type FakeThread,
   installFakeEnvironment,
@@ -33,9 +38,11 @@ import {
   threadWithHistory,
   threadWithQuestion,
   type FakeDriver,
+  userItem,
 } from "../../../test/fakeEnvironment";
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import { projectEnvironment } from "~/state/projects";
 import { environmentThreadDetails } from "~/state/threads";
 import { startPanelLinkDrag } from "./panelLinkDrag";
 import { asPaneId, replyTabId, resolveLayout, secondaryChatTabId } from "./workArea.logic";
@@ -272,6 +279,93 @@ async function dragLinkTo(target: Element, at: (box: DOMRect) => Point, force = 
       steps: 12,
       force,
     },
+  );
+}
+
+interface LayoutEvent {
+  readonly name: string;
+  readonly args?: {
+    readonly beginData?: { readonly frame?: string; readonly partialLayout?: boolean };
+  };
+}
+
+interface FrameTree {
+  readonly frame: { readonly id: string; readonly url: string };
+  readonly childFrames?: readonly FrameTree[];
+}
+
+/** The layouts this test's frame ran during `work`, from a Chromium trace. */
+async function layoutsDuring(work: () => Promise<void>) {
+  const session = cdp();
+  const events: LayoutEvent[] = [];
+  let recording = true;
+  let finish = () => {};
+  const complete = new Promise<void>((done) => (finish = done));
+  session.on("Tracing.dataCollected", (payload) => {
+    // The protocol types trace events as string maps; Layout events carry nested `args`.
+    if (recording) events.push(...(payload.value as unknown as LayoutEvent[]));
+  });
+  session.on("Tracing.tracingComplete", () => {
+    if (recording) finish();
+  });
+  const { frameTree } = (await session.send("Page.getFrameTree")) as { frameTree: FrameTree };
+  const frames = (tree: FrameTree): FrameTree["frame"][] => [
+    tree.frame,
+    ...(tree.childFrames ?? []).flatMap(frames),
+  ];
+  const frame = frames(frameTree).find((each) => each.url === location.href)!.id;
+  await session.send("Tracing.start", {
+    traceConfig: { includedCategories: ["devtools.timeline"] },
+    transferMode: "ReportEvents",
+  });
+  try {
+    await work();
+  } finally {
+    await session.send("Tracing.end");
+    await complete;
+    recording = false;
+  }
+  return events
+    .filter((event) => event.name === "Layout" && event.args?.beginData?.frame === frame)
+    .map((event) => ({ partialLayout: event.args?.beginData?.partialLayout === true }));
+}
+
+/** Emulates a touch screen, so `(any-pointer: coarse)` matches, until disposed. */
+async function touchScreen(): Promise<AsyncDisposable> {
+  const session = cdp();
+  await session.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 1 });
+  expect(matchMedia("(any-pointer: coarse)").matches).toBe(true);
+  return {
+    [Symbol.asyncDispose]: async () => {
+      await session.send("Emulation.setTouchEmulationEnabled", { enabled: false });
+    },
+  };
+}
+
+function treeRow(path: string): Element | null {
+  for (const host of document.querySelectorAll("*")) {
+    const row = host.shadowRoot?.querySelector(`[data-item-path="${path}"]`);
+    if (row) return row;
+  }
+  return null;
+}
+
+function touch(target: EventTarget, type: string, at: Point) {
+  const point = new Touch({
+    identifier: 1,
+    target: target instanceof Element ? target : document.body,
+    clientX: at.x,
+    clientY: at.y,
+  });
+  target.dispatchEvent(
+    new TouchEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      touches: type === "touchend" ? [] : [point],
+      targetTouches: type === "touchend" ? [] : [point],
+      changedTouches: [point],
+    }),
   );
 }
 
@@ -839,5 +933,95 @@ describe("WorkArea", () => {
     await vi.waitFor(() => expect(promptOf()).toContain("@e.ts"));
     expect(open).not.toHaveBeenCalled();
     expect(panes()).toHaveLength(1);
+  });
+
+  it("starts every layout at a contained box while the primary Chat streams beside another pane", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(ownerBesideOther());
+    await using _app = await openOwner();
+    await vi.waitFor(() => expect(isThreadSubscribed(otherThread.id)).toBe(true));
+    const live = runningRun(ownerThread.id, "owner-live", 2, "owner-live-user");
+    await act(async () => {
+      await emitThreadEvent(ownerThread.id, { type: "run.created", payload: live });
+      await emitThreadEvent(ownerThread.id, {
+        type: "turn-item.updated",
+        payload: userItem(ownerThread.id, live.id, "owner-live-user", 2, "Continue"),
+      });
+    });
+
+    // Lay out what setup queued, so the trace holds only the stream's layouts.
+    document.body.getBoundingClientRect();
+    const layouts = await layoutsDuring(async () => {
+      let text = "";
+      for (const step of [0, 1, 2, 3, 4]) {
+        text += `Step ${step}: the answer grows by one paragraph.\n\n`;
+        await act(() =>
+          emitThreadEvent(ownerThread.id, {
+            type: "turn-item.updated",
+            payload: assistantItem(ownerThread.id, live.id, "owner-live-answer", 3, text, true),
+          }),
+        );
+        // Reading the streamed paragraph's box lays it out inside the trace.
+        await vi.waitFor(() => {
+          const paragraph = [...document.querySelectorAll("p")].find((element) =>
+            element.textContent?.startsWith(`Step ${step}:`),
+          );
+          expect(paragraph?.getBoundingClientRect().height).toBeGreaterThan(0);
+        });
+      }
+    });
+
+    // Each layout starts at a contained box (the Chat column), not at the document.
+    expect(layouts.length).toBeGreaterThan(0);
+    expect(layouts.filter((layout) => !layout.partialLayout)).toEqual([]);
+  });
+
+  it("keeps the Files tree's touch drag preview under the finger in a pane off the window's corner", async () => {
+    await using _touch = await touchScreen();
+    using _environment = installFakeEnvironment([ownerThread]);
+    using _entries = answerRpc(WS_METHODS.projectsListEntries, () =>
+      Effect.succeed({ entries: [{ path: "README.md", kind: "file" }], truncated: false }),
+    );
+    setup(twoPanes());
+    await using _app = await openOwner();
+    // An earlier test's listing is still waiting on the fake server, which never answers it.
+    appAtomRegistry.refresh(
+      projectEnvironment.listEntries({
+        environmentId: ENVIRONMENT_ID,
+        input: { cwd: "/workspace/render", directoryPath: "" },
+      }),
+    );
+    await userEvent.click(document.querySelector('[data-right-panel-tab-id="files"]')!);
+    const row = await vi.waitFor(
+      () => {
+        const found = treeRow("README.md");
+        expect(found).not.toBeNull();
+        return found!;
+      },
+      { timeout: 5000 },
+    );
+    const box = row.getBoundingClientRect();
+    expect(box.left).toBeGreaterThan(0);
+    const start = { x: box.left + 20, y: box.top + box.height / 2 };
+    touch(row, "touchstart", start);
+    const preview = await vi.waitFor(
+      () => {
+        const found = (row.getRootNode() as ShadowRoot).querySelector(
+          "[data-file-tree-drag-preview]",
+        );
+        expect(found).not.toBeNull();
+        return found!;
+      },
+      { timeout: 3000 },
+    );
+    const to = { x: start.x + 40, y: start.y + 60 };
+    touch(document, "touchmove", to);
+
+    await vi.waitFor(() => {
+      const shown = preview.getBoundingClientRect();
+      expect(shown.left).toBeCloseTo(to.x - (start.x - box.left), 0);
+      expect(shown.top).toBeCloseTo(to.y - (start.y - box.top), 0);
+    });
+    touch(document, "touchend", to);
   });
 });
