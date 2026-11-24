@@ -29,6 +29,16 @@ export const RIGHT_PANEL_SETTINGS_COPY = {
   letterOf: (label: string) => `${label}: menu letter`,
 };
 
+export const SIDEBAR_LINKS_COPY = {
+  title: "Pull requests and Issues",
+  description:
+    "Show the Pull requests and Issues buttons in the sidebar for this browser only. You can still open both pages from the command palette.",
+  reset: "Reset Pull requests and Issues buttons to default",
+  switchLabel: "Show Pull requests and Issues sidebar buttons",
+  searchTerms:
+    "pull requests pr prs issues sidebar buttons links show hide hidden whiteboard board",
+};
+
 // Keybinding labels for commands that act only on the pages named in them.
 const COMMAND_LABELS: Readonly<Partial<Record<string, string>>> = {
   "rightPanel.toggle": "Right Panel: Toggle (Pull Requests and Issues)",

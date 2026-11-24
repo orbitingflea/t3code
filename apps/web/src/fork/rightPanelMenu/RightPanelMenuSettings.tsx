@@ -27,6 +27,7 @@ import { FORK_SURFACES } from "../dashboard/dashboardSurface";
 import { RIGHT_PANEL_SETTINGS_COPY as COPY } from "../forkCopy";
 import { isBoardHost, useBoardHostRole } from "../whiteboard/role";
 import {
+  hiddenByDefault,
   parseMenuLayer,
   RIGHT_PANEL_MENU_ITEM_IDS,
   type RightPanelMenuItemId,
@@ -78,6 +79,7 @@ function writeChoice(id: RightPanelMenuItemId, choice: RightPanelMenuChoice) {
 function MenuItemSettingsRow(props: {
   readonly item: MenuItemRow;
   readonly machine: RightPanelMenuChoice | undefined;
+  readonly hiddenByDefault: boolean;
   readonly browser: RightPanelMenuChoice;
 }) {
   const { item, browser } = props;
@@ -90,7 +92,7 @@ function MenuItemSettingsRow(props: {
       ? COPY.hidden
       : value === "shown"
         ? COPY.shown
-        : COPY.byDefault(props.machine?.hidden === true ? COPY.hidden : COPY.shown);
+        : COPY.byDefault(props.hiddenByDefault ? COPY.hidden : COPY.shown);
   const letterLabel = (value: string | null) =>
     value === "none"
       ? COPY.noLetter
@@ -201,6 +203,7 @@ export function RightPanelMenuSettingsPanel() {
             key={item.id}
             item={item}
             machine={machine[item.id]}
+            hiddenByDefault={hiddenByDefault(item.id, machine)}
             browser={browser[item.id] ?? {}}
           />
         ))}

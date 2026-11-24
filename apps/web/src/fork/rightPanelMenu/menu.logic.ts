@@ -59,6 +59,21 @@ export type ArrangedAction<A> = { [K in keyof A]: K extends "shortcut" ? string 
 // The action that restores the primary Chat; Settings offers no row to show it again.
 const NEVER_HIDDEN: RightPanelMenuItemId = "chat";
 
+// Menu items hidden by default on a board host unless the machine config or browser shows them.
+const HIDDEN_BY_DEFAULT: ReadonlySet<RightPanelMenuItemId> = new Set([
+  "diff",
+  "pull-request",
+  "pull-requests",
+  "device",
+]);
+
+/**
+ * Returns true if an item is hidden when this browser sets no override. Reads the machine config
+ * first, then falls back to `HIDDEN_BY_DEFAULT`.
+ */
+export const hiddenByDefault = (id: RightPanelMenuItemId, machine: MenuLayer): boolean =>
+  machine[id]?.hidden ?? HIDDEN_BY_DEFAULT.has(id);
+
 const BUILT_IN = 0;
 const MACHINE = 1;
 const BROWSER = 2;
@@ -73,7 +88,7 @@ export function arrangeSurfaceActions<A extends MenuAction>(
   browser: MenuLayer,
 ): Array<ArrangedAction<A>> {
   const shown = actions.flatMap((action, order) => {
-    const hidden = browser[action.id]?.hidden ?? machine[action.id]?.hidden ?? false;
+    const hidden = browser[action.id]?.hidden ?? hiddenByDefault(action.id, machine);
     if (hidden && action.id !== NEVER_HIDDEN) return [];
     const browserKey = browser[action.id]?.key;
     const machineKey = machine[action.id]?.key;

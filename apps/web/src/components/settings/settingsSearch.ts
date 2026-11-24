@@ -12,6 +12,7 @@ import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
 import * as Schema from "effect/Schema";
 import { decodeMsg, msg, useMessages } from "gt-react";
 import { TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "../../appearanceFonts";
+import { BOARD_HOST_SEARCH_ITEMS } from "../../fork/boardHostSearch";
 import { FORK_SETTING_TITLES } from "../../fork/forkCopy";
 import { writeLocalStorageValue } from "../../hooks/useLocalStorage";
 import type { MessageResolver } from "../../i18n/messages";
@@ -78,7 +79,7 @@ export interface SettingsSearchItem {
   readonly reflinkWorktreesOnly?: boolean;
   readonly agentFeedbackOnly?: boolean;
   readonly textGeneratorsOnly?: boolean;
-  readonly rightPanelMenuOnly?: boolean;
+  readonly boardHostOnly?: boolean;
   readonly secondary?: boolean;
   readonly requiresThreadAutoSettlement?: boolean;
 }
@@ -100,8 +101,8 @@ export interface SettingsSearchAvailability {
   readonly hasTextGeneratorsEnvironment?: boolean;
   readonly hasPrimaryEnvironment?: boolean;
   readonly hasSecretProvidersEnvironment?: boolean;
-  /** A whiteboard board host, the only place the right panel's menu settings exist. */
-  readonly hasRightPanelMenu?: boolean;
+  /** True on a whiteboard board host, where board-host-only settings are available. */
+  readonly isBoardHost?: boolean;
 }
 
 export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
@@ -1061,13 +1062,7 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("keyboard shortcuts hotkeys commands bindings json")],
   },
   ...KEYBINDING_SEARCH_ITEMS,
-  {
-    id: "right-panel-menu",
-    title: FORK_SETTING_TITLES.rightPanel,
-    to: "/settings/right-panel",
-    rightPanelMenuOnly: true,
-    searchTerms: ["plus menu launcher surface whiteboard board hide show letter shortcut key"],
-  },
+  ...BOARD_HOST_SEARCH_ITEMS,
   {
     id: "snap-shot-enabled",
     title: msg("SnapShots"),
@@ -1727,7 +1722,7 @@ export function filterAvailableSettingsSearchItems(
       (!item.agentFeedbackOnly || availability.hasAgentFeedbackEnvironment === true) &&
       (!item.textGeneratorsOnly || availability.hasTextGeneratorsEnvironment === true) &&
       (!item.secretProvidersOnly || availability.hasSecretProvidersEnvironment === true) &&
-      (!item.rightPanelMenuOnly || availability.hasRightPanelMenu === true),
+      (!item.boardHostOnly || availability.isBoardHost === true),
   );
 }
 

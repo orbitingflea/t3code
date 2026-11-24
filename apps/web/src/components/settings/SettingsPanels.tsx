@@ -73,6 +73,7 @@ import {
   COMPACT_WHEN_IDLE_LABEL,
   FORK_SETTING_TITLES,
 } from "~/fork/forkCopy";
+import { SidebarPullRequestsAndIssuesSetting } from "~/fork/sidebarLinks/sidebarLinks";
 import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { ThreadTitleInstructionsSettings } from "./ThreadTitleInstructionsSettings";
 import { SnoozePresetsRow } from "./SnoozePresetsSettings";
@@ -980,6 +981,7 @@ export function GeneralSettingsPanel() {
             />
           }
         />
+        <SidebarPullRequestsAndIssuesSetting />
       </SettingsSection>
 
       <SettingsSection id="confirmations" title={gt("Confirmations")}>

@@ -14,7 +14,7 @@ import {
 } from "../../navigationHistory";
 import { primaryServerKeybindingsAtom } from "../../state/server";
 import { cn } from "../../lib/utils";
-import { useIssuesSupported, usePullRequestsSupported } from "../../state/environments";
+import { useSidebarUtilityLinks } from "../../fork/sidebarLinks/sidebarLinks";
 import { T3Wordmark } from "../T3Wordmark";
 import {
   resolveEnvironmentIdentificationPillLabel,
@@ -233,8 +233,7 @@ const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
   const isOnUtilityPage = useLocation({
     select: (location) => isSidebarUtilityPage(location.pathname),
   });
-  const pullRequestsSupported = usePullRequestsSupported();
-  const issuesSupported = useIssuesSupported();
+  const { pullRequests: pullRequestsSupported, issues: issuesSupported } = useSidebarUtilityLinks();
   const closeMobileSidebar = () => {
     if (isMobile) {
       setOpenMobile(false);

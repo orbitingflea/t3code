@@ -4,7 +4,7 @@ import { Button } from "../../components/ui/button";
 import { MenuItem } from "../../components/ui/menu";
 import type { SettingsPath } from "../../components/settings/settingsSearch";
 import { useClientSettings } from "../../hooks/useSettings";
-import { isBoardHost, useBoardHostRole } from "../whiteboard/role";
+import { isBoardHost, useBoardHostRole, useIsBoardHost } from "../whiteboard/role";
 import {
   type ArrangedAction,
   arrangeSurfaceActions,
@@ -14,25 +14,27 @@ import {
 
 const RIGHT_PANEL_SETTINGS_PATH = "/settings/right-panel" satisfies SettingsPath;
 
-/** The "+" menu or launcher items after the machine's and this browser's menu choices. */
+/**
+ * The "+" menu or launcher items after built-in defaults, the machine's choices, and this
+ * browser's choices. Off a board host, this hook returns upstream's list unchanged.
+ */
 export function useArrangedSurfaceActions<A extends MenuAction>(
   actions: ReadonlyArray<A>,
 ): ReadonlyArray<ArrangedAction<A>> {
   const role = useBoardHostRole();
   const browser = useClientSettings((settings) => settings.rightPanelMenuOverrides);
-  // Off a board host the menu is exactly upstream's.
-  if (!isBoardHost(role)) return actions as ReadonlyArray<ArrangedAction<A>>;
-  return arrangeSurfaceActions(actions, parseMenuLayer(role.menu), parseMenuLayer(browser));
+  // Off a board host, return the upstream list unchanged. While the role is unknown, apply
+  // the built-in defaults and browser choices with no machine layer.
+  if (role === "off") return actions as ReadonlyArray<ArrangedAction<A>>;
+  const machine = isBoardHost(role) ? parseMenuLayer(role.menu) : {};
+  return arrangeSurfaceActions(actions, machine, parseMenuLayer(browser));
 }
-
-/** Settings > Right panel exists only on a board host; its nav, search and palette entries too. */
-export const useRightPanelSettingsOffered = (): boolean => isBoardHost(useBoardHostRole());
 
 /** The settings nav with Right panel after Keybindings, on a board host only. */
 export function useForkSettingsNavGroups<
   Group extends { readonly paths: ReadonlyArray<SettingsPath> },
 >(groups: ReadonlyArray<Group>): ReadonlyArray<Group> {
-  const offered = useRightPanelSettingsOffered();
+  const offered = useIsBoardHost();
   if (!offered) return groups;
   return groups.map((group) => ({
     ...group,
