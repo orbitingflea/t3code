@@ -381,14 +381,9 @@ export default function PdfViewer(props: {
       top: pdfRestoredScrollTop(ratios, width, initialView, initialView.width),
       left: initialView.left,
     });
-<<<<<<< origin/main
     restored.current = { top: node.scrollTop, left: node.scrollLeft };
-    setScrollTop(node.scrollTop);
-    saveView(node, false);
-=======
     setScrolled({ top: node.scrollTop, width, pdf });
-    saveView(node);
->>>>>>> upstream/main
+    saveView(node, false);
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- Restore the saved PDF scroll position after the loaded document's page layout commits.
   useLayoutEffect(() => {
@@ -583,9 +578,8 @@ export default function PdfViewer(props: {
         tabIndex={0}
         className="relative min-h-0 min-w-0 w-full flex-1 overflow-auto scrollbar-gutter-stable bg-muted/40"
         onScroll={(event) => {
-<<<<<<< origin/main
           const top = event.currentTarget.scrollTop;
-          setScrollTop(top);
+          setScrolled({ top, width, pdf });
           // The restore's own scroll event lands where the restore put the view.
           const echo = restored.current;
           restored.current = null;
@@ -593,10 +587,6 @@ export default function PdfViewer(props: {
             event.currentTarget,
             echo?.top !== top || echo.left !== event.currentTarget.scrollLeft,
           );
-=======
-          setScrolled({ top: event.currentTarget.scrollTop, width, pdf });
-          saveView(event.currentTarget);
->>>>>>> upstream/main
         }}
         onKeyDown={(event) => {
           if ((event.ctrlKey || event.metaKey) && event.key === "f") {

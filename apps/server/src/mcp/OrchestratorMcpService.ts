@@ -138,11 +138,8 @@ import {
   taskPrompt,
 } from "./delegatedTaskModes.ts";
 import { assertTargetWithinLimits, isLiveCallerShell, threadNotFound } from "./threadAccess.ts";
-<<<<<<< origin/main
 import { fyiRunsByThread, fyiTimelineFields, sendFyi } from "../fork/fyi/FyiMcp.ts";
-=======
 import { WITHHELD, withoutWebhookUrlToken } from "../scheduledTasks/webhookUrlToken.ts";
->>>>>>> upstream/main
 import * as SecretRequests from "../secrets/SecretRequests.ts";
 import * as PeerForwarding from "../peer/PeerForwarding.ts";
 import * as RemoteDelegation from "../peer/RemoteDelegation.ts";

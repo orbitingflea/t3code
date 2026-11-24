@@ -45,6 +45,7 @@ import * as ThreadCommandExecutor from "../../orchestration-v2/ThreadCommandExec
 import * as SqlitePersistence from "../../persistence/Sqlite.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import * as ProjectService from "../../project/ProjectService.ts";
+import * as ProjectSetupScriptRunner from "../../project/ProjectSetupScriptRunner.ts";
 import * as ProviderInstallationGate from "../../provider/ProviderInstallationGate.ts";
 import * as ModelManifest from "../../provider/ModelManifest.ts";
 import * as ProviderInstanceRegistry from "../../provider/ProviderInstanceRegistry.ts";
@@ -55,8 +56,12 @@ import * as VcsDriverRegistry from "../../vcs/VcsDriverRegistry.ts";
 import * as VcsProcess from "../../vcs/VcsProcess.ts";
 import * as FyiDelivery from "./FyiDelivery.ts";
 
-const layerPlatformTest = Layer.merge(
-  Layer.mergeAll(NodeServices.layer, NodeCrypto.layer),
+const layerPlatformTest = Layer.mergeAll(
+  NodeServices.layer,
+  NodeCrypto.layer,
+  Layer.mock(ProjectSetupScriptRunner.ProjectSetupScriptRunner)({
+    runForThread: () => Effect.succeed({ status: "no-script" }),
+  }),
   Layer.mock(SourceControlProviderRegistry.SourceControlProviderRegistry)({
     resolveLink: () => Effect.die("unused title link"),
   }),

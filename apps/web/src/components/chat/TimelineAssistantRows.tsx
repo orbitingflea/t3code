@@ -24,17 +24,9 @@ import { readThreadTurnItems } from "../../state/entities";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
-<<<<<<< origin/main
-import { useAtomValue } from "@effect/atom-react";
-import { AsyncResult, Atom } from "effect/reactivity";
-import { vcsEnvironment } from "../../state/vcs";
 import { SubThreadMetaReply, SubThreadReplyLine } from "../../fork/subThreads/SubThreadReplyLine";
 import { AgentMessageDivider } from "../../fork/displayMode/AgentMessageDivider";
 import { EditedMark } from "../../fork/displayMode/EditedMark";
-
-const NO_VCS_STATUS = Atom.make(AsyncResult.initial());
-=======
->>>>>>> upstream/main
 
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -82,19 +74,8 @@ export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind
             />
           </AssistantCitationSource>
         </div>
-<<<<<<< origin/main
         <EditedMark editedAt={row.message.editedAt} />
-        {ctx.onOpenTurnDiff ? (
-          <AssistantChangedFilesSection
-            turnSummary={row.assistantTurnDiffSummary}
-            routeThreadKey={ctx.routeThreadKey}
-            resolvedTheme={ctx.resolvedTheme}
-            onOpenTurnDiff={ctx.onOpenTurnDiff}
-          />
-        ) : null}
         <SubThreadReplyLine rowId={row.id} fromUser={false} />
-=======
->>>>>>> upstream/main
         {!row.showAssistantMeta && row.projectedItem?.item.status === "interrupted" ? (
           <div className="mt-1.5 flex">
             <AssistantStatusBadge status="interrupted" />

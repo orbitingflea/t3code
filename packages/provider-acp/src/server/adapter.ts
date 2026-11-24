@@ -4956,7 +4956,8 @@ export const makeAcpAdapterV2 = Effect.fn("makeAcpAdapterV2")(function* (
                 }
                 if (recoveredOutput !== undefined) {
                   context.claimedToolResults.set(callInputKey, recoveredOutput);
-                  output = recoveredOutput;
+                  // Fork: an empty record (a Chat-mode send) adds nothing to what the provider reported.
+                  if (Object.keys(recoveredOutput ?? {}).length > 0) output = recoveredOutput;
                 }
               }
             }

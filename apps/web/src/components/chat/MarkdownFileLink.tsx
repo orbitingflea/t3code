@@ -11,8 +11,7 @@ import { memo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { useGT } from "gt-react";
 import { FolderIcon } from "lucide-react";
 
-<<<<<<< origin/main
-import { contextMenuSourceOf } from "../../contextMenuSource";
+import { contextMenuSourceOf, openContextMenuFromKeyboard } from "../../contextMenuSource";
 import {
   hostFileLinkMenuItems,
   leavesFileChipClickToBrowser,
@@ -20,9 +19,6 @@ import {
 } from "../../fork/hostFileLinks";
 import { fileChipPanelLink } from "../../fork/rightPanelSplit/linkSources";
 import { type OpenedSurface, startPanelLinkDrag } from "../../fork/rightPanelSplit/panelLinkDrag";
-=======
-import { contextMenuSourceOf, openContextMenuFromKeyboard } from "../../contextMenuSource";
->>>>>>> upstream/main
 import { readLocalApi } from "../../localApi";
 import { cn } from "../../lib/utils";
 import { shouldOpenMarkdownFileLinkInEditor } from "../../markdown-links";

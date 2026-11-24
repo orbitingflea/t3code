@@ -31,11 +31,8 @@ import type {
   GitActionProgressEvent,
   GitPreparePullRequestThreadInput,
   ModelSelection,
-<<<<<<< origin/main
   ServerSettings as ServerSettingsValue,
-=======
   ServerProvider,
->>>>>>> upstream/main
 } from "@t3tools/contracts";
 
 import {

@@ -256,7 +256,12 @@ export const layerFromServices = Layer.effect(
       ${userTypedSql(sql)}
       AND (run.status IS NULL OR run.status <> 'rolled_back')
       AND NOT (
-        COALESCE(run.status IN ('queued', 'cancelled'), 0)
+        COALESCE(
+          run.status = 'queued' OR (
+            run.status = 'cancelled' AND json_extract(run.payload_json, '$.startedAt') IS NULL
+          ),
+          0
+        )
         AND json_extract(item.payload_json, '$.inputIntent') = 'queued_turn'
       )
     `;

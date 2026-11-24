@@ -45,16 +45,12 @@ import * as ProjectService from "../project/ProjectService.ts";
 import * as ProjectSetupScriptRunner from "../project/ProjectSetupScriptRunner.ts";
 import * as ProviderAuthService from "../provider/ProviderAuthService.ts";
 import * as ServerSettings from "../serverSettings.ts";
-<<<<<<< origin/main
 import * as DisplayModeWrap from "../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as FyiDelivery from "../fork/fyi/FyiDelivery.ts";
-import { makeRestoreMissingWorktree } from "../workspace/restoreMissingWorktree.ts";
-=======
 import {
   makeRestoreMissingWorktree,
   ThreadWorktreeRestore,
 } from "../workspace/restoreMissingWorktree.ts";
->>>>>>> upstream/main
 import type * as TaskFolders from "../workspace/TaskFolders.ts";
 import * as EventSink from "./EventSink.ts";
 import * as ProviderUsageAnalytics from "../telemetry/ProviderUsageAnalytics.ts";

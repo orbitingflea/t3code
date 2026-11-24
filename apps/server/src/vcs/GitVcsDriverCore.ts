@@ -48,17 +48,8 @@ import { gitCommandDuration, gitCommandsTotal, withMetrics } from "../observabil
 import * as GitVcsDriver from "./GitVcsDriver.ts";
 import { removeEmptyDirectory, type RemoveEmptyDirectoryError } from "./removeEmptyDirectory.ts";
 import { VcsAutomaticFetchInterval } from "./VcsAutomaticFetchInterval.ts";
-<<<<<<< origin/main
-import {
-  explicitBareRepositoryEnv,
-  gitConfigEnv,
-  unsetInheritedRepositoryEnv,
-} from "./VcsProcess.ts";
-import { makeWorktreeCheckoutSites } from "../fork/reflinkWorktrees/worktreeCheckoutSites.ts";
-=======
 import { gitConfigEnv, serverGitConfigEnv, unsetInheritedRepositoryEnv } from "./VcsProcess.ts";
-import { makeWorktreeCheckoutCache } from "./worktreeCheckoutCache.ts";
->>>>>>> upstream/main
+import { makeWorktreeCheckoutSites } from "../fork/reflinkWorktrees/worktreeCheckoutSites.ts";
 import { removeLinkedWorktree } from "./worktreeRemoval.ts";
 import { resolveWorktreesDirectory } from "../worktreesDirectory.ts";
 import {

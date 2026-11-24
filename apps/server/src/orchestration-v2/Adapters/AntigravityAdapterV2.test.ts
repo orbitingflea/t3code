@@ -13,17 +13,13 @@ import {
   ThreadId,
 } from "@t3tools/contracts";
 import { resolveSelfInvocation } from "@t3tools/shared/nodeRuntime";
-<<<<<<< origin/main
-import { htmlRenderFromToolItem } from "@t3tools/shared/toolOutput";
-import * as Digest from "effect/crypto/Digest";
-=======
 import {
   compactDynamicToolOutput,
   htmlRenderFromToolItem,
   previewRecordingIdFromToolItem,
   sentMessageFromToolItem,
 } from "@t3tools/shared/toolOutput";
->>>>>>> upstream/main
+import * as Digest from "effect/crypto/Digest";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
@@ -1072,6 +1068,7 @@ describe("AntigravityAdapterV2 html_render pages", () => {
         const unfinishedText = "Still running when turn ended.";
         const adapter = yield* makeAntigravityAdapterV2({
           instanceId,
+          profileDirectory: unusedProfileDirectory,
           selfInvocation: yield* resolveSelfInvocation(),
           makeRuntime: (input) =>
             makeAntigravityAcpRuntime({

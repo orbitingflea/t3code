@@ -28,7 +28,6 @@ import { resolveWorkGroupScrollAnchor } from "@t3tools/client-runtime/work-log/s
 import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import type { FyiCarrierRun } from "@t3tools/client-runtime/fork/fyi-marker";
 import { observeResize } from "~/lib/observeResize";
-import { preserveReadingPosition } from "~/lib/preserveReadingPosition";
 import { useStableCallback } from "~/hooks/useStableCallback";
 
 const NOOP_USE_ARTIFACT_TEMPLATE = () => {};
@@ -1279,7 +1278,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
 
   const canvas = useChatCanvas();
   const registerTimeline = canvas?.registerTimeline;
-<<<<<<< origin/main
   const attachReaderLine = useTimelineReaderLine(readerLineRef, {
     liveFollowEnabled,
     findActive,
@@ -1288,16 +1286,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     listIdentityKey,
     onHoldEnd: handleScroll,
   });
-=======
-  const shouldPreserveReadingPosition = useStableCallback(
-    () =>
-      !liveFollowEnabled &&
-      !anchoredEndSpace &&
-      !findActive &&
-      !citationPositioning &&
-      !restoringThreadPosition,
-  );
->>>>>>> upstream/main
   // Stable so the list attaches once per mount, not on every render.
   const setTimelineList = useStableCallback((list: LegendListRef | null) => {
     listRef.current = list;
@@ -1313,13 +1301,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
         })
       : null;
     viewportRef.current = viewport;
-<<<<<<< origin/main
     const detachReaderLine = viewport ? attachReaderLine(viewport) : undefined;
-=======
-    const stopPreservingReadingPosition = scrollNode
-      ? preserveReadingPosition(scrollNode, shouldPreserveReadingPosition)
-      : undefined;
->>>>>>> upstream/main
     const detachViewport = viewport ? onViewportAttach?.(viewport) : undefined;
     const stopRememberingRelease = viewport?.onFollowReleased(rememberReleasedPosition);
     const stopDisclosureReveal = viewport?.subscribe(() => {
@@ -1349,7 +1331,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     scheduleContentSizeChanged();
     return () => {
       stopListeningToContentSize?.();
-      stopPreservingReadingPosition?.();
       stopRememberingRelease?.();
       stopDisclosureReveal?.();
       if (contentSizeFrame !== null) cancelAnimationFrame(contentSizeFrame);

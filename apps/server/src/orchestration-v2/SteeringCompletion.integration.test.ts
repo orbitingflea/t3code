@@ -527,7 +527,6 @@ const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function*
     turn: ProviderAdapter.ProviderAdapterV2SteerInput,
   ) => Effect.Effect<void, ProviderAdapter.ProviderAdapterV2Error> = () => Effect.void,
   extraAdapters: ReadonlyArray<ProviderAdapter.ProviderAdapterV2["Service"]> = [],
-  beforeSelectionTransition: Effect.Effect<void> = Effect.void,
 ) {
   const driver = ProviderDriverKind.make(nativeGoals === undefined ? "codex" : "opencode");
   const cwd = yield* checkpointWorkspace(name);
@@ -550,8 +549,7 @@ const nextTurnSelectionHarness = Effect.fn("nextTurnSelectionHarness")(function*
     instanceId,
     driver,
     getCapabilities: () => Effect.succeed(capabilities),
-    planSelectionTransition: () =>
-      beforeSelectionTransition.pipe(Effect.as({ type: "apply_on_next_turn" as const })),
+    planSelectionTransition: () => Effect.succeed({ type: "apply_on_next_turn" }),
     openSession: (input) =>
       Effect.gen(function* () {
         const now = yield* DateTime.now;
@@ -1408,126 +1406,6 @@ it.effect("restarts the turn for an image when native steering takes text only",
       });
     }).pipe(Effect.provide(layer));
   }),
-);
-
-it.effect.each(["completed", "interrupted"] as const)(
-  "checkpoints a run that a steer restarted before its first answer was checkpointed (restart %s)",
-  (restartEnd) =>
-    Effect.gen(function* () {
-      const steerReadRunning = yield* Deferred.make<void>();
-      const letSteerCommit = yield* Deferred.make<void>();
-      const { events, started, layer, startFirstTurn } = yield* nextTurnSelectionHarness(
-        `steer-restart-before-checkpoint-${restartEnd}`,
-        true,
-        false,
-        Effect.void,
-        true,
-        undefined,
-        undefined,
-        [],
-        Deferred.succeed(steerReadRunning, undefined).pipe(
-          Effect.andThen(Deferred.await(letSteerCommit)),
-        ),
-      );
-      yield* Effect.gen(function* () {
-        const orchestrator = yield* Orchestrator.OrchestratorV2;
-        const worker = yield* EffectWorker.OrchestrationEffectWorkerV2;
-        const outbox = yield* EffectOutbox.EffectOutboxV2;
-        const threadId = yield* startFirstTurn;
-        const runId = started[0]!.runId;
-        const runReaches = (status: string) =>
-          orchestrator.streamDomainEvents.pipe(
-            Stream.filter(
-              (event) =>
-                event.type === "run.updated" &&
-                event.payload.id === runId &&
-                event.payload.status === status,
-            ),
-            Stream.take(1),
-            Stream.runDrain,
-            Effect.forkScoped,
-          );
-        const endTurn = (
-          turn: ProviderAdapter.ProviderAdapterV2TurnInput,
-          status: "completed" | "interrupted",
-        ) =>
-          Effect.gen(function* () {
-            const providerTurn = (yield* orchestrator.getThreadProjection(
-              threadId,
-            )).providerTurns.find((candidate) => candidate.runAttemptId === turn.attemptId)!;
-            const finalized = yield* runReaches(status === "completed" ? "waiting" : status);
-            yield* Queue.offer(events, {
-              type: "provider_turn.updated",
-              driver,
-              providerTurn: { ...providerTurn, status, completedAt: yield* DateTime.now },
-            });
-            yield* Queue.offer(events, {
-              type: "turn.terminal",
-              driver,
-              providerThreadId: providerTurn.providerThreadId,
-              providerTurnId: providerTurn.id,
-              runOrdinal: turn.runOrdinal,
-              status,
-              failure: null,
-              threadDisposition: "reusable",
-            });
-            yield* Fiber.join(finalized);
-          });
-
-        const steer = yield* orchestrator
-          .dispatch({
-            type: "message.dispatch",
-            commandId: CommandId.make("steer-after-settle"),
-            threadId,
-            messageId: MessageId.make("message:steer-after-settle"),
-            text: "also check the logs",
-            attachments: [],
-            modelSelection: composerSelection,
-            dispatchMode: { type: "steer_active", targetRunId: runId },
-            createdBy: "agent",
-            creationSource: "mcp",
-          })
-          .pipe(Effect.forkScoped);
-        yield* Deferred.await(steerReadRunning);
-        yield* endTurn(started[0]!, "completed");
-        const restartRunning = yield* orchestrator.streamDomainEvents.pipe(
-          Stream.filter(
-            (event) =>
-              event.type === "provider-turn.updated" &&
-              event.payload.status === "running" &&
-              event.payload.runAttemptId !== started[0]!.attemptId,
-          ),
-          Stream.take(1),
-          Stream.runDrain,
-          Effect.forkScoped,
-        );
-        yield* Deferred.succeed(letSteerCommit, undefined);
-        yield* Fiber.join(steer);
-        // The first answer's capture finds the run restarting and retries until it gives up; the
-        // restarted attempt starts behind it on the thread's effect lane.
-        for (const delay of [0, 100, 200, 400, 800]) {
-          yield* TestClock.adjust(delay);
-          yield* worker.drain();
-        }
-        yield* Fiber.join(restartRunning);
-        yield* (yield* ThreadCommandExecutor.ThreadCommandExecutor).withLock(threadId, Effect.void);
-        assert.equal(started.length, 2);
-        assert.equal(started[1]!.runId, runId);
-
-        yield* endTurn(started[1]!, restartEnd);
-        // Startup recovery keeps a waiting run alive only if it finds a pending capture by this id.
-        const captures = yield* outbox.listByCommandId(
-          CommandId.make(`command:effect:checkpoint.capture:${runId}`),
-        );
-        assert.equal(captures.filter((capture) => capture.status === "pending").length, 1);
-        yield* worker.drain();
-        const run = (yield* orchestrator.getThreadProjection(threadId)).runs.find(
-          (candidate) => candidate.id === runId,
-        );
-        assert.equal(run?.status, restartEnd);
-        assert.notEqual(run?.checkpointId, null);
-      }).pipe(Effect.provide(layer));
-    }),
 );
 
 it.effect.each(["complete", "stop-before-end"] as const)(

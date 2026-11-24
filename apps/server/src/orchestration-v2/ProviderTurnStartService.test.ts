@@ -185,11 +185,10 @@ function startWithMissingWorktree(
         Layer.mock(EventSink.EventSinkV2)({ writeIfRunCurrent }),
         IdAllocator.layer,
         Layer.mock(TurnItemPositionStore.TurnItemPositionStoreV2)({}),
-<<<<<<< origin/main
         Layer.succeed(
           FileSystem.FileSystem,
           FileSystem.makeNoop({
-            exists: () => Effect.succeed(false),
+            exists: () => Effect.succeed(worktreeExists),
             realPath: (target: string) =>
               normalize(target) in realPaths
                 ? Effect.succeed(realPaths[normalize(target)])
@@ -203,22 +202,6 @@ function startWithMissingWorktree(
                   ),
           } as never),
         ),
-=======
-        Layer.succeed(FileSystem.FileSystem, {
-          exists: () => Effect.succeed(worktreeExists),
-          realPath: (target: string) =>
-            normalize(target) in realPaths
-              ? Effect.succeed(realPaths[normalize(target)])
-              : Effect.fail(
-                  PlatformError.systemError({
-                    _tag: "NotFound",
-                    module: "FileSystem",
-                    method: "realPath",
-                    pathOrDescriptor: target,
-                  }),
-                ),
-        } as never),
->>>>>>> upstream/main
         layerWorktreeLocation(),
         layerNoTaskFolders,
         Layer.mock(GitWorkflow.GitWorkflowService)({

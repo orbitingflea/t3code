@@ -883,7 +883,7 @@ export const layer: Layer.Layer<
             input.terminal.status === "cancelled"
               ? [
                   {
-                    id: `effect:checkpoint.capture:${input.attempt.id}`,
+                    id: `effect:checkpoint.capture:${input.run.id}`,
                     commandId: checkpointCaptureCommandId,
                     threadId: input.run.threadId,
                     request: {

@@ -1266,7 +1266,8 @@ const withToolResultCapture = Effect.fn("McpHttpServer.withToolResultCapture")(f
               }
               const output =
                 exit._tag === "Success"
-                  ? compactT3McpToolOutput(toolName, exit.value)
+                  ? (compactT3McpToolOutput(toolName, exit.value) ??
+                    SendToUser.capturedSuccessFallback(toolName))
                   : { isError: true };
               return output === undefined
                 ? Effect.void
@@ -1417,15 +1418,11 @@ export const layerOrchestratorToolkit = toolkitRegistration(
 export const layerThreadToolkit = toolkitRegistration(ThreadToolkit, ThreadHandlers.layer);
 const layerWorkflowToolkit = toolkitRegistration(WorkflowToolkit, WorkflowHandlers.layer);
 
-<<<<<<< origin/main
 // The fork's send_to_user replaces upstream's: display modes read its calls by name and `text`.
-const layerMessageToolkit = toolkitRegistration(
+export const layerMessageToolkit = toolkitRegistration(
   SendToUser.SendToUserToolkit,
   SendToUser.layerHandlers,
 );
-=======
-export const layerMessageToolkit = toolkitRegistration(MessageToolkit, MessageHandlers.layer);
->>>>>>> upstream/main
 
 const layerWorktreeToolkitRegistration = toolkitRegistration(
   WorktreeToolkit,

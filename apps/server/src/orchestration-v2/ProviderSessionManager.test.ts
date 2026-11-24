@@ -615,13 +615,8 @@ const makeProviderAdapter = Effect.fnUntraced(function* (
               resumeCount: current.resumeCount + 1,
             })).pipe(Effect.as(threadInput.providerThread)),
           startTurn: () => options.startTurn ?? Effect.void,
-<<<<<<< origin/main
-          compactThread: () => Effect.void,
-          resumeTurn: () => Effect.void,
-=======
           resumeTurn: () => options.startTurn ?? Effect.void,
           compactThread: () => options.startTurn ?? Effect.void,
->>>>>>> upstream/main
           steerTurn: () => Effect.void,
           interruptTurn: () =>
             Ref.update(state, (current) => ({

@@ -658,6 +658,14 @@ describe("MessagesTimeline messages", () => {
     viewport.dispatchEvent(new Event("scroll"));
     const before = target.getBoundingClientRect().top - viewport.getBoundingClientRect().top;
     expect(Math.abs(before - 24)).toBeLessThan(2);
+    // The fork's reader line holds the line only once the scroll has rested for 100 ms.
+    let rested = 0;
+    let lastTop = Number.NaN;
+    await vi.waitFor(() => {
+      rested = viewport.scrollTop === lastTop ? rested + 1 : 0;
+      lastTop = viewport.scrollTop;
+      expect(rested).toBeGreaterThanOrEqual(3);
+    });
     for (const width of [500, 900]) {
       screen.container.style.width = `${width}px`;
       await vi.waitFor(() => {

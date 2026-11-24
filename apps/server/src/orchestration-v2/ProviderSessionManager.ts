@@ -2553,7 +2553,7 @@ export const layerWithOptions = (
           ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
         >,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
-        const { providerSessionId, compactThread, resumeTurn } = runtime;
+        const providerSessionId = runtime.providerSessionId;
         const subscribeEvents = makeEventSubscription(eventSubscribers);
         const turnMetrics = (operation: string, model?: string) =>
           withMetrics({
@@ -2565,11 +2565,6 @@ export const layerWithOptions = (
               modelFamily: normalizeModelMetricLabel(model),
             },
           });
-<<<<<<< origin/main
-        const startBusyTurn = (
-          input: ProviderAdapter.ProviderAdapterV2TurnInput,
-          start: Effect.Effect<void, ProviderAdapter.ProviderAdapterV2Error>,
-=======
         // A start, continuation or compaction keeps the session busy until its turn.terminal.
         const busyTurn = <E>(
           input: Pick<
@@ -2577,7 +2572,6 @@ export const layerWithOptions = (
             "threadId" | "providerThread" | "runOrdinal" | "runId"
           >,
           run: () => Effect.Effect<void, E>,
->>>>>>> upstream/main
         ) =>
           observeActivity(
             providerSessionId,
@@ -2624,11 +2618,7 @@ export const layerWithOptions = (
                         ),
                   ),
                 ),
-<<<<<<< origin/main
-                () => start,
-=======
                 run,
->>>>>>> upstream/main
                 (_, exit) =>
                   Exit.isFailure(exit)
                     ? observeActivity(
@@ -2780,30 +2770,12 @@ export const layerWithOptions = (
               Effect.map(({ loaded }) => loaded),
             ),
           startTurn: (input) =>
-<<<<<<< origin/main
-            startBusyTurn(
-              input,
-=======
             busyTurn(input, () =>
->>>>>>> upstream/main
               agentFeedbackMode.pipe(
                 Effect.flatMap((agentFeedback) => runtime.startTurn({ ...input, agentFeedback })),
                 turnMetrics("send", input.modelSelection.model),
               ),
             ),
-<<<<<<< origin/main
-          ...(compactThread === undefined
-            ? {}
-            : {
-                compactThread: (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
-                  startBusyTurn(input, compactThread(input)),
-              }),
-          ...(resumeTurn === undefined
-            ? {}
-            : {
-                resumeTurn: (input: ProviderAdapter.ProviderAdapterV2ResumeTurnInput) =>
-                  startBusyTurn(ProviderAdapter.resumeTurnInput(input), resumeTurn(input)),
-=======
           ...(runtime.resumeTurn === undefined
             ? {}
             : {
@@ -2823,7 +2795,6 @@ export const layerWithOptions = (
                       turnMetrics("compact", input.modelSelection.model),
                     ),
                   ),
->>>>>>> upstream/main
               }),
           steerTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
