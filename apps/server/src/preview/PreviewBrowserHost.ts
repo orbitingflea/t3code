@@ -10,6 +10,8 @@ import { FULL_CHROME_DEBIAN_PACKAGES, profileNeedsWrite } from "../fork/previewC
 export const SETUP_SUBCOMMAND = "browser setup";
 
 export const NO_SANDBOX_SIGNATURE = "No usable sandbox";
+/** What chrome-headless-shell prints itself when started sandboxed as root. */
+const ROOT_SANDBOX_SIGNATURE = "Running as root without --no-sandbox";
 
 export const sandboxDisabled = (env: Readonly<Record<string, string | undefined>>) =>
   env.T3CODE_SERVER_BROWSER_SANDBOX === "0";
@@ -95,6 +97,7 @@ export const diagnoseLaunchFailure = Effect.fn("PreviewBrowserHost.diagnoseLaunc
     readonly setupCommand: string;
   }) {
     const { setupCommand } = input;
+    if (input.output.includes(ROOT_SANDBOX_SIGNATURE)) return new PreviewBrowserRootError();
     if (input.output.includes(NO_SANDBOX_SIGNATURE)) {
       // Playwright reports Chrome's refusal to sandbox as root as a sandbox failure too.
       return (yield* HostProcess.UserId) === 0
