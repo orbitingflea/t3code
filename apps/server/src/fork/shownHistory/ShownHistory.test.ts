@@ -92,6 +92,7 @@ const LARGE = ThreadId.make("thread:shown:large");
 const REWRITES = ThreadId.make("thread:shown:rewrites");
 const HUGE = ThreadId.make("thread:shown:huge");
 const SPLIT = ThreadId.make("thread:shown:split");
+const CANCELLED = ThreadId.make("thread:shown:cancelled");
 
 const runIdOf = (threadId: ThreadId, run: number) => RunId.make(`run:${threadId}:${run}`);
 const nodeIdOf = (threadId: ThreadId, run: number) => NodeId.make(`node:${threadId}:${run}`);
@@ -145,7 +146,8 @@ function threadCreated(
 function runEvent(
   threadId: ThreadId,
   run: number,
-  status: "completed" | "failed" | "rolled_back" = "completed",
+  status: "completed" | "failed" | "rolled_back" | "cancelled" = "completed",
+  started = true,
 ): OrchestrationV2DomainEvent {
   const runId = runIdOf(threadId, run);
   return {
@@ -168,7 +170,7 @@ function runEvent(
       activeAttemptId: null,
       status,
       requestedAt: at,
-      startedAt: at,
+      startedAt: started ? at : null,
       completedAt: at,
       checkpointId: null,
       contextHandoffId: null,
@@ -664,6 +666,23 @@ const CHILDREN = [
   ["a child whose shown rows end on a batch boundary", CHILD_EDGE, 16, 8, PARENT],
 ] as const;
 
+const queuedMessage = (threadId: ThreadId, run: number, text: string): OrchestrationV2TurnItem => ({
+  ...base(threadId, run, 1),
+  ...TYPED,
+  type: "user_message",
+  messageId: messageIdOf(threadId, run, 1),
+  inputIntent: "queued_turn",
+  text,
+  attachments: [],
+});
+/** Run 2 started and a restart then cancelled it; run 3 was cancelled before it started. */
+const cancelledThread = () => [
+  userMessage(CANCELLED, 1, 1, "Fix the build."),
+  send(CANCELLED, 1, 2, "On it."),
+  queuedMessage(CANCELLED, 2, "Also check the logs."),
+  queuedMessage(CANCELLED, 3, "Never mind this."),
+];
+
 const runsOf = (items: ReadonlyArray<OrchestrationV2TurnItem>) => [
   ...new Set(items.map((item) => Number(String(item.runId).split(":").at(-1)))),
 ];
@@ -694,6 +713,7 @@ const seed = Effect.gen(function* () {
     [REWRITES, rewritesThread(), threadCreated(REWRITES)],
     [HUGE, hugeThread(), threadCreated(HUGE)],
     [SPLIT, splitThread(), threadCreated(SPLIT)],
+    [CANCELLED, cancelledThread(), threadCreated(CANCELLED)],
   ];
   for (const [threadId, items, created] of threads) {
     yield* projections.apply(created);
@@ -702,6 +722,8 @@ const seed = Effect.gen(function* () {
   }
   yield* projections.apply(runEvent(PARENT, ROLLED_BACK_RUN, "rolled_back"));
   yield* projections.apply(runEvent(GUARD, 3, "failed"));
+  yield* projections.apply(runEvent(CANCELLED, 2, "cancelled"));
+  yield* projections.apply(runEvent(CANCELLED, 3, "cancelled", false));
   for (const run of range(1, 3)) yield* projections.apply(runEvent(QUIET, run, "failed"));
   yield* projections.apply({
     id: EventId.make("event:shown:question"),
@@ -1224,6 +1246,22 @@ it.layer(TestLayer)("shown-only history", (it) => {
       );
       assert.notProperty(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")), "fv");
       assert.isTrue(page.items.some((row) => !isShownItem(row.item)));
+    }),
+  );
+  it.effect("shows a queued message whose cancelled run had started, as Normal does", () =>
+    Effect.gen(function* () {
+      const normal = visibleIds(
+        boundedSnapshotProjection(
+          yield* firstSnapshot({ threadId: CANCELLED, acceptBoundedSnapshot: true }),
+        ),
+      );
+      const shown = visibleIds(boundedSnapshotProjection(yield* shownSnapshot(CANCELLED)));
+      const delivered = String(itemIdOf(CANCELLED, 2, 1));
+      const held = String(itemIdOf(CANCELLED, 3, 1));
+      assert.include(normal, delivered);
+      assert.notInclude(normal, held);
+      assert.include(shown, delivered);
+      assert.notInclude(shown, held);
     }),
   );
 });

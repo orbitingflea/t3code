@@ -175,7 +175,8 @@ const runCreated = (
     activeAttemptId: threadId === sourceId ? attemptId : null,
     status,
     requestedAt: now,
-    startedAt: now,
+    // A cancelled run here is a queued turn that never started.
+    startedAt: status === "cancelled" ? null : now,
     completedAt: status === "completed" ? now : null,
     checkpointId: null,
     contextHandoffId: null,

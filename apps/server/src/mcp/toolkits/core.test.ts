@@ -57,6 +57,7 @@ import * as SecretRequests from "../../secrets/SecretRequests.ts";
 import * as RemoteDelegation from "../../peer/RemoteDelegation.ts";
 import * as ScheduledTaskService from "../../scheduledTasks/ScheduledTaskService.ts";
 import * as ServerSettings from "../../serverSettings.ts";
+import { DisplayModeWrap } from "../../fork/displayModeWrap/DisplayModeWrap.ts";
 import * as McpHttpServer from "../McpHttpServer.ts";
 import * as McpInvocationContext from "../McpInvocationContext.ts";
 import * as McpToolAccessTestkit from "../McpToolAccess.testkit.ts";
@@ -410,6 +411,52 @@ it.effect("returns an HTML render reference that Codex and Claude tool rows both
                 interactionMode: "default",
               } as OrchestrationV2ThreadShell),
           }),
+        ),
+      ),
+    ),
+  ),
+);
+
+it.effect("captures send_to_user results for providers that drop MCP outputs", () =>
+  Effect.gen(function* () {
+    const server = yield* McpServer.McpServer;
+    const mcpSessions = yield* McpProviderSessions.McpProviderSessions;
+    const draft = "### Status\n\nAll checks passed.";
+    const result = yield* server
+      .callTool({ name: "send_to_user", arguments: { text: draft } })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+      );
+    expect(result.isError).not.toBe(true);
+    expect(yield* mcpSessions.takeToolResult(threadId, "send_to_user", { text: draft })).toEqual({
+      sentMessage: draft,
+    });
+    expect(yield* mcpSessions.takeToolResult(threadId, "send_to_user", { text: draft })).toBe(
+      undefined,
+    );
+
+    const invalid = yield* server
+      .callTool({ name: "send_to_user", arguments: { text: "" } })
+      .pipe(
+        Effect.provideService(McpInvocationContext.McpInvocationContext, scope),
+        Effect.provideService(McpSchema.McpServerClient, client),
+        Effect.flip,
+      );
+    expect(invalid).toMatchObject({ _tag: "InvalidParams" });
+    expect(yield* mcpSessions.takeToolResult(threadId, "send_to_user", { text: "" })).toEqual({
+      isError: true,
+    });
+  }).pipe(
+    Effect.provide(
+      McpHttpServer.layerMessageToolkit.pipe(
+        Layer.provideMerge(McpHttpServer.layerInProcessMcpServer),
+        Layer.provideMerge(McpProviderSessions.layer),
+        Layer.provide(McpToolAccessTestkit.liveThreadsLayer),
+        // The fork's send_to_user reads the thread's display mode.
+        Layer.provide(ServerSettings.layerTest()),
+        Layer.provide(
+          Layer.mock(DisplayModeWrap)({ forgetNotesAfterCompaction: () => (ingest) => ingest }),
         ),
       ),
     ),

@@ -102,7 +102,6 @@ describe("whileIdle compaction in the timeline", () => {
         turnDiffSummaries={[]}
         runs={[]}
         routeThreadKey="environment-local:thread-while-idle"
-        onOpenTurnDiff={() => {}}
         onOpenThread={() => {}}
         onForkFromRun={async () => {}}
         supportsConversationRollback={false}
