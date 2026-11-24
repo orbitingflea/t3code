@@ -3001,7 +3001,7 @@ export default function ChatView(props: ChatViewProps) {
                   )
                 ? gt("Available once the thread's worktree is set up.")
                 : null;
-  const openSideChatStable = useStableCallback(() => void sideChat.open());
+  const openSideChatStable = useStableCallback(() => sideChat.open());
   const openSurfaceInMainView = useOpenSurfaceInMainView(activeThreadRef);
   const sendSideChatStable = useStableCallback(sideChat.open);
   const { onConfirmRevertStable, onForkFromRunStable, onRevertTimelineTurnStable } =

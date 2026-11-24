@@ -29,6 +29,8 @@ import {
 import { writeTextToClipboard } from "~/hooks/useCopyToClipboard";
 import { findProjectForChangeRequest } from "@t3tools/client-runtime/change-request-links";
 import { pullRequestLinkPanelTarget, useOpenPrLink } from "~/lib/openPullRequestLink";
+import { usePullRequestRowPanelLink } from "~/fork/workArea/chatAnchorLink";
+import { startPanelLinkDrag } from "~/fork/workArea/panelLinkDrag";
 import { useClientSettings } from "~/hooks/useSettings";
 import { usePrimaryEnvironmentId } from "~/state/environments";
 import { usePullRequestIntentPrefetch } from "./usePullRequestIntentPrefetch";
@@ -116,6 +118,7 @@ function LinkRowImpl({
   const gt = useGT();
   const resolve = useMessages();
   const openPrLink = useOpenPrLink(threadRef);
+  const rowPanelLink = usePullRequestRowPanelLink(threadRef);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const menuAnchor = menuPosition
@@ -197,6 +200,7 @@ function LinkRowImpl({
                   }),
                 )
         }
+        onDragStartCapture={(event) => startPanelLinkDrag(event, rowPanelLink(link.url))}
         className="flex min-w-0 flex-1"
       >
         <PullRequestRowLines

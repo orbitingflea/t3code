@@ -1,4 +1,8 @@
-import { parseRightPanelMenuChoice, type RightPanelMenuChoice } from "@t3tools/contracts";
+import {
+  type DeviceServiceState,
+  parseRightPanelMenuChoice,
+  type RightPanelMenuChoice,
+} from "@t3tools/contracts";
 
 /** The "+" menu's and launcher's items, in order. Choices are stored by id: never rename one. */
 export const RIGHT_PANEL_MENU_ITEM_IDS = [
@@ -116,3 +120,8 @@ export function arrangeSurfaceActions<A extends MenuAction>(
     (item) => ({ ...item.action, shortcut: letters.get(item) ?? "" }) as ArrangedAction<A>,
   );
 }
+
+/** Returns true when `state` has not loaded (`null`) or Device opens setup instead of a tab. */
+export const deviceOpensSetup = (
+  state: Pick<DeviceServiceState, "onboardingCompleted" | "hostStatus"> | null,
+): boolean => state === null || !state.onboardingCompleted || state.hostStatus === "disabled";

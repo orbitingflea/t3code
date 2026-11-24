@@ -1,13 +1,20 @@
+import type { EnvironmentId } from "@t3tools/contracts";
+import { AsyncResult } from "effect/reactivity";
 import { Link } from "@tanstack/react-router";
 
 import { Button } from "../../components/ui/button";
 import { MenuItem } from "../../components/ui/menu";
 import type { SettingsPath } from "../../components/settings/settingsSearch";
 import { useClientSettings } from "../../hooks/useSettings";
+import { appAtomRegistry } from "../../rpc/atomRegistry";
+import { deviceEnvironment } from "../../state/device";
 import { isBoardHost, useBoardHostRole, useIsBoardHost } from "../whiteboard/role";
+import { surfaceActionPanelLink } from "../workArea/linkSources";
+import { panelDragProps, usePanelLinkOwner } from "../workArea/panelLinkDrag";
 import {
   type ArrangedAction,
   arrangeSurfaceActions,
+  deviceOpensSetup,
   type MenuAction,
   parseMenuLayer,
 } from "./menu.logic";
@@ -29,6 +36,45 @@ export function useArrangedSurfaceActions<A extends MenuAction>(
   const machine = isBoardHost(role) ? parseMenuLayer(role.menu) : {};
   return arrangeSurfaceActions(actions, machine, parseMenuLayer(browser));
 }
+
+/**
+ * Returns a helper that builds drag props for a "+" menu or launcher item. The helper returns an
+ * empty object outside a work area or when the item is unavailable. It checks Device at drag start
+ * and again at the drop. If Device needs setup, the drag does not start and the drop opens
+ * nothing. `onDragEnd` runs when the drag ends.
+ */
+export function useSurfaceActionDrag(environmentId: EnvironmentId | null) {
+  const owner = usePanelLinkOwner();
+  return (
+    action: Parameters<typeof surfaceActionPanelLink>[1],
+    onDragEnd?: () => void,
+  ): Partial<ReturnType<typeof panelDragProps>> => {
+    if (surfaceActionPanelLink(owner, action) === null) return {};
+    const opensTab = () =>
+      action.id !== "device" || !deviceOpensSetup(readDeviceState(environmentId));
+    // Run by the drag itself: a drop can unmount the item, as placing the Chat removes its item.
+    // Device is checked then too, against the state its click reads, so no pane subscribes to it,
+    // and again at the drop, since setup can become needed while the drag runs.
+    return panelDragProps(
+      () =>
+        surfaceActionPanelLink(
+          owner,
+          { ...action, onClick: () => (opensTab() ? action.onClick() : undefined) },
+          opensTab(),
+        ),
+      onDragEnd,
+    );
+  };
+}
+
+// The Device state the click's `useDeviceState` holds, or null before it loads.
+function readDeviceState(environmentId: EnvironmentId | null) {
+  if (environmentId === null) return null;
+  const query = appAtomRegistry.get(deviceEnvironment.state({ environmentId, input: {} }));
+  return AsyncResult.getOrElse(query, () => null);
+}
+
+export type SurfaceActionDrag = ReturnType<typeof useSurfaceActionDrag>;
 
 /** The settings nav with Right panel after Keybindings, on a board host only. */
 export function useForkSettingsNavGroups<

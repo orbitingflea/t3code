@@ -6,7 +6,7 @@ import type { RightPanelSurface, ThreadRightPanelState } from "~/rightPanelStore
 
 import { focusedTab, resolveLayout, type WorkAreaLayout } from "./workArea.logic";
 import { isStripView, NO_VIEW, shownSurfaces, type WorkAreaView } from "./workAreaGeometry.logic";
-import type { OpenFrom } from "./workAreaPlacement.logic";
+import type { OpenFrom, Placement } from "./workAreaPlacement.logic";
 
 // The mounted work area publishes the window facts store writes need for placement.
 let view: WorkAreaView = NO_VIEW;
@@ -32,6 +32,12 @@ let openOrigin: RecordOrigin = null;
 /** The tab the current open started in, for a write to the record that open writes. */
 export const currentOpenOrigin = (threadKey: string): OpenFrom | null =>
   openOrigin?.key === threadKey ? openOrigin.from : null;
+
+/** Returns the live drop `Placement` for the current open in `record`, or `null` if none applies. */
+export const currentDropAt = (record: ScopedThreadRef): Placement | null => {
+  const drop = currentOpenOrigin(scopedThreadKey(record))?.drop;
+  return drop?.live() ? drop.at : null;
+};
 
 // A side chat pane has no panel of its own, so its panel actions open in its parent's panel.
 // Each live view of a guest holds one entry; the latest one routes, unless an open names its own.

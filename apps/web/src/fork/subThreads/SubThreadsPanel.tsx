@@ -17,11 +17,14 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
 import { WORK_AREA_COPY } from "../forkCopy";
 import {
+  type ChatFileOpener,
   chatFileTarget,
   hostShownChat,
   type OpenOrigin,
   OpenOriginContext,
 } from "../workArea/chatFileOpener";
+import { replyPanelLink } from "../workArea/linkSources";
+import { panelDragProps } from "../workArea/panelLinkDrag";
 import { ReplyTabContext } from "../workArea/tabStrip";
 import { useThreadGone } from "../workArea/useThreadGone";
 import { type ReplyEntry, surfaceTabId } from "../workArea/workArea.logic";
@@ -75,7 +78,7 @@ function RepliesList(props: { readonly threadRef: ScopedThreadRef }) {
       threadRef={props.threadRef}
       summaries={summaries}
       states={states}
-      onOpen={(first) => chatFileTarget(LIST_ORIGIN, props.threadRef).openSubThread(first)}
+      opener={() => chatFileTarget(LIST_ORIGIN, props.threadRef)}
     />
   );
 }
@@ -191,7 +194,7 @@ function SubThreadList(props: {
   readonly threadRef: ScopedThreadRef;
   readonly summaries: ReadonlyMap<string, SubThreadSummary>;
   readonly states: ReadonlyMap<string, ThreadSubThread>;
-  readonly onOpen: (first: string) => void;
+  readonly opener: ChatFileOpener;
 }) {
   const [unreadOnly, setUnreadOnly] = useState(false);
   const loaded = useQuietThreadProjection(props.threadRef) !== null;
@@ -243,7 +246,8 @@ function SubThreadList(props: {
             <button
               key={summary.first}
               type="button"
-              onClick={() => props.onOpen(summary.first)}
+              onClick={() => props.opener().openSubThread(summary.first)}
+              {...panelDragProps(() => replyPanelLink(props.opener, summary.first))}
               className="flex w-full flex-col gap-0.5 border-border border-b px-3 py-2 text-left outline-none hover:bg-accent/50 focus-visible:bg-accent/50"
             >
               <span className="flex w-full items-baseline gap-1.5">

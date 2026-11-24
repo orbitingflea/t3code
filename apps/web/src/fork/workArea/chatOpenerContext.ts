@@ -75,11 +75,18 @@ export function useSideThreadEmbedding(
 export const placeableInWorkArea = (owner: ScopedThreadRef, thread: ScopedThreadRef): boolean =>
   opensAsChatTab(owner, placeOf(owner), thread, placeOf(thread));
 
-/** Returns true when `target` opens as a work-area Chat tab; false means navigate instead. */
-export function openThreadTab(opener: ChatFileOpener | null, target: ScopedThreadRef): boolean {
-  const chat = opener?.();
-  return chat !== undefined && placeableInWorkArea(chat.panel(), target) && chat.openThread(target);
+/** Returns the panel record where `target` opens as a Chat tab, or `null` if it navigates. */
+export function threadTabPanel(
+  opener: ChatFileOpener | null,
+  target: ScopedThreadRef,
+): ScopedThreadRef | null {
+  const panel = opener?.().panel() ?? null;
+  return panel !== null && placeableInWorkArea(panel, target) ? panel : null;
 }
+
+/** Opens `target` as a work-area Chat tab. Returns false when the link must navigate instead. */
+export const openThreadTab = (opener: ChatFileOpener | null, target: ScopedThreadRef): boolean =>
+  opener !== null && threadTabPanel(opener, target) !== null && opener().openThread(target);
 
 /** Opens `target` as a Chat tab on a plain primary click; returns true if it handled the click. */
 export function openThreadTabOnClick(

@@ -36,7 +36,9 @@ import {
 } from "~/fork/dashboard/dashboardSurface";
 import {
   AllMenuItemsHidden,
+  type SurfaceActionDrag,
   useArrangedSurfaceActions,
+  useSurfaceActionDrag,
 } from "~/fork/rightPanelMenu/rightPanelMenu";
 import {
   displayTitle,
@@ -169,7 +171,11 @@ export interface RightPanelTabsProps<Entry extends WorkAreaEntry = RightPanelSur
   onMoveSurface?: (surfaceId: string, toIndex: number) => void;
   onCopyFilePath: (relativePath: string) => void;
   onDuplicateBrowser?: (surface: Entry) => void;
-  onAddBrowser: () => void;
+  /**
+   * Opens a browser tab. A returned promise lets a drop wait for the open, so a user action before
+   * it settles wins over the drop's place.
+   */
+  onAddBrowser: () => void | Promise<unknown>;
   /** Keep separate from the DOM click handler so a MouseEvent cannot become a profile id. */
   onAddBrowserInProfile: (profileId: string) => void;
   onAddTerminal: () => void;
@@ -179,7 +185,7 @@ export interface RightPanelTabsProps<Entry extends WorkAreaEntry = RightPanelSur
   onAddPullRequests: () => void;
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
-  onAddSideChat?: (() => void) | undefined;
+  onAddSideChat?: (() => void | Promise<unknown>) | undefined;
   /** Items that open the tabs of the thread's display mode and Dashboard switch, such as Replies. */
   modeSurfaceActions?: ReadonlyArray<ModeSurfaceAction> | undefined;
   browserAvailable: boolean;
@@ -339,10 +345,12 @@ function SurfaceMenuItem(props: {
   disabledReason?: string;
   shortcut: string;
   onClick: () => void;
+  drag: ReturnType<SurfaceActionDrag>;
   children: ReactNode;
 }) {
   const item = (
     <MenuItem
+      {...props.drag}
       className={!props.available ? "data-disabled:pointer-events-auto" : undefined}
       onClick={props.onClick}
       disabled={!props.available}
@@ -357,7 +365,7 @@ function SurfaceMenuItem(props: {
 }
 
 function RightPanelEmptyState(props: {
-  onAddBrowser: () => void;
+  onAddBrowser: () => void | Promise<unknown>;
   onAddBrowserInProfile: (profileId: string) => void;
   browserProfiles: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   onAddTerminal: () => void;
@@ -367,8 +375,9 @@ function RightPanelEmptyState(props: {
   onAddPullRequests: () => void;
   onAddDevice: () => void;
   /** Absent where side chats are not offered. */
-  onAddSideChat?: (() => void) | undefined;
+  onAddSideChat?: (() => void | Promise<unknown>) | undefined;
   modeSurfaceActions?: ReadonlyArray<ModeSurfaceAction> | undefined;
+  actionDrag: SurfaceActionDrag;
   browserAvailable: boolean;
   terminalAvailable: boolean;
   diffAvailable: boolean;
@@ -560,6 +569,7 @@ function RightPanelEmptyState(props: {
                 }
               >
                 <button
+                  {...props.actionDrag(action)}
                   type="button"
                   onClick={action.onClick}
                   className={cn(
@@ -1200,6 +1210,8 @@ export function RightPanelTabs<Entry extends WorkAreaEntry>(props: RightPanelTab
   const addSurfaceTriggerRef = useRef<HTMLButtonElement>(null);
   const [renamingDevice, setRenamingDevice] = useState<string | null>(null);
   const [addSurfaceMenuOpen, setAddSurfaceMenuOpen] = useState(false);
+  const actionDrag = useSurfaceActionDrag(props.environmentId);
+  const closeAddSurfaceMenu = () => setAddSurfaceMenuOpen(false);
   const [tabScrollState, setTabScrollState] = useState({
     hasOverflow: false,
     canScrollLeft: false,
@@ -1664,6 +1676,7 @@ export function RightPanelTabs<Entry extends WorkAreaEntry>(props: RightPanelTab
                       return (
                         <MenuSub key={action.label}>
                           <MenuSubTrigger
+                            {...actionDrag(action, closeAddSurfaceMenu)}
                             className="[&>svg:last-child]:ms-0"
                             aria-keyshortcuts={action.shortcut || undefined}
                             onClick={(event) => {
@@ -1704,6 +1717,7 @@ export function RightPanelTabs<Entry extends WorkAreaEntry>(props: RightPanelTab
                         disabledReason={action.disabledReason}
                         shortcut={action.shortcut}
                         onClick={action.onClick}
+                        drag={actionDrag(action, closeAddSurfaceMenu)}
                       >
                         <Icon />
                         {messages(action.label)}
@@ -1789,6 +1803,7 @@ export function RightPanelTabs<Entry extends WorkAreaEntry>(props: RightPanelTab
             onAddDevice={props.onAddDevice}
             onAddSideChat={props.onAddSideChat}
             modeSurfaceActions={props.modeSurfaceActions}
+            actionDrag={actionDrag}
             browserAvailable={props.browserAvailable}
             terminalAvailable={props.terminalAvailable}
             diffAvailable={props.diffAvailable}

@@ -75,7 +75,7 @@ describe("the launcher tab", () => {
 
   /** New tab's browser pick: the browser exists only after an await, while another pane takes focus. */
   const pickBrowser = async (meanwhile: () => void) => {
-    change({ type: "arm", pane: paneAt(1).id, kind: "preview" });
+    change({ type: "arm", armed: { pane: paneAt(1).id, kind: "preview" } });
     const created = runWithOpenOrigin({ record: ref, tab: LAUNCHER, adjacent: true }, () =>
       addBrowserSurface({ threadRef: ref, openPreview: vi.fn() }),
     );
@@ -154,7 +154,7 @@ describe("the launcher tab", () => {
   it("keeps a side chat picked in the launcher of a 700 px area out of the strip view", () => {
     publishWorkAreaView(wide(700));
     splitLauncher();
-    change({ type: "arm", pane: paneAt(1).id, kind: "thread" });
+    change({ type: "arm", armed: { pane: paneAt(1).id, kind: "thread" } });
     runWithOpenOrigin({ record: ref, tab: LAUNCHER, adjacent: true }, () =>
       store().openThread(ref, ThreadId.make("side")),
     );
@@ -165,7 +165,7 @@ describe("the launcher tab", () => {
   it("keeps a side chat chosen in a 340 px pane's add menu out of the strip view", () => {
     publishWorkAreaView(wide(700));
     fromChat(() => store().openFile(ref, "a.ts"));
-    change({ type: "arm", pane: paneAt(1).id, kind: "thread" });
+    change({ type: "arm", armed: { pane: paneAt(1).id, kind: "thread" } });
     store().openThread(ref, ThreadId.make("side"));
     expect(shape()).toEqual({ axis: "row", first: ["chat", "thread:side"], second: ["file:a.ts"] });
     expect(actives()).toEqual(["thread:side", "file:a.ts"]);
@@ -216,6 +216,39 @@ describe("the launcher tab", () => {
     },
   );
 
+  it("ends an add-menu pick whose async open settles with no tab, but not a newer pick of its pane and kind", async () => {
+    publishWorkAreaView(WIDE);
+    fromChat(() => store().openFile(ref, "a.ts"));
+    const menuPane = paneAt(1).id;
+    let fail = (_: Error) => {};
+    const first = openFromPaneMenu(
+      ref,
+      menuPane,
+      "thread",
+      () =>
+        new Promise<never>((_, reject) => {
+          fail = reject;
+        }),
+    );
+    let settle = (_: boolean) => {};
+    const second = openFromPaneMenu(
+      ref,
+      menuPane,
+      "thread",
+      () =>
+        new Promise<boolean>((resolve) => {
+          settle = resolve;
+        }),
+    );
+
+    fail(new Error("rejected"));
+    await expect(first).rejects.toThrow("rejected");
+    expect(layout().armed).toEqual({ pane: menuPane, kind: "thread" });
+    settle(false);
+    await second;
+    expect(layout().armed).toBeUndefined();
+  });
+
   it("puts the Chat picked in the launcher in the launcher's place", () => {
     publishWorkAreaView(WIDE);
     change({
@@ -225,7 +258,7 @@ describe("the launcher tab", () => {
     });
     change({ type: "close", tab: PRIMARY_CHAT });
     splitLauncher();
-    change({ type: "arm", pane: paneAt(1).id, kind: "chat" });
+    change({ type: "arm", armed: { pane: paneAt(1).id, kind: "chat" } });
     change({ type: "place", source: { threads: [ref] }, at: { kind: "join", pane: paneAt(1).id } });
     expect(shape()).toEqual({ axis: "row", first: [secondaryChatTabId(other)], second: ["chat"] });
     expect(focusedIndex()).toBe(1);

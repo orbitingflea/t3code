@@ -1,13 +1,14 @@
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { LinkedThreadTarget } from "@t3tools/client-runtime/linked-thread";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { mediaKindFromPath } from "@t3tools/shared/mediaPreview";
 
-import { canOpenThreadInPanel } from "~/lib/sideChatPane";
 import { type OpenFileOptions, rightPanelHostRef, useRightPanelStore } from "~/rightPanelStore";
+import { readThreadShell } from "~/state/entities";
 
 import { type ChatFileOpener, fromChatOrigin } from "./chatFileOpener";
-import { openThreadTab } from "./chatOpenerContext";
+import { openThreadTab, threadTabPanel } from "./chatOpenerContext";
 import type { PanelLink, PanelLinkOwner } from "./panelLinkDrag";
 
 /** The `event` a click opener takes, for a drop: a plain primary click with nothing held. */
@@ -71,6 +72,45 @@ export function fileChipPanelLink(
 }
 
 /**
+ * Returns the `PanelLink` for a "+" menu or launcher item in `owner`'s work area, or `null` when
+ * unavailable or `opensTab` is false. A drop runs `action.onClick` at the drop's place.
+ */
+export function surfaceActionPanelLink(
+  owner: PanelLinkOwner | null,
+  action: {
+    readonly id: string;
+    readonly available: boolean;
+    readonly onClick: () => void | Promise<unknown>;
+  },
+  opensTab = true,
+): PanelLink | null {
+  if (owner === null || !action.available || !opensTab) return null;
+  return {
+    panelRef: owner.ref,
+    open: action.onClick,
+    composer: action.id === "side-chat" || action.id === "chat",
+  };
+}
+
+/**
+ * Returns the `PanelLink` for a Reply button or Replies list row, or `null` without `opener`. A
+ * drop opens the sub-thread tab for `first`.
+ */
+export function replyPanelLink(opener: ChatFileOpener | null, first: string): PanelLink | null {
+  if (opener === null) return null;
+  return { panelRef: opener().panel(), composer: true, open: () => opener().openSubThread(first) };
+}
+
+/** Returns true for an HTTP or HTTPS link that is not an autolink, commit URL, image, or video. */
+function isWebPageLink(href: string, autolink = ""): boolean {
+  if (autolink !== "" || !/^https?:\/\//i.test(href)) return false;
+  const media = mediaKindFromPath(href);
+  return (
+    (media === null || media === "audio") && sourceControlClients.parseCommitUrl(href) === null
+  );
+}
+
+/**
  * A chat `<a>`. A drop runs the click's in-app open; a branch that would leave the app is
  * dropped, since choosing a pane is choosing the app. Reference autolinks, commit links and
  * media links have no panel open of their own, so they do not drag to the panel.
@@ -98,11 +138,7 @@ export function anchorPanelLink(input: {
   if (href.startsWith("board://")) {
     return input.boardInPanel() ? { panelRef, open: input.showBoard } : null;
   }
-  if (input.autolink !== "" || !/^https?:\/\//i.test(href)) return null;
-  const media = mediaKindFromPath(href);
-  if ((media !== null && media !== "audio") || sourceControlClients.parseCommitUrl(href) !== null) {
-    return null;
-  }
+  if (!isWebPageLink(href, input.autolink)) return null;
   const changeRequest = input.changeRequestInPanel();
   if (!changeRequest && !input.canOpenInPreview) return null;
   return {
@@ -114,7 +150,11 @@ export function anchorPanelLink(input: {
   };
 }
 
-/** A thread chip: a same-environment thread opens as a tab; a linked one reads in the panel. */
+/**
+ * Returns the `PanelLink` for a thread chip whose click opens a tab, or `null` otherwise. It opens
+ * a same-project thread as a Chat tab, a side chat of the panel's own thread as its tab, or a
+ * linked thread to read in the panel.
+ */
 export function threadChipPanelLink(input: {
   readonly threadRef: ScopedThreadRef | undefined;
   readonly target:
@@ -124,15 +164,31 @@ export function threadChipPanelLink(input: {
 }): PanelLink | null {
   const { threadRef, target, opener } = input;
   if (threadRef === undefined) return null;
-  if (target.kind === "local" && !canOpenThreadInPanel(target.ref, threadRef)) return null;
+  if (target.kind === "linked") {
+    return {
+      panelRef: rightPanelHostRef(threadRef),
+      open: () => useRightPanelStore.getState().openLinkedThread(threadRef, target.target),
+    };
+  }
+  const chatPanel = threadTabPanel(opener, target.ref);
+  if (chatPanel !== null) {
+    return {
+      panelRef: chatPanel,
+      composer: true,
+      open: () => void openThreadTab(opener, target.ref),
+    };
+  }
+  // The click's side chat route (`resolveThreadOpenRoute`), which stays on this page only for a
+  // side chat of the panel's own thread.
+  const lineage = readThreadShell(target.ref)?.lineage;
+  const parentId = lineage?.sideChat === true ? lineage.parentThreadId : null;
+  if (opener === null || parentId === null) return null;
+  const parent = scopeThreadRef(target.ref.environmentId, parentId);
+  const panelRef = opener().panel();
+  if (scopedThreadKey(parent) !== scopedThreadKey(panelRef)) return null;
   return {
-    panelRef: rightPanelHostRef(threadRef),
-    opensChat: target.kind === "local",
-    open: () => {
-      if (target.kind === "local" && openThreadTab(opener, target.ref)) return;
-      const store = useRightPanelStore.getState();
-      if (target.kind === "local") store.openThread(threadRef, target.ref.threadId);
-      else store.openLinkedThread(threadRef, target.target);
-    },
+    panelRef,
+    composer: true,
+    open: () => useRightPanelStore.getState().openThread(parent, target.ref.threadId),
   };
 }
