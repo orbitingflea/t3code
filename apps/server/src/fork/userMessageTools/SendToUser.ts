@@ -191,6 +191,13 @@ const ReplaceSendToUserTool = Tool.make(REPLACE_SEND_TO_USER_TOOL_NAME, {
 
 export const SendToUserToolkit = Toolkit.make(SendToUserTool, ReplaceSendToUserTool);
 
+// A Chat-mode success keeps no field the MCP result capture reads. Its empty record stops an
+// identical refused call's error from passing for it when a provider drops both outputs.
+export const capturedSuccessFallback = (toolName: string): Record<string, never> | undefined =>
+  toolName === SEND_TO_USER_TOOL_NAME || toolName === REPLACE_SEND_TO_USER_TOOL_NAME
+    ? {}
+    : undefined;
+
 /** The items stored before the calling tool use, when the provider names it; else all of them. */
 function itemsBefore(shown: ReadonlyArray<OrchestrationV2TurnItem>, ownItem: string | undefined) {
   const ownAt =

@@ -201,7 +201,8 @@ const segmentVisible = (sql: SqlClient.SqlClient, segment: ShownSegment) =>
     ? sql`(run.status IS NULL OR run.status <> 'rolled_back')
         AND NOT (item.type = 'user_message'
           AND json_extract(item.payload_json, '$.inputIntent') = 'queued_turn'
-          AND run.status IS 'cancelled')`
+          AND run.status IS 'cancelled'
+          AND json_extract(run.payload_json, '$.startedAt') IS NULL)`
     : sql`(run.ordinal <= ${segment.inherited.runOrdinal}
         OR (item.run_id IS NULL AND ${segment.inherited.runlessRows ? 1 : 0} = 1))`;
 

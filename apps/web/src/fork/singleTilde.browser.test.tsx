@@ -133,7 +133,6 @@ function singleTildeTimeline(stage: Stage) {
       turnDiffSummaries={[]}
       runs={[]}
       routeThreadKey="environment-local:thread-single-tilde"
-      onOpenTurnDiff={() => {}}
       onOpenThread={() => {}}
       onForkFromRun={async () => {}}
       supportsConversationRollback={false}

@@ -1,4 +1,5 @@
 import { msg, T, useGT, useMessages } from "gt-react";
+import { contextMenuSourceOf } from "../contextMenuSource";
 import { m, type MessageResolver } from "../i18n/messages";
 import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -1419,10 +1420,11 @@ export function RightPanelTabs<Entry extends WorkAreaEntry>(props: RightPanelTab
       ...(pane?.tabMenu.items(surface) ?? []),
     );
 
-    const action = await api.contextMenu.show(withChatClosing(items, surface, props.surfaces), {
-      x: event.clientX,
-      y: event.clientY,
-    });
+    const action = await api.contextMenu.show(
+      withChatClosing(items, surface, props.surfaces),
+      { x: event.clientX, y: event.clientY },
+      contextMenuSourceOf(event),
+    );
     switch (action) {
       case "open-in-main-view":
         if (surface.kind === "thread" || surface.kind === "linked-thread") {

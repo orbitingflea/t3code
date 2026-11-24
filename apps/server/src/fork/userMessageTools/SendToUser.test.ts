@@ -9,7 +9,8 @@ import {
   TurnItemId,
 } from "@t3tools/contracts";
 import { serializeAssistantCitation } from "@t3tools/shared/assistantCitations";
-import { shortId } from "@t3tools/shared/displayModes";
+import { displayEventFromTurnItem, shortId } from "@t3tools/shared/displayModes";
+import * as McpProviderSessions from "@t3tools/provider-core/server/McpProviderSessions";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
@@ -454,5 +455,43 @@ describe("replace_send_to_user", () => {
         "Refused: replace_send_to_user works only in a thread set to Chat mode. Use send_to_user.",
       );
     }).pipe(Effect.provide(layer)),
+  );
+});
+
+// A provider that drops MCP outputs gets each send's result back from the capture by its input.
+describe("Chat sends through the MCP result capture", () => {
+  const captureLayer = layer.pipe(Layer.provideMerge(McpProviderSessions.layer));
+  const reply = {
+    text: "Fixed the build.",
+    reply_to: shortId("u1"),
+    user_message: "Fix the build.",
+  };
+  const recoveredEvent = Effect.gen(function* () {
+    const sessions = yield* McpProviderSessions.McpProviderSessions;
+    const output = yield* sessions.takeToolResult(chatThread, "send_to_user", reply);
+    return displayEventFromTurnItem({
+      ...base("recovered"),
+      type: "dynamic_tool",
+      toolName: "mcp__t3-code__send_to_user",
+      input: reply,
+      output,
+    } as never)?.type;
+  });
+
+  it.effect("keeps a reply shown when an identical later send was refused", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build.")];
+      expect((yield* answerU1(reply.text)).isError).not.toBe(true);
+      expect((yield* answerU1(reply.text)).isError).toBe(true);
+      expect(yield* recoveredEvent).toBe("sent");
+    }).pipe(Effect.provide(Layer.fresh(captureLayer))),
+  );
+
+  it.effect("shows a lone reply", () =>
+    Effect.gen(function* () {
+      history = [typed("u1", "Fix the build.")];
+      expect((yield* answerU1(reply.text)).isError).not.toBe(true);
+      expect(yield* recoveredEvent).toBe("sent");
+    }).pipe(Effect.provide(Layer.fresh(captureLayer))),
   );
 });

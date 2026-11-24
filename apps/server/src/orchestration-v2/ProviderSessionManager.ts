@@ -2553,7 +2553,7 @@ export const layerWithOptions = (
           ReadonlyMap<number, Queue.Queue<ProviderSessionEventSignal, Cause.Done>>
         >,
       ): ProviderAdapter.ProviderAdapterV2SessionRuntime => {
-        const { providerSessionId, compactThread, resumeTurn } = runtime;
+        const providerSessionId = runtime.providerSessionId;
         const subscribeEvents = makeEventSubscription(eventSubscribers);
         const turnMetrics = (operation: string, model?: string) =>
           withMetrics({
@@ -2565,9 +2565,13 @@ export const layerWithOptions = (
               modelFamily: normalizeModelMetricLabel(model),
             },
           });
-        const startBusyTurn = (
-          input: ProviderAdapter.ProviderAdapterV2TurnInput,
-          start: Effect.Effect<void, ProviderAdapter.ProviderAdapterV2Error>,
+        // A start, continuation or compaction keeps the session busy until its turn.terminal.
+        const busyTurn = <E>(
+          input: Pick<
+            ProviderAdapter.ProviderAdapterV2TurnInput,
+            "threadId" | "providerThread" | "runOrdinal" | "runId"
+          >,
+          run: () => Effect.Effect<void, E>,
         ) =>
           observeActivity(
             providerSessionId,
@@ -2614,7 +2618,7 @@ export const layerWithOptions = (
                         ),
                   ),
                 ),
-                () => start,
+                run,
                 (_, exit) =>
                   Exit.isFailure(exit)
                     ? observeActivity(
@@ -2766,24 +2770,31 @@ export const layerWithOptions = (
               Effect.map(({ loaded }) => loaded),
             ),
           startTurn: (input) =>
-            startBusyTurn(
-              input,
+            busyTurn(input, () =>
               agentFeedbackMode.pipe(
                 Effect.flatMap((agentFeedback) => runtime.startTurn({ ...input, agentFeedback })),
                 turnMetrics("send", input.modelSelection.model),
               ),
             ),
-          ...(compactThread === undefined
-            ? {}
-            : {
-                compactThread: (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
-                  startBusyTurn(input, compactThread(input)),
-              }),
-          ...(resumeTurn === undefined
+          ...(runtime.resumeTurn === undefined
             ? {}
             : {
                 resumeTurn: (input: ProviderAdapter.ProviderAdapterV2ResumeTurnInput) =>
-                  startBusyTurn(ProviderAdapter.resumeTurnInput(input), resumeTurn(input)),
+                  busyTurn(input, () =>
+                    runtime.resumeTurn!(input).pipe(
+                      turnMetrics("resume", input.modelSelection.model),
+                    ),
+                  ),
+              }),
+          ...(runtime.compactThread === undefined
+            ? {}
+            : {
+                compactThread: (input: ProviderAdapter.ProviderAdapterV2TurnInput) =>
+                  busyTurn(input, () =>
+                    runtime.compactThread!(input).pipe(
+                      turnMetrics("compact", input.modelSelection.model),
+                    ),
+                  ),
               }),
           steerTurn: (input) =>
             observeActivity(providerSessionId, touchActivity(providerSessionId)).pipe(
@@ -2992,6 +3003,7 @@ export const layerWithOptions = (
               providerTurnId: event.providerTurnId,
               runOrdinal: event.runOrdinal,
               failureItemOrdinal: stalled.ordinal,
+              failureItemId: stalled.id,
               status: "failed",
               failure: { ...stalled.failure, retryable: false },
               retry: stalled.retry,

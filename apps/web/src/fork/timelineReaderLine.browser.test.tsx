@@ -68,7 +68,6 @@ function props(listRef: TimelineProps["listRef"]): Omit<TimelineProps, "timeline
     turnDiffSummaries: [],
     runs: [],
     routeThreadKey: `environment-local:reader-line-${Math.random().toString(36).slice(2)}`,
-    onOpenTurnDiff: () => {},
     onOpenThread: () => {},
     onForkFromRun: async () => {},
     supportsConversationRollback: false,

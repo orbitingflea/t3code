@@ -174,9 +174,10 @@ started in the app are. `send` never interrupts: a busy thread gets the message
 as its next turn. Pass `-` as the message to read it from stdin.
 
 To choose the model, pass `--provider <instance-id> --model <slug>`. Add
-`--option id=value` for each model option, such as `--option effort=high`.
-Option ids and values depend on the model; `true` and `false` set on/off
-options.
+`--option id=value` for each model option. For reasoning effort, Codex uses
+`--option reasoningEffort=high`, while Claude uses `--option effort=high`.
+Option ids and allowed values depend on the provider and model; use those
+reported by `orchestrator_capabilities`. `true` and `false` set on/off options.
 
 `user-view` prints a Chat mode thread word for word as your screen shows it: the latest main-list messages, or
 with `--sub-thread`, a sub-thread and the three main-list messages before it.

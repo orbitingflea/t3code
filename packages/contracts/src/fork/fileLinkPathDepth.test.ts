@@ -7,22 +7,24 @@ const decodeClientSettings = Schema.decodeUnknownSync(ClientSettingsSchema);
 const encodeClientSettings = Schema.encodeSync(ClientSettingsSchema);
 
 describe("fileLinkPathDepth", () => {
-  it("defaults to the file name alone", () => {
-    expect(decodeClientSettings({}).fileLinkPathDepth).toBe(1);
+  it("defaults to one folder and the file name", () => {
+    expect(decodeClientSettings({}).fileLinkPathDepth).toBe(2);
   });
 
-  it.each([9, 0, 2.5, "2", null, { depth: 2 }])(
-    "a bad stored depth %j decodes to 1 and keeps the other settings",
+  it.each([9, 0, 2.5, "3", null, { depth: 3 }])(
+    "a bad stored depth %j decodes to 2 and keeps the other settings",
     (fileLinkPathDepth) => {
       const settings = decodeClientSettings({ fileLinkPathDepth, wordWrap: false });
-      expect(settings.fileLinkPathDepth).toBe(1);
+      expect(settings.fileLinkPathDepth).toBe(2);
       expect(settings.wordWrap).toBe(false);
     },
   );
 
-  it("round-trips a valid depth", () => {
-    const settings = decodeClientSettings({ fileLinkPathDepth: 3 });
-    expect(settings.fileLinkPathDepth).toBe(3);
-    expect(decodeClientSettings(encodeClientSettings(settings)).fileLinkPathDepth).toBe(3);
+  it.each([1, 3] as const)("round-trips a saved depth %j", (fileLinkPathDepth) => {
+    const settings = decodeClientSettings({ fileLinkPathDepth });
+    expect(settings.fileLinkPathDepth).toBe(fileLinkPathDepth);
+    expect(decodeClientSettings(encodeClientSettings(settings)).fileLinkPathDepth).toBe(
+      fileLinkPathDepth,
+    );
   });
 });
