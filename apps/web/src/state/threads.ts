@@ -33,6 +33,7 @@ export const olderSettledThreads = createOlderSettledThreadAtoms(
 export const threadEnvironment = createThreadEnvironmentAtoms(
   connectionAtomRuntime,
   threadFamilies.snapshotAtom,
+  environmentShell.statusAtom,
 );
 const environmentThreads = displayModeThreadStates(
   createEnvironmentThreadStateAtoms(connectionAtomRuntime),
