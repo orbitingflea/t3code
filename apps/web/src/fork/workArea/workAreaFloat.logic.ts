@@ -3,8 +3,9 @@ import type { ThreadRightPanelState } from "~/rightPanelStore";
 import {
   findPane,
   insertTabs,
+  isPlaced,
   leaves,
-  paneHolding,
+  preferredView,
   PRIMARY_CHAT,
   PRIMARY_PAYLOAD,
   removeTabs,
@@ -20,7 +21,7 @@ import type { LayoutWriteKind } from "./workAreaPlacement.logic";
 // The mini player mounts inside the primary Chat column, so a float must make it visible.
 function showingPrimaryChat(layout: WorkAreaLayout, view: WorkAreaView): WorkAreaLayout {
   if (primaryChatRect(layout, view) !== null) return layout;
-  const pane = paneHolding(layout.root, PRIMARY_CHAT);
+  const pane = preferredView(layout, PRIMARY_CHAT, undefined, "automatic");
   if (pane) return { ...setPane(layout, { ...pane, active: PRIMARY_CHAT }), focused: pane.id };
   const focused = findPane(layout.root, layout.focused) ?? leaves(layout.root)[0]!;
   return setPane(
@@ -30,9 +31,10 @@ function showingPrimaryChat(layout: WorkAreaLayout, view: WorkAreaView): WorkAre
 }
 
 export function floatTab(layout: WorkAreaLayout, tab: TabId, view: WorkAreaView): WorkAreaLayout {
-  if (!paneHolding(layout.root, tab)) return layout;
+  if (!isPlaced(layout.root, tab)) return layout;
   const docked = layout.floating ? unfloatTab(layout, layout.floating.tab) : layout;
-  const pane = paneHolding(docked.root, tab)!;
+  // Only one-view tabs float, so the tab has this one pane.
+  const pane = preferredView(docked, tab, undefined, "automatic")!;
   const before = pane.tabs[pane.tabs.indexOf(tab) + 1] ?? null;
   const floating = { tab, pane: pane.id, before };
   return showingPrimaryChat({ ...removeTabs(docked, new Set([tab])), floating }, view);
@@ -62,7 +64,7 @@ export function floatedByClose(
 ): TabId | null {
   if (playing === null || write !== "user" || !prev.isOpen || next.isOpen) return null;
   if (next.surfaces !== prev.surfaces) return null;
-  return paneHolding(resolveLayout(prev).root, playing) ? playing : null;
+  return isPlaced(resolveLayout(prev).root, playing) ? playing : null;
 }
 
 // A floating tab needs the drawn primary Chat that holds the mini player; else it goes back.

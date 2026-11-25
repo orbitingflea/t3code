@@ -13,9 +13,11 @@ import {
   type Edge,
   findPane,
   focusAfterRemoval,
+  holders,
   insertTabs,
   isDefaultLayout,
   isNonEmpty,
+  isPlaced,
   LAUNCHER,
   type LayoutNode,
   leaves,
@@ -28,10 +30,12 @@ import {
   PANE_ID,
   type PaneId,
   type PaneNode,
-  paneHolding,
+  preferredView,
   PRIMARY_CHAT,
   PRIMARY_PAYLOAD,
   removeTabs,
+  removeView,
+  removeWhere,
   replyTabId,
   resolveLayout,
   secondaryChatTabId,
@@ -44,6 +48,8 @@ import {
   type TabId,
   tabTraits,
   traitsOf,
+  type ViewRef,
+  viewsOf,
   type WorkAreaLayout,
   type WorkAreaTab,
   withoutArmed,
@@ -83,13 +89,24 @@ export type LayoutWriteKind = "user" | "close" | "automatic" | "activate" | "rev
  * tabs outside `existing` (surface tabs at start) by this origin even if another write placed them.
  */
 export type OpenFrom = (
-  | { readonly tab: TabId; readonly adjacent?: true; readonly armed?: never }
+  | {
+      readonly tab: TabId;
+      readonly pane?: PaneId;
+      readonly adjacent?: true;
+      readonly armed?: never;
+    }
   | {
       readonly armed: NonNullable<WorkAreaLayout["armed"]>;
       readonly tab?: never;
+      readonly pane?: never;
       readonly adjacent?: never;
     }
-  | { readonly tab?: never; readonly adjacent?: never; readonly armed?: never }
+  | {
+      readonly tab?: never;
+      readonly pane?: never;
+      readonly adjacent?: never;
+      readonly armed?: never;
+    }
 ) & { readonly existing?: ReadonlySet<TabId>; readonly drop?: LinkDrop };
 
 // A dropped link's open lands at `at` while `live`; else the origin under it applies.
@@ -104,20 +121,16 @@ export type Placement =
   | { readonly kind: "join"; readonly pane: PaneId };
 
 export type PlaceSource =
+  | { readonly view: ViewRef; readonly copy?: true; readonly restore?: TabId }
   | { readonly tabs: readonly TabId[] }
   | { readonly threads: readonly ScopedThreadRef[] };
 
 /** The work area's own gestures. Ids, never indices: a stale change is a no-op. */
 export type WorkAreaChange =
-  | {
-      readonly type: "place";
-      readonly source: PlaceSource;
-      readonly at: Placement;
-      /** What the source pane showed before the press that started the drag. */
-      readonly restore?: TabId;
-    }
+  | { readonly type: "place"; readonly source: PlaceSource; readonly at: Placement }
+  | { readonly type: "close-view"; readonly view: ViewRef }
   | { readonly type: "close"; readonly tab: TabId }
-  | { readonly type: "activate"; readonly tab: TabId }
+  | { readonly type: "activate"; readonly view: ViewRef }
   | { readonly type: "unfloat"; readonly tab: TabId }
   | { readonly type: "focus"; readonly pane: PaneId }
   | { readonly type: "ratio"; readonly split: SplitId; readonly ratio: number }
@@ -154,6 +167,7 @@ export type WorkAreaChange =
 
 const CHANGE_KINDS: Record<WorkAreaChange["type"], LayoutWriteKind> = {
   place: "user",
+  "close-view": "close",
   close: "close",
   activate: "activate",
   unfloat: "automatic",
@@ -236,15 +250,56 @@ function launcherPick(layout: WorkAreaLayout, kind: ArmKind | null): PaneNode | 
   return pane?.active === LAUNCHER ? pane : undefined;
 }
 
-/** `tab` moved right after `after`, in `after`'s pane, and shown there; a launcher gives way to it. */
-function landAfter(layout: WorkAreaLayout, after: TabId, tab: TabId): WorkAreaLayout {
-  const pane = paneHolding(layout.root, after)!;
-  const moved = removeTabs(layout, new Set([tab]), { keep: pane.id });
-  const kept = findPane(moved.root, pane.id)!;
+/**
+ * Who places a tab, for the panes it leaves: a strip drag moves its view out of its own pane; a
+ * copy, a link, an opener or a launcher pick adds a view; a drop in the one strip moves the tab.
+ */
+type Leaving = { readonly from: PaneId } | "add" | "every";
+
+// A one-view tab leaves every pane it is in, however it is placed.
+function leavesFrom(
+  layout: WorkAreaLayout,
+  surfaces: readonly RightPanelSurface[],
+  tab: TabId,
+  leaving: Leaving,
+): readonly PaneId[] {
+  const holding = holders(layout.root, tab).map((pane) => pane.id);
+  if (leaving === "every" || viewsOf(layout, surfaces, tab) === "one") return holding;
+  return leaving === "add" ? [] : holding.filter((pane) => pane === leaving.from);
+}
+
+/** `tabs` out of the panes they leave, all but `keep`. */
+function withdraw(
+  layout: WorkAreaLayout,
+  surfaces: readonly RightPanelSurface[],
+  tabs: readonly TabId[],
+  leaving: Leaving,
+  keep: PaneId | undefined,
+  restore?: TabId,
+): WorkAreaLayout {
+  const from = new Map(
+    tabs.map((tab) => [tab, new Set(leavesFrom(layout, surfaces, tab, leaving))] as const),
+  );
+  return removeWhere(
+    layout,
+    (pane, tab) => pane.id !== keep && from.get(tab)?.has(pane.id) === true,
+    restore,
+  );
+}
+
+/** `tab` right after `after`, in `after`'s pane, and shown there; a launcher gives way to it. */
+function landAfter(
+  layout: WorkAreaLayout,
+  after: ViewRef,
+  tab: TabId,
+  surfaces: readonly RightPanelSurface[],
+): WorkAreaLayout {
+  const moved = withdraw(layout, surfaces, [tab], "add", after.pane);
+  const kept = findPane(moved.root, after.pane)!;
   const rest = kept.tabs.filter((other) => other !== tab);
-  const before = rest[rest.indexOf(after) + 1] ?? null;
-  const placed = { ...setPane(moved, insertTabs(kept, [tab], before, true)), focused: pane.id };
-  return after === LAUNCHER ? removeTabs(placed, new Set([LAUNCHER])) : placed;
+  const before = rest[rest.indexOf(after.tab) + 1] ?? null;
+  const placed = { ...setPane(moved, insertTabs(kept, [tab], before, true)), focused: after.pane };
+  return after.tab === LAUNCHER ? removeTabs(placed, new Set([LAUNCHER])) : placed;
 }
 
 function placeNew(
@@ -252,16 +307,17 @@ function placeNew(
   tab: TabId,
   kind: RightPanelKind | null,
   write: LayoutWriteKind,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
   const user = write !== "automatic";
   const armed = user && layout.armed?.kind === kind ? layout.armed : undefined;
   const armedPane = armed ? findPane(layout.root, armed.pane) : undefined;
   if (armedPane) {
-    if (armedPane.active === LAUNCHER) return launch(layout, tab, view);
+    if (armedPane.active === LAUNCHER) return launch(layout, armedPane.id, tab, surfaces, view);
     const placed = setPane(layout, insertTabs(armedPane, [tab], null, true));
     return withoutArmed(
-      fitLanding(layout, { ...placed, focused: armedPane.id }, tab, armedPane.id, view),
+      fitLanding(layout, { ...placed, focused: armedPane.id }, tab, armedPane.id, surfaces, view),
     );
   }
   const focused = findPane(layout.root, layout.focused) ?? leaves(layout.root)[0]!;
@@ -362,19 +418,25 @@ export function openBesideTarget(
 }
 
 // A tab menu's move: `tab` joins the nearest pane toward `edge`; null when none lies there.
-export function moveToward(layout: WorkAreaLayout, tab: TabId, edge: Edge): WorkAreaChange | null {
-  const holder = paneHolding(layout.root, tab);
-  const source = holder && paneRects(layout.root).get(holder.id);
-  if (!holder || !source) return null;
-  const target = nearestToward(otherPanes(layout, holder.id), source, edge);
+export function moveToward(
+  layout: WorkAreaLayout,
+  view: ViewRef,
+  edge: Edge,
+): WorkAreaChange | null {
+  const holds = findPane(layout.root, view.pane)?.tabs.includes(view.tab) === true;
+  const source = holds ? paneRects(layout.root).get(view.pane) : undefined;
+  if (!source) return null;
+  const target = nearestToward(otherPanes(layout, view.pane), source, edge);
   return target
-    ? { type: "place", source: { tabs: [tab] }, at: { kind: "join", pane: target.pane.id } }
+    ? { type: "place", source: { view }, at: { kind: "join", pane: target.pane.id } }
     : null;
 }
 
-/** The pane a user open started in, while it still holds the tab it started in. */
-const sourcePane = (layout: WorkAreaLayout, write: LayoutWriteKind, origin: TabId | null) =>
-  write === "user" && origin !== null ? paneHolding(layout.root, origin) : undefined;
+/** The pane a user open started in: its view of the tab it started in, or another view of it. */
+const sourcePane = (layout: WorkAreaLayout, write: LayoutWriteKind, from: OpenFrom | null) =>
+  write === "user" && from?.tab !== undefined
+    ? preferredView(layout, from.tab, from.pane, "user")
+    : undefined;
 
 /** A tab opened from `from`: a lone pane splits to its right when it can, else it lands beside. */
 function placeBeside(
@@ -399,44 +461,60 @@ function placeBeside(
   return { ...setPane(layout, insertTabs(source, [tab], null, true)), focused: from };
 }
 
+// `tab` landed in `from`; a landing that leaves some pane too small goes beside `from` instead.
 function fitLanding(
   layout: WorkAreaLayout,
   landed: WorkAreaLayout,
   tab: TabId,
   from: PaneId,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
   if (fitsView(landed, view) !== false || fitsView(layout, view) === false) return landed;
-  const settled = settleAround(landed, paneHolding(landed.root, tab)!.id, view);
+  const settled = settleAround(landed, from, view);
   if (fitsView(settled, view) !== false) return settled;
-  return placeBeside(removeTabs(layout, new Set([tab]), { keep: from }), tab, from, view);
+  return placeBeside(withdraw(layout, surfaces, [tab], "add", from), tab, from, view);
 }
 
 function landAdjacent(
   layout: WorkAreaLayout,
-  after: TabId,
+  after: ViewRef,
   tab: TabId,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
-  const from = paneHolding(layout.root, after)!.id;
-  const landed = fitLanding(layout, landAfter(layout, after, tab), tab, from, view);
-  return after === LAUNCHER && paneHolding(landed.root, LAUNCHER)
+  const landed = fitLanding(
+    layout,
+    landAfter(layout, after, tab, surfaces),
+    tab,
+    after.pane,
+    surfaces,
+    view,
+  );
+  return after.tab === LAUNCHER && isPlaced(landed.root, LAUNCHER)
     ? removeTabs(landed, new Set([LAUNCHER]))
     : landed;
 }
 
 /** A pick in the launcher: `tab` takes the launcher's place. */
-const launch = (layout: WorkAreaLayout, tab: TabId, view: WorkAreaView) =>
-  withoutArmed(landAdjacent(layout, LAUNCHER, tab, view));
+const launch = (
+  layout: WorkAreaLayout,
+  pane: PaneId,
+  tab: TabId,
+  surfaces: readonly RightPanelSurface[],
+  view: WorkAreaView,
+) => withoutArmed(landAdjacent(layout, { pane, tab: LAUNCHER }, tab, surfaces, view));
 
 function showPlaced(
   layout: WorkAreaLayout,
   tab: TabId,
   kind: RightPanelKind | null,
   write: LayoutWriteKind,
+  near: PaneId | undefined,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
-  const pane = paneHolding(layout.root, tab);
+  const pane = preferredView(layout, tab, near, write);
   if (!pane) return layout;
   if (write !== "automatic") {
     return { ...setPane(layout, { ...pane, active: tab }), focused: pane.id };
@@ -444,7 +522,10 @@ function showPlaced(
   if (pane.active === tab || !tabTraits(layout, pane.active).composer) {
     return setPane(layout, { ...pane, active: tab });
   }
-  return placeNew(removeTabs(layout, new Set([tab])), tab, kind, write, view);
+  // Never over a message box: a tab's only view moves to where it shows; a tab with several
+  // views keeps every one of them.
+  const rest = holders(layout.root, tab).length > 1 ? layout : removeTabs(layout, new Set([tab]));
+  return placeNew(rest, tab, kind, write, surfaces, view);
 }
 
 const isPlaceholder = (surface: RightPanelSurface | undefined): boolean =>
@@ -465,7 +546,7 @@ function openedFrom(
       : layout;
   if (requested === null || requested === prevLive || from.existing === undefined) return armed;
   const tab = surfaceTabId(requested);
-  return from.existing.has(tab) || !paneHolding(armed.root, tab)
+  return from.existing.has(tab) || !isPlaced(armed.root, tab)
     ? armed
     : removeTabs(armed, new Set([tab]));
 }
@@ -515,8 +596,9 @@ function placeWrite(
   const shows = activated ?? dropped;
   const docked = shows !== null && shows === layout.floating?.tab;
   let next = docked ? unfloatTab(layout, shows) : layout;
-  let slot: TabId | null = null;
-  const sourced = sourcePane(layout, write, origin) !== undefined;
+  // The pane where an added surface took a removed one's place.
+  let slot: PaneId | null = null;
+  const sourced = sourcePane(layout, write, openFrom) !== undefined;
   if (
     dropped === null &&
     activated !== null &&
@@ -525,10 +607,10 @@ function placeWrite(
     removed.length > 0
   ) {
     const candidate = removed.find((tab) => tab === prevLive) ?? removed[0]!;
-    const pane = paneHolding(next.root, candidate)!;
+    const pane = preferredView(next, candidate, undefined, write)!;
     const tabs = pane.tabs.map((tab) => (tab === candidate ? activated : tab));
     if ((pane.active === candidate || !tabTraits(next, pane.active).composer) && isNonEmpty(tabs)) {
-      slot = candidate;
+      slot = pane.id;
       next = setPane(next, {
         ...pane,
         tabs,
@@ -536,13 +618,14 @@ function placeWrite(
       });
     }
   }
-  next = removeTabs(next, new Set(removed.filter((tab) => tab !== slot)));
+  next = removeTabs(next, new Set(removed));
   for (const tab of added) {
     if (tab !== activated && tab !== dropped) next = placeInBackground(next, tab, kindOf(tab));
   }
-  const landed = dropped === null ? null : landAt(next, dropped, openFrom!.drop!.at, view);
+  const landed =
+    dropped === null ? null : landAt(next, dropped, openFrom!.drop!.at, surfaces, view);
   if (landed !== null) return withoutArmed(landed);
-  if (dropped !== null && dropped !== activated && !paneHolding(next.root, dropped)) {
+  if (dropped !== null && dropped !== activated && !isPlaced(next.root, dropped)) {
     next = placeInBackground(next, dropped, kindOf(dropped));
   }
   if (activated === null) {
@@ -552,28 +635,25 @@ function placeWrite(
       : next;
   }
   const after =
-    write === "user" &&
-    openFrom?.adjacent &&
-    origin !== activated &&
-    paneHolding(next.root, openFrom.tab)
-      ? openFrom.tab
-      : null;
-  if (after !== null) {
-    next = landAdjacent(next, after, activated, view);
+    write === "user" && openFrom?.adjacent && origin !== activated
+      ? sourcePane(next, write, openFrom)
+      : undefined;
+  if (after !== undefined && origin !== null) {
+    next = landAdjacent(next, { pane: after.id, tab: origin }, activated, surfaces, view);
   } else if (slot !== null) {
-    const pane = paneHolding(next.root, activated)!;
+    const pane = findPane(next.root, slot)!;
     if (write === "automatic") return next;
     next = { ...setPane(next, { ...pane, active: activated }), focused: pane.id };
-  } else if (added.includes(activated) || (docked && !paneHolding(next.root, activated))) {
-    const from = sourcePane(next, write, origin);
+  } else if (added.includes(activated) || (docked && !isPlaced(next.root, activated))) {
+    const from = sourcePane(next, write, openFrom);
     next = from
       ? placeBeside(next, activated, from.id, view)
-      : placeNew(next, activated, kindOf(activated), write, view);
+      : placeNew(next, activated, kindOf(activated), write, surfaces, view);
   } else {
     const pick = write === "automatic" ? undefined : launcherPick(next, kindOf(activated));
     next = pick
-      ? launch(next, activated, view)
-      : showPlaced(next, activated, kindOf(activated), write, view);
+      ? launch(next, pick.id, activated, surfaces, view)
+      : showPlaced(next, activated, kindOf(activated), write, openFrom?.pane, surfaces, view);
   }
   return write === "automatic" ? next : withoutArmed(next);
 }
@@ -590,10 +670,10 @@ function revealed(
   const tab = surfaceTabId(surface.id);
   const docked = unfloatTab(layout, tab);
   const placed =
-    layout.floating?.tab === tab && !paneHolding(docked.root, tab)
-      ? placeNew(docked, tab, surface.kind, "automatic", view)
+    layout.floating?.tab === tab && !isPlaced(docked.root, tab)
+      ? placeNew(docked, tab, surface.kind, "automatic", surfaces, view)
       : docked;
-  const pane = paneHolding(placed.root, tab);
+  const pane = preferredView(placed, tab, undefined, "reveal");
   if (!pane || tabShown(placed, view, tab)) return placed;
   const shown = setPane(placed, { ...pane, active: tab });
   return isStripView(shown, view) ? { ...shown, focused: pane.id } : shown;
@@ -646,8 +726,11 @@ export function repairWorkArea(
 ): WorkAreaLayout {
   const surfaceIds = new Set<string>(surfaces.map((surface) => surface.id));
   const seen = new Set<TabId>();
-  const keep = (tab: TabId) => {
-    if (seen.has(tab)) return false;
+  // A tab once in each pane, and a one-view tab once in the tree: the first in leaf order stays.
+  const keep = (inPane: Set<TabId>) => (tab: TabId) => {
+    if (inPane.has(tab) || (seen.has(tab) && viewsOf(layout, surfaces, tab) === "one")) {
+      return false;
+    }
     const payload = layout.tabs[tab];
     // One tab per thread: upstream's side-thread tab wins over a Chat tab of the same thread.
     const valid =
@@ -655,12 +738,15 @@ export function repairWorkArea(
         ? surfaceIds.has(tab)
         : payload.kind !== "secondary-chat" ||
           !surfaceIds.has(sideThreadTabId(payload.thread.threadId));
-    if (valid) seen.add(tab);
+    if (valid) {
+      seen.add(tab);
+      inPane.add(tab);
+    }
     return valid;
   };
   const alive = new Set<PaneId>();
   const root = mapPanes(layout.root, (pane) => {
-    const tabs = pane.tabs.filter(keep);
+    const tabs = pane.tabs.filter(keep(new Set()));
     if (!isNonEmpty(tabs)) return null;
     alive.add(pane.id);
     const active = tabs.includes(pane.active) ? pane.active : tabs[0];
@@ -690,7 +776,7 @@ export function repairWorkArea(
   if (floating === undefined && next.floating !== undefined) next = withoutFloating(next);
   for (const surface of surfaces) {
     const tab = surfaceTabId(surface.id);
-    if (!seen.has(tab) && tab !== floating && !paneHolding(next.root, tab)) {
+    if (!seen.has(tab) && tab !== floating && !isPlaced(next.root, tab)) {
       next = placeInBackground(next, tab, surface.kind);
     }
   }
@@ -726,7 +812,7 @@ export function repairWorkArea(
     seq: Math.max(next.seq, minted + 1),
   };
   if (next.armed !== undefined && !findPane(next.root, next.armed.pane)) next = withoutArmed(next);
-  if (next.revealed !== undefined && !paneHolding(next.root, next.revealed)) {
+  if (next.revealed !== undefined && !isPlaced(next.root, next.revealed)) {
     next = withRevealed(next, undefined);
   }
   return layoutEqual(next, layout) ? layout : next;
@@ -833,19 +919,20 @@ function showOrPlace(
   layout: WorkAreaLayout,
   tab: TabId,
   kind: RightPanelKind | null,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
   from: OpenFrom | null,
 ): WorkAreaLayout {
-  const landed = from?.drop?.live() ? landAt(layout, tab, from.drop.at, view) : null;
+  const landed = from?.drop?.live() ? landAt(layout, tab, from.drop.at, surfaces, view) : null;
   if (landed !== null) return withoutArmed(landed);
-  const source = sourcePane(layout, "user", from?.tab ?? null);
-  const shown = paneHolding(layout.root, tab)
-    ? showPlaced(layout, tab, kind, "user", view)
-    : source && from?.adjacent
-      ? landAdjacent(layout, from.tab, tab, view)
+  const source = sourcePane(layout, "user", from);
+  const shown = isPlaced(layout.root, tab)
+    ? showPlaced(layout, tab, kind, "user", from?.pane, surfaces, view)
+    : source && from?.tab !== undefined && from.adjacent
+      ? landAdjacent(layout, { pane: source.id, tab: from.tab }, tab, surfaces, view)
       : source
         ? placeBeside(layout, tab, source.id, view)
-        : placeNew(layout, tab, kind, "user", view);
+        : placeNew(layout, tab, kind, "user", surfaces, view);
   return withoutArmed(shown);
 }
 
@@ -853,20 +940,31 @@ function place(
   layout: WorkAreaLayout,
   change: Extract<WorkAreaChange, { type: "place" }>,
   owner: ScopedThreadRef,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
+  const { source } = change;
+  if ("view" in source) {
+    const { pane, tab } = source.view;
+    if (!findPane(layout.root, pane)?.tabs.includes(tab)) return layout;
+    // A copy leaves its pane as it is; a move gives it back what it showed before the press.
+    const [leaving, restore] = source.copy
+      ? (["add", undefined] as const)
+      : [{ from: pane }, source.restore];
+    return moveTabs(layout, layout, [tab], change.at, leaving, restore, surfaces, view);
+  }
   let next = layout;
   const ids: TabId[] = [];
-  if ("threads" in change.source) {
-    for (const thread of change.source.threads) {
+  if ("threads" in source) {
+    for (const thread of source.threads) {
       const chat = chatTabFor(next, thread, owner);
       next = chat.layout;
       ids.push(chat.tab);
     }
   } else {
-    ids.push(...change.source.tabs.filter((tab) => next.tabs[tab] !== undefined));
+    ids.push(...source.tabs.filter((tab) => next.tabs[tab] !== undefined));
   }
-  return moveTabs(layout, next, [...new Set(ids)], change.at, change.restore, view);
+  return moveTabs(layout, next, [...new Set(ids)], change.at, "add", undefined, surfaces, view);
 }
 
 // `layout` itself when the move does not happen.
@@ -875,32 +973,36 @@ function moveTabs(
   withPayloads: WorkAreaLayout,
   moving: readonly TabId[],
   at: Placement,
+  leaving: Leaving,
   restore: TabId | undefined,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
   let next = withPayloads;
-  const target =
-    (at.kind === "strip" && at.before !== null ? paneHolding(next.root, at.before) : undefined) ??
-    findPane(next.root, at.pane);
+  const target = findPane(next.root, at.pane);
   if (!isNonEmpty(moving) || !target) return layout;
-  const movingSet = new Set(moving);
-  const remaining = target.tabs.filter((tab) => !movingSet.has(tab));
-  next = removeTabs(next, movingSet, {
-    keep: target.id,
-    ...(restore === undefined ? {} : { restore }),
-  });
+  // The one strip lists tabs, not views, so a drop there moves the tab.
+  const how = isStripView(layout, view) ? "every" : leaving;
+  const left = new Map(moving.map((tab) => [tab, leavesFrom(next, surfaces, tab, how)] as const));
+  const sources = [...left.values()].flat();
+  // On an edge the target pane keeps the tab unless the tab leaves it.
+  const remaining = target.tabs.filter((tab) => left.get(tab)?.includes(target.id) !== true);
+  next = withdraw(next, surfaces, moving, how, target.id, restore);
   if (at.kind === "edge") {
     if (!isNonEmpty(remaining)) return layout;
+    const gone = new Set(target.tabs.filter((tab) => !remaining.includes(tab)));
     const active =
       restore !== undefined && remaining.includes(restore)
         ? restore
-        : nearestRemaining(target.tabs, target.active, movingSet)!;
+        : nearestRemaining(target.tabs, target.active, gone)!;
     next = setPane(next, { ...target, tabs: remaining, active });
     const split = splitFitted(next, target.id, at.edge, moving, view);
     if (split.fits === false) return layout;
     return withoutArmed({ ...split.layout, focused: split.pane });
   }
-  const before = at.kind === "strip" ? at.before : null;
+  // A join into the pane that already holds the tab keeps its slot, as the tab's click does.
+  const kept = at.kind === "join" && moving.length === 1 && target.tabs.includes(moving[0]);
+  const before = at.kind === "strip" ? at.before : kept ? moving[0] : null;
   const inserted = {
     ...setPane(next, insertTabs(target, moving, before, true)),
     focused: target.id,
@@ -909,7 +1011,6 @@ function moveTabs(
   // and let the branches the moved tabs left use their freed room.
   const gainsChat =
     !holdsComposer(next, target) && moving.some((tab) => tabTraits(next, tab).composer);
-  const sources = moving.flatMap((tab) => paneHolding(layout.root, tab)?.id ?? []);
   const joined =
     gainsChat && isStripView(layout, view)
       ? settleInnermostFirst(
@@ -934,15 +1035,11 @@ function landAt(
   layout: WorkAreaLayout,
   tab: TabId,
   at: Placement,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout | null {
   const base = withPayload(layout, tab, layout.tabs[tab] ?? SURFACE_PAYLOAD);
-  // A join into the pane that already holds the tab keeps its slot, as the tab's click does.
-  const place: Placement =
-    at.kind === "join" && findPane(base.root, at.pane)?.tabs.includes(tab)
-      ? { kind: "strip", pane: at.pane, before: tab }
-      : at;
-  const moved = moveTabs(base, base, [tab], place, undefined, view);
+  const moved = moveTabs(base, base, [tab], at, "add", undefined, surfaces, view);
   if (moved === base) return null;
   return fitsView(moved, view) === false && fitsView(base, view) !== false ? null : moved;
 }
@@ -952,10 +1049,11 @@ export function applyWorkAreaChange(
   layout: WorkAreaLayout,
   change: WorkAreaChange,
   owner: ScopedThreadRef,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
   openFrom: OpenFrom | null = null,
 ): WorkAreaLayout {
-  const next = changedLayout(layout, change, owner, view, openFrom);
+  const next = changedLayout(layout, change, owner, surfaces, view, openFrom);
   const { revealed } = layout;
   return revealed !== undefined && takesOver(layout, revealed, change)
     ? withRevealed(next, undefined)
@@ -966,12 +1064,19 @@ function changedLayout(
   layout: WorkAreaLayout,
   change: WorkAreaChange,
   owner: ScopedThreadRef,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
   openFrom: OpenFrom | null,
 ): WorkAreaLayout {
   switch (change.type) {
     case "place":
-      return place(layout, change, owner, view);
+      return place(layout, change, owner, surfaces, view);
+    case "close-view": {
+      // Only while another view of the tab stays; a tab's last view closes as the tab.
+      const { pane, tab } = change.view;
+      if (!findPane(layout.root, pane)?.tabs.includes(tab)) return layout;
+      return holders(layout.root, tab).length > 1 ? removeView(layout, change.view) : layout;
+    }
     case "close": {
       const payload = layout.tabs[change.tab];
       if (payload === undefined || payload.kind === "surface") return layout;
@@ -979,12 +1084,10 @@ function changedLayout(
       return removeTabs(layout, new Set([change.tab]));
     }
     case "activate": {
-      const pane = paneHolding(layout.root, change.tab);
-      if (!pane) return layout;
-      return withoutArmed({
-        ...setPane(layout, { ...pane, active: change.tab }),
-        focused: pane.id,
-      });
+      const { tab } = change.view;
+      const pane = findPane(layout.root, change.view.pane);
+      if (!pane?.tabs.includes(tab)) return layout;
+      return withoutArmed({ ...setPane(layout, { ...pane, active: tab }), focused: pane.id });
     }
     case "unfloat":
       return unfloatTab(layout, change.tab);
@@ -1043,7 +1146,7 @@ function changedLayout(
         reveal,
         ...(attachment === undefined ? {} : { attachment }),
       });
-      return showOrPlace(next, tab, "file", view, openFrom);
+      return showOrPlace(next, tab, "file", surfaces, view, openFrom);
     }
     case "linked-file-shown": {
       const payload = layout.tabs[change.tab];
@@ -1058,14 +1161,23 @@ function changedLayout(
     }
     case "open-thread": {
       const side = sideThreadTabId(change.thread.threadId);
-      if (paneHolding(layout.root, side)) return showOrPlace(layout, side, null, view, openFrom);
+      if (isPlaced(layout.root, side)) {
+        return showOrPlace(layout, side, null, surfaces, view, openFrom);
+      }
       const chat = chatTabFor(layout, change.thread, owner);
-      return showOrPlace(chat.layout, chat.tab, null, view, openFrom);
+      return showOrPlace(chat.layout, chat.tab, null, surfaces, view, openFrom);
     }
     case "open-reply": {
       const tab = replyTabId(change.thread, change.first);
       if (!change.reveal) {
-        const shown = showOrPlace(withReply(layout, tab, change), tab, null, view, openFrom);
+        const shown = showOrPlace(
+          withReply(layout, tab, change),
+          tab,
+          null,
+          surfaces,
+          view,
+          openFrom,
+        );
         return layout.revealed === tab ? withRevealed(shown, undefined) : shown;
       }
       const fresh = layout.tabs[tab] === undefined;
@@ -1076,11 +1188,11 @@ function changedLayout(
       const reveals = fresh ? tab : layout.revealed;
       if (change.reveal === "quote") {
         return withRevealed(
-          showOrPlace(withReply(replaced, tab, change), tab, null, view, openFrom),
+          showOrPlace(withReply(replaced, tab, change), tab, null, surfaces, view, openFrom),
           reveals,
         );
       }
-      const next = revealReply(withReply(replaced, tab, change), tab, view, openFrom);
+      const next = revealReply(withReply(replaced, tab, change), tab, surfaces, view, openFrom);
       // One strip draws only the focused pane, so there the reveal's focus wins.
       const focused =
         !isStripView(next, view) && findPane(next.root, layout.focused)
@@ -1105,7 +1217,7 @@ function withReply(
 }
 
 function replaceTab(layout: WorkAreaLayout, from: TabId, to: TabId): WorkAreaLayout {
-  const pane = paneHolding(layout.root, from);
+  const pane = preferredView(layout, from, undefined, "reveal");
   if (!pane) return layout;
   const tabs = pane.tabs.map((tab) => (tab === from ? to : tab));
   return isNonEmpty(tabs)
@@ -1116,15 +1228,20 @@ function replaceTab(layout: WorkAreaLayout, from: TabId, to: TabId): WorkAreaLay
 function revealReply(
   layout: WorkAreaLayout,
   tab: TabId,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
   openFrom: OpenFrom | null,
 ): WorkAreaLayout {
   const origin = openFrom?.tab ?? null;
-  const shown = showOrPlace(layout, tab, null, view, openFrom);
-  if (origin === null || !tabShown(layout, view, origin) || tabShown(shown, view, origin)) {
+  const shown = showOrPlace(layout, tab, null, surfaces, view, openFrom);
+  const source =
+    origin === null ? undefined : preferredView(layout, origin, openFrom?.pane, "user");
+  // The origin's own view, not another view of its tab elsewhere.
+  const originShown = (next: WorkAreaLayout) =>
+    origin !== null && source !== undefined && tabShown(next, view, origin, source.id);
+  if (origin === null || source === undefined || !originShown(layout) || originShown(shown)) {
     return shown;
   }
-  const source = paneHolding(layout.root, origin)!;
   // One strip draws one tab: the reply shows right after the origin, whose Find stays one tab back.
   if (isStripView(layout, view)) {
     const rest = source.tabs.filter((other) => other !== tab);
@@ -1134,12 +1251,13 @@ function revealReply(
     return setPane(lifted, insertTabs(kept, [tab], after ?? null, true));
   }
   // A reply in the origin's pane moves to another pane when one has room for it.
-  if (paneHolding(layout.root, tab)?.id === source.id) {
-    const moved = showOrPlace(removeTabs(layout, new Set([tab])), tab, null, view, openFrom);
-    if (tabShown(moved, view, origin) && tabShown(moved, view, tab)) return moved;
+  if (source.tabs.includes(tab)) {
+    const lifted = removeView(layout, { pane: source.id, tab });
+    const moved = showOrPlace(lifted, tab, null, surfaces, view, openFrom);
+    if (originShown(moved) && tabShown(moved, view, tab)) return moved;
   }
   // The origin's Find field keeps the keyboard; the match shows once this tab is activated.
-  return paneHolding(layout.root, tab)
+  return isPlaced(layout.root, tab)
     ? layout
     : setPane(layout, insertTabs(source, [tab], null, false));
 }
@@ -1147,11 +1265,13 @@ function revealReply(
 function takesOver(layout: WorkAreaLayout, tab: TabId, change: WorkAreaChange): boolean {
   switch (change.type) {
     case "activate":
-      return change.tab === tab;
+      return change.view.tab === tab;
     case "focus":
       return findPane(layout.root, change.pane)?.active === tab;
     case "place":
-      return "tabs" in change.source && change.source.tabs.includes(tab);
+      return "view" in change.source
+        ? change.source.view.tab === tab
+        : "tabs" in change.source && change.source.tabs.includes(tab);
     default:
       return false;
   }
@@ -1165,9 +1285,10 @@ export function landingRect(
   layout: WorkAreaLayout,
   change: WorkAreaChange,
   owner: ScopedThreadRef,
+  surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): Rect | null {
-  const next = applyWorkAreaChange(layout, change, owner, view);
+  const next = applyWorkAreaChange(layout, change, owner, surfaces, view);
   if (next === layout || fitsView(next, view) !== true) return null;
   return paneRects(next.root).get(next.focused) ?? null;
 }

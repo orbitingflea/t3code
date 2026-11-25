@@ -960,8 +960,9 @@ function SortableTabList(props: {
   children: ReactNode;
 }) {
   const sensors = useTabDragSensors();
-  const inDragScope = useRightPanelPane() !== null;
-  const surfaceIds = props.surfaces.map((surface) => surface.id);
+  const pane = useRightPanelPane();
+  const inDragScope = pane !== null;
+  const surfaceIds = props.surfaces.map((surface) => pane?.dragId(surface.id) ?? surface.id);
   const { onMove, surfaces } = props;
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) return;
@@ -1035,10 +1036,11 @@ function RightPanelTab<Entry extends WorkAreaEntry>(
     onFinishRename,
   } = props;
   const press = useTabPress(surface, onActivate);
-  const inDragScope = useRightPanelPane() !== null;
+  const pane = useRightPanelPane();
+  const inDragScope = pane !== null;
   const dragData = tabDragData(props.title);
   const { listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: surface.id,
+    id: pane?.dragId(surface.id) ?? surface.id,
     disabled: props.dragDisabled,
     data: dragData,
   });

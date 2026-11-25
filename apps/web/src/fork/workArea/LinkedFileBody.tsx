@@ -11,6 +11,7 @@ import { environmentThreadDetails } from "~/state/threads";
 import { OpenOriginContext, openLinkedFolder } from "./chatFileOpener";
 import { linkedTreeOwner } from "./linkSources";
 import { PanelLinkOwnerContext } from "./panelLinkDrag";
+import { useRightPanelPane } from "./tabStrip";
 import { threadWorkspace } from "./threadWorkspace.logic";
 import { type LinkedFileEntry, openInFileTab, type TabId } from "./workArea.logic";
 
@@ -45,6 +46,7 @@ export function LinkedFileBody(props: {
 }) {
   const { entry, owner, tab } = props;
   const { source, attachment } = entry;
+  const pane = useRightPanelPane()?.id;
   const workspace = useThreadWorkspace(source);
   const ownerWorkspace = useThreadWorkspace(owner);
   const workspaceMutationId = useAtomValue(
@@ -91,7 +93,7 @@ export function LinkedFileBody(props: {
             {...(sharesWorkspace
               ? {
                   onNavigateFolder: (path: string, trail: string) =>
-                    openLinkedFolder(owner, tab, path, trail),
+                    openLinkedFolder(owner, tab, path, trail, pane),
                 }
               : {})}
             folderTrail={undefined}

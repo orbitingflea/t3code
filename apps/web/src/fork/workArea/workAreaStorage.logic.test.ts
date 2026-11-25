@@ -30,10 +30,11 @@ import {
   record,
   ref,
   resetWorkAreaStore,
-  type Shape,
   shape,
+  type Shape,
   shapeOf,
   store,
+  viewOf,
   WIDE,
 } from "./workAreaTestKit";
 
@@ -251,7 +252,7 @@ describe("work area records", () => {
     expect(shapeOf(repaired.root)).toEqual({
       axis: "row",
       first: ["diff"],
-      second: ["files", "chat"],
+      second: ["diff", "files", "chat"],
     });
     expect(repaired.root.kind === "split" ? repaired.root.ratio : null).toBe(0.85);
     expect(repaired.seq).toBe(2);
@@ -350,7 +351,7 @@ describe("work area records", () => {
 
   it("lists the active surface of every drawn pane, or of the one strip when narrow", () => {
     onePane("a.ts");
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     chatBeside("b.ts");
     store().activateSurface(ref, "file:a.ts");
     expect(shownSurfaces(record(), WIDE).map((surface) => surface.id)).toEqual([

@@ -42,8 +42,9 @@ import {
   resetWorkAreaStore,
   shape,
   tab,
-  WIDE,
+  viewOf,
   wide,
+  WIDE,
 } from "./workAreaTestKit";
 import { followFindRequests } from "./useWorkAreaChat";
 import { publishWorkAreaView } from "./workAreaView";
@@ -354,22 +355,27 @@ describe("a link dropped on a pane", () => {
     expect(actives()).toEqual(["chat", "file:a.ts", "file:b.ts"]);
   });
 
-  it("moves a file already open in another pane to the strip slot it was dropped on", () => {
+  it("opens a view of a file already open in another pane at the strip slot it was dropped on", () => {
     chatBeside("a.ts", "b.ts");
     drop(
       () => ({ kind: "strip", pane: paneAt(0).id, before: PRIMARY_CHAT }),
       () => store().openFile(ref, "a.ts"),
     );
-    expect(shape()).toEqual({ axis: "row", first: ["file:a.ts", "chat"], second: ["file:b.ts"] });
+    expect(shape()).toEqual({
+      axis: "row",
+      first: ["file:a.ts", "chat"],
+      second: ["file:a.ts", "file:b.ts"],
+    });
+    expect(actives()).toEqual(["file:a.ts", "file:b.ts"]);
   });
 
-  it("moves the file its pane already shows", () => {
+  it("opens a view of the file another pane already shows", () => {
     chatBeside("a.ts");
     drop(
       () => ({ kind: "strip", pane: paneAt(0).id, before: null }),
       () => store().openFile(ref, "a.ts"),
     );
-    expect(shape()).toEqual(["chat", "file:a.ts"]);
+    expect(shape()).toEqual({ axis: "row", first: ["chat", "file:a.ts"], second: ["file:a.ts"] });
   });
 
   it("keeps a file dropped on the strip slot just before its own tab where it is", () => {
@@ -467,6 +473,7 @@ describe("a link dropped on a pane", () => {
           probeLayout(layout(), ref, link),
           { type: "place", source: { tabs: [LINK_PROBE] }, at: at() },
           ref,
+          recordOf(ref).surfaces,
           WIDE,
         );
       expect(plans({ composer: true })).toBeNull();
@@ -497,7 +504,7 @@ describe("a link dropped on a pane", () => {
       chatBeside("a.ts", "b.ts");
       change({
         type: "place",
-        source: { tabs: [tab("file:b.ts")] },
+        source: { view: viewOf(tab("file:b.ts")) },
         at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
       });
       const root = layout().root;
@@ -513,17 +520,17 @@ describe("a link dropped on a pane", () => {
       chatBeside("a.ts", "b.ts", "c.ts", "d.ts");
       change({
         type: "place",
-        source: { tabs: [tab("file:c.ts")] },
+        source: { view: viewOf(tab("file:c.ts")) },
         at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
       });
       change({
         type: "place",
-        source: { tabs: [tab("file:a.ts")] },
+        source: { view: viewOf(tab("file:a.ts")) },
         at: { kind: "edge", pane: paneAt(0).id, edge: "right" },
       });
       change({
         type: "place",
-        source: { tabs: [tab("file:d.ts")] },
+        source: { view: viewOf(tab("file:d.ts")) },
         at: { kind: "join", pane: paneAt(0).id },
       });
       const root = layout().root;
@@ -552,7 +559,7 @@ describe("a link dropped on a pane", () => {
         panes();
         const unpublish = publishWorkAreaView({ narrow: true, size: { width: 640, height: 800 } });
         const chat = moving();
-        change({ type: "place", source: { tabs: [chat] }, at: onStrip(target) });
+        change({ type: "place", source: { view: viewOf(chat) }, at: onStrip(target) });
         unpublish();
         expect(paneAt(target).tabs).toContain(chat);
         expect(fitsView(layout(), restored)).toBe(true);
@@ -573,7 +580,7 @@ describe("a link dropped on a pane", () => {
       publishWorkAreaView(strip);
       change({
         type: "place",
-        source: { tabs: [tab("file:b.ts")] },
+        source: { view: viewOf(tab("file:b.ts")) },
         at: { kind: "strip", pane: paneAt(1).id, before: tab("file:a.ts") },
       });
       expect(paneAt(1).tabs).toEqual(["file:b.ts", "file:a.ts"]);

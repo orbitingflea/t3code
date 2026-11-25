@@ -7,7 +7,6 @@ import {
   leaves,
   mapSplits,
   type PaneId,
-  paneHolding,
   PRIMARY_CHAT,
   resolveLayout,
   type PaneNode,
@@ -419,10 +418,18 @@ export function settleInnermostFirst(
 }
 
 /** Whether `tab` is on screen: the active tab of a drawn pane, or of the one strip. */
-export function tabShown(layout: WorkAreaLayout, view: WorkAreaView, tab: TabId): boolean {
+export function tabShown(
+  layout: WorkAreaLayout,
+  view: WorkAreaView,
+  tab: TabId,
+  pane?: PaneId,
+): boolean {
+  // The one strip shows tabs, so there any view of the tab counts.
   return isStripView(layout, view)
     ? focusedTab(layout) === tab
-    : paneHolding(layout.root, tab)?.active === tab;
+    : leaves(layout.root).some(
+        (candidate) => candidate.active === tab && (pane === undefined || candidate.id === pane),
+      );
 }
 
 /** The surfaces the user can see now: the active surface of each drawn pane. */

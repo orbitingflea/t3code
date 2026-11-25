@@ -322,10 +322,11 @@ describe("WhiteboardPanel", () => {
     const store = useRightPanelStore.getState();
     store.openFile(threadRef, "a.ts");
     store.openFile(threadRef, "b.ts");
+    const filesPane = leaves(ownLayout(threadRef).root)[1]!.id;
     store.updateWorkArea(threadRef, {
       type: "place",
-      source: { tabs: [surfaceTabId("file:b.ts")] },
-      at: { kind: "edge", pane: leaves(ownLayout(threadRef).root)[1]!.id, edge: "right" },
+      source: { view: { pane: filesPane, tab: surfaceTabId("file:b.ts") } },
+      at: { kind: "edge", pane: filesPane, edge: "right" },
     });
     await using screen = await render(
       <>

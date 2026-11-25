@@ -27,7 +27,7 @@ import {
   type FakeDriver,
 } from "../../../test/fakeEnvironment";
 import { render } from "../../../test/render";
-import { paneHolding, replyTabId, resolveLayout, type TabId } from "../workArea/workArea.logic";
+import { holders, replyTabId, resolveLayout, type TabId } from "../workArea/workArea.logic";
 import { replyContextField, subThreadDraftId } from "./subThreadReply";
 
 vi.mock(
@@ -246,12 +246,12 @@ it("cites into the reply tab the user typed in, of two shown side by side", asyn
   const threadRef = scopeThreadRef(ENVIRONMENT_ID, thread.id);
   const [deploy, tests] = firsts;
   const holding = (tab: TabId) =>
-    paneHolding(
+    holders(
       resolveLayout(
         selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef),
       ).root,
       tab,
-    );
+    )[0];
   using _environment = installEnvironment();
   await using _app = await openThread(thread.id, 1194);
   const replies = page.getByRole("button", { name: /1 reply/ });
@@ -262,7 +262,7 @@ it("cites into the reply tab the user typed in, of two shown side by side", asyn
   await vi.waitFor(() => expect(holding(testsTab)).toBeDefined());
   store.updateWorkArea(threadRef, {
     type: "place",
-    source: { tabs: [testsTab] },
+    source: { view: { pane: holding(testsTab)!.id, tab: testsTab } },
     at: { kind: "edge", pane: holding(testsTab)!.id, edge: "bottom" },
   });
   const box = (first: string) =>

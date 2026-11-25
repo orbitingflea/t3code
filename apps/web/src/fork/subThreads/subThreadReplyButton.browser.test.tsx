@@ -298,7 +298,7 @@ it("moves a reply dropped before another saved pane's first tab in the one-strip
     await vi.waitFor(() => expect(stripOf(panes()[1]!)).toEqual([repliedTab, "files"]));
     useRightPanelStore.getState().updateWorkArea(repliedRef, {
       type: "place",
-      source: { tabs: [repliedTab] },
+      source: { view: { pane: asPaneId(panes()[1]!.dataset.workAreaPane!), tab: repliedTab } },
       at: { kind: "join", pane: asPaneId("p0") },
     });
     await vi.waitFor(() => expect(stripOf(panes()[1]!)).toEqual(["files"]));

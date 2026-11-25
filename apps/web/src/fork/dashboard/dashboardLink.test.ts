@@ -12,6 +12,7 @@ import {
   shape,
   store,
   tab,
+  viewOf,
   WIDE,
 } from "../workArea/workAreaTestKit";
 import { publishWorkAreaView } from "../workArea/workAreaView";
@@ -33,7 +34,7 @@ describe("a Dashboard link in a chat", () => {
     store().open(ref, "files");
     change({
       type: "place",
-      source: { tabs: [tab("files")] },
+      source: { view: viewOf(tab("files")) },
       at: { kind: "edge", pane: paneAt(0).id, edge: "left" },
     });
     change({ type: "focus", pane: paneAt(0).id });

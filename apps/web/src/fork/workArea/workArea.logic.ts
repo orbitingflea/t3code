@@ -5,6 +5,8 @@ import type { RightPanelKind, RightPanelSurface, ThreadRightPanelState } from "~
 import { WORK_AREA_COPY } from "~/fork/forkCopy";
 import type { ChatFileAttachment } from "~/types";
 
+import type { LayoutWriteKind } from "./workAreaPlacement.logic";
+
 export type PaneId = string & { readonly __pane: unique symbol };
 export type SplitId = string & { readonly __split: unique symbol };
 export type TabId = string & { readonly __tab: unique symbol };
@@ -56,6 +58,24 @@ export interface SplitNode {
 }
 
 export type LayoutNode = PaneNode | SplitNode;
+
+export interface ViewRef {
+  readonly pane: PaneId;
+  readonly tab: TabId;
+}
+
+export type ViewKey = string & { readonly __view: unique symbol };
+
+export const viewKey = (view: ViewRef): ViewKey => `${view.pane}/${view.tab}` as ViewKey;
+
+export function parseViewKey(key: string): ViewRef | null {
+  // Pane ids never hold "/", so the first one ends the pane.
+  const at = key.indexOf("/");
+  const pane = key.slice(0, at);
+  return at > 0 && PANE_ID.test(pane)
+    ? { pane: asPaneId(pane), tab: asTabId(key.slice(at + 1)) }
+    : null;
+}
 
 export interface Floating {
   readonly tab: TabId;
@@ -132,39 +152,75 @@ export function isDefaultLayout(layout: WorkAreaLayout): boolean {
 
 export const isNonEmpty = <T>(items: readonly T[]): items is NonEmpty<T> => items.length > 0;
 
-type TabClass = Exclude<WorkAreaTab["kind"], "surface"> | "side-thread" | "surface";
+type TabClass = Exclude<WorkAreaTab["kind"], "surface"> | RightPanelKind;
+
+export type ViewCount = "one" | "many";
 
 interface TabTraits {
   /** Counts toward the last Chat, which cannot close. */
   readonly chat: boolean;
   /** Holds a message box: keeps composer width and blocks automatic opens from covering it. */
   readonly composer: boolean;
+  /** "many": open in several panes, once in each; "one": in one pane, opening it elsewhere moves it. */
+  readonly views: ViewCount;
 }
 
+const CONTENT: TabTraits = { chat: false, composer: false, views: "many" };
+const SINGLE: TabTraits = { chat: false, composer: false, views: "one" };
+
+// Exhaustive over upstream's surface kinds, so a new kind does not compile until it has a row.
 const TRAITS: Readonly<Record<TabClass, TabTraits>> = {
-  "primary-chat": { chat: true, composer: true },
-  "secondary-chat": { chat: true, composer: true },
-  "sub-thread": { chat: false, composer: true },
-  "side-thread": { chat: false, composer: true },
-  "linked-file": { chat: false, composer: false },
-  launcher: { chat: false, composer: false },
-  surface: { chat: false, composer: false },
+  "primary-chat": { chat: true, composer: true, views: "one" },
+  "secondary-chat": { chat: true, composer: true, views: "many" },
+  "sub-thread": { chat: false, composer: true, views: "many" },
+  "linked-file": CONTENT,
+  launcher: SINGLE,
+  thread: { chat: false, composer: true, views: "many" },
+  file: CONTENT,
+  diff: CONTENT,
+  "pull-request": CONTENT,
+  "pull-requests": CONTENT,
+  issue: CONTENT,
+  dashboard: CONTENT,
+  replies: CONTENT,
+  "linked-thread": CONTENT,
+  files: SINGLE,
+  preview: SINGLE,
+  terminal: SINGLE,
+  device: SINGLE,
+  whiteboard: SINGLE,
 };
 
-// Prefix of upstream's ThreadSurface id for side chats and subagents.
+// Prefix of upstream's ThreadSurface id for side chats and subagents. Fit checks have no surfaces,
+// so a surface tab's message box is read from its id.
 const SIDE_THREAD_PREFIX = "thread:";
 
-export const traitsOf = (tab: TabId, payload: WorkAreaTab | undefined): TabTraits =>
-  TRAITS[
-    payload !== undefined && payload.kind !== "surface"
-      ? payload.kind
-      : tab.startsWith(SIDE_THREAD_PREFIX)
-        ? "side-thread"
-        : "surface"
-  ];
+export const traitsOf = (
+  tab: TabId,
+  payload: WorkAreaTab | undefined,
+): Pick<TabTraits, "chat" | "composer"> =>
+  payload !== undefined && payload.kind !== "surface"
+    ? TRAITS[payload.kind]
+    : tab.startsWith(SIDE_THREAD_PREFIX)
+      ? TRAITS.thread
+      : SINGLE;
 
-export const tabTraits = (layout: WorkAreaLayout, tab: TabId): TabTraits =>
-  traitsOf(tab, layout.tabs[tab]);
+export const tabTraits = (
+  layout: WorkAreaLayout,
+  tab: TabId,
+): Pick<TabTraits, "chat" | "composer"> => traitsOf(tab, layout.tabs[tab]);
+
+export function viewsOf(
+  layout: WorkAreaLayout,
+  surfaces: readonly RightPanelSurface[],
+  tab: TabId,
+): ViewCount {
+  const payload = layout.tabs[tab];
+  if (payload !== undefined && payload.kind !== "surface") return TRAITS[payload.kind].views;
+  // A surface tab's count is its surface's kind's; one with no surface has one view.
+  const surface = surfaces.find((entry) => entry.id === tab);
+  return surface === undefined ? "one" : TRAITS[surface.kind].views;
+}
 
 export function leaves(root: LayoutNode): PaneNode[] {
   if (root.kind === "pane") return [root];
@@ -175,12 +231,57 @@ export function findPane(root: LayoutNode, id: PaneId): PaneNode | undefined {
   return leaves(root).find((pane) => pane.id === id);
 }
 
-export function paneHolding(root: LayoutNode, tab: TabId): PaneNode | undefined {
-  return leaves(root).find((pane) => pane.tabs.includes(tab));
+export const holders = (root: LayoutNode, tab: TabId): PaneNode[] =>
+  leaves(root).filter((pane) => pane.tabs.includes(tab));
+
+export const isPlaced = (root: LayoutNode, tab: TabId): boolean =>
+  leaves(root).some((pane) => pane.tabs.includes(tab));
+
+export function preferredView(
+  layout: WorkAreaLayout,
+  tab: TabId,
+  near: PaneId | undefined,
+  write: LayoutWriteKind,
+): PaneNode | undefined {
+  const holding = holders(layout.root, tab);
+  const at = (id: PaneId | undefined) => holding.find((pane) => pane.id === id);
+  const showing = holding.filter((pane) => pane.active === tab);
+  const shown = showing.find((pane) => pane.id === near) ?? showing[0];
+  // A user means the pane they act in; an automatic write must not cover or move a shown view.
+  const ordered =
+    write === "automatic" || write === "reveal"
+      ? [shown, at(near), at(layout.focused)]
+      : [at(near), at(layout.focused), shown];
+  return ordered.find((pane) => pane !== undefined) ?? holding[0];
 }
 
-export const chatTabs = (layout: WorkAreaLayout): TabId[] =>
-  leaves(layout.root).flatMap((pane) => pane.tabs.filter((tab) => tabTraits(layout, tab).chat));
+export const gestureViews = (layout: WorkAreaLayout, view: ViewRef, strip: boolean): ViewRef[] =>
+  strip ? holders(layout.root, view.tab).map((pane) => ({ pane: pane.id, tab: view.tab })) : [view];
+
+export function closePlan(
+  root: LayoutNode,
+  views: readonly ViewRef[],
+): { readonly alone: readonly ViewRef[]; readonly tabs: readonly TabId[] } {
+  const closing = new Set(views.map(viewKey));
+  const alone: ViewRef[] = [];
+  const tabs: TabId[] = [];
+  for (const view of views) {
+    const holding = holders(root, view.tab);
+    if (!holding.some((pane) => pane.id === view.pane)) continue;
+    if (holding.some((pane) => !closing.has(viewKey({ pane: pane.id, tab: view.tab })))) {
+      alone.push(view);
+    } else if (!tabs.includes(view.tab)) {
+      tabs.push(view.tab);
+    }
+  }
+  return { alone, tabs };
+}
+
+export const chatTabs = (layout: WorkAreaLayout): TabId[] => [
+  ...new Set(
+    leaves(layout.root).flatMap((pane) => pane.tabs.filter((tab) => tabTraits(layout, tab).chat)),
+  ),
+];
 
 /** Rebuilds the tree; a pane mapped to null gives its space to its sibling. */
 export function mapPanes(
@@ -277,23 +378,40 @@ export function removeTabs(
   options: { readonly keep?: PaneId; readonly restore?: TabId } = {},
 ): WorkAreaLayout {
   if (ids.size === 0) return layout;
+  return removeWhere(
+    layout,
+    (pane, tab) => pane.id !== options.keep && ids.has(tab),
+    options.restore,
+  );
+}
+
+export const removeView = (
+  layout: WorkAreaLayout,
+  view: ViewRef,
+  restore?: TabId,
+): WorkAreaLayout =>
+  removeWhere(layout, (pane, tab) => pane.id === view.pane && tab === view.tab, restore);
+
+export function removeWhere(
+  layout: WorkAreaLayout,
+  removes: (pane: PaneNode, tab: TabId) => boolean,
+  restore?: TabId,
+): WorkAreaLayout {
   const alive = new Set<PaneId>();
   const root = mapPanes(layout.root, (pane) => {
-    if (pane.id === options.keep) {
+    const gone = new Set(pane.tabs.filter((tab) => removes(pane, tab)));
+    if (gone.size === 0) {
       alive.add(pane.id);
       return pane;
     }
-    const tabs = pane.tabs.filter((tab) => !ids.has(tab));
-    if (tabs.length === pane.tabs.length) {
-      alive.add(pane.id);
-      return pane;
-    }
+    const tabs = pane.tabs.filter((tab) => !gone.has(tab));
     if (!isNonEmpty(tabs)) return null;
     alive.add(pane.id);
-    const restored = options.restore !== undefined && tabs.includes(options.restore);
-    const active = restored ? options.restore! : nearestRemaining(pane.tabs, pane.active, ids)!;
+    const restored = restore !== undefined && tabs.includes(restore);
+    const active = restored ? restore : nearestRemaining(pane.tabs, pane.active, gone)!;
     return { ...pane, tabs, active };
   });
+  if (root === layout.root) return layout;
   if (root === null) {
     const fresh = defaultLayout(layout.seq);
     return { ...fresh, tabs: { ...layout.tabs, ...fresh.tabs } };
@@ -425,8 +543,12 @@ export function stripEntries(
   tabs: readonly TabId[],
   owner: ScopedThreadRef,
   chatLabel: string,
+  strip = false,
 ): WorkAreaEntry[] {
-  const closable = chatTabs(layout).length > 1;
+  // A pane's X closes its view, so a Chat with another view closes there; the one strip's X
+  // closes the tab.
+  const lastChat = chatTabs(layout).length <= 1;
+  const closable = (tab: TabId) => !lastChat || (!strip && holders(layout.root, tab).length > 1);
   return tabs.flatMap((tab): WorkAreaEntry[] => {
     const payload = layout.tabs[tab];
     switch (payload?.kind) {
@@ -438,7 +560,7 @@ export function stripEntries(
             id: chatEntryId(tab),
             kind: "chat",
             title: chatLabel,
-            closable,
+            closable: closable(tab),
             ...(thread ? { thread } : {}),
           },
         ];

@@ -7,7 +7,7 @@ import { selectThreadTerminalUiState, useTerminalUiStateStore } from "~/terminal
 
 import { adoptServerTerminals, followDrawerTerminals, terminalTabShown } from "./drawerTerminals";
 import { dismissTerminalTabs } from "./terminalTabsSeen";
-import { focusedTab, PRIMARY_CHAT, resolveLayout } from "./workArea.logic";
+import { focusedTab, holders, PRIMARY_CHAT, resolveLayout } from "./workArea.logic";
 import { other, ref, resetWorkAreaStore, store, WIDE } from "./workAreaTestKit";
 import { publishWorkAreaView } from "./workAreaView";
 
@@ -172,7 +172,11 @@ describe("the terminal drawer as a request for a terminal tab", () => {
       b.drawer.followDrawerTerminals();
       b.list(["t1", "t2"]);
       a.drawer.adoptServerTerminals(other, { sessionIds: ["u1"], surfaces: [], suppressed: [] });
-      b.panels().updateWorkArea(ref, { type: "activate", tab: PRIMARY_CHAT });
+      const chatPane = holders(resolveLayout(b.record()).root, PRIMARY_CHAT)[0]!.id;
+      b.panels().updateWorkArea(ref, {
+        type: "activate",
+        view: { pane: chatPane, tab: PRIMARY_CHAT },
+      });
       const reloaded = await loadPage();
       reloaded.drawer.followDrawerTerminals();
       const before = reloaded.record();

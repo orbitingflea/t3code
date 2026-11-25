@@ -21,7 +21,7 @@ import {
 import { subscribeAtomChanges } from "~/rpc/atomRegistry";
 import { environmentSession, readEnvironmentScope } from "~/state/session";
 
-import { paneHolding, resolveLayout, surfaceTabId, type TabId } from "./workArea.logic";
+import { isPlaced, resolveLayout, surfaceTabId, type TabId } from "./workArea.logic";
 import { keptFloat } from "./workAreaFloat.logic";
 import { primaryChatRect } from "./workAreaGeometry.logic";
 import { currentWorkAreaView, onWorkAreaViewChange } from "./workAreaView";
@@ -105,7 +105,7 @@ function closeDockedMiniPlayers(
     const after = selectThreadRightPanelState(next.byThreadKey, host);
     if (before === after) continue;
     const tab = surfaceTabId(previewMiniPlayerSourceKey(entry.source));
-    if (floatingIn(before) === tab && paneHolding(resolveLayout(after).root, tab)) {
+    if (floatingIn(before) === tab && isPlaced(resolveLayout(after).root, tab)) {
       players.close(threadRef);
     }
   }

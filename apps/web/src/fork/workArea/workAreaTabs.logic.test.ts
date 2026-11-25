@@ -11,7 +11,6 @@ import {
   type ArmKind,
   focusedTab,
   LAUNCHER,
-  paneHolding,
   PRIMARY_CHAT,
   replyTabId,
   secondaryChatTabId,
@@ -24,6 +23,7 @@ import {
   env,
   focusedIndex,
   fromChat,
+  holderOf,
   layout,
   other,
   paneAt,
@@ -34,6 +34,7 @@ import {
   shape,
   store,
   tab,
+  viewOf,
   WIDE,
   wide,
 } from "./workAreaTestKit";
@@ -138,16 +139,16 @@ describe("the launcher tab", () => {
     expect(actives()).toEqual(expectedActives);
   });
 
-  it("moves a surface already open in another pane into the launcher's pane, which it replaces", () => {
+  it("opens a view of a surface already open in another pane in the launcher's place", () => {
     const narrow = publishWorkAreaView({ narrow: true, size: null });
     store().open(ref, "diff");
     narrow();
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     publishWorkAreaView(WIDE);
     splitLauncher();
     armFocusedPane(ref, "diff");
     store().open(ref, "diff");
-    expect(shape()).toEqual({ axis: "row", first: ["chat"], second: ["diff"] });
+    expect(shape()).toEqual({ axis: "row", first: ["chat", "diff"], second: ["diff"] });
     expect(focusedIndex()).toBe(1);
   });
 
@@ -202,7 +203,7 @@ describe("the launcher tab", () => {
       store().openFile(ref, "b.ts");
       change({
         type: "place",
-        source: { tabs: [tab("file:b.ts")] },
+        source: { view: viewOf(tab("file:b.ts")) },
         at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
       });
       const menuPane = paneAt(2).id;
@@ -212,7 +213,7 @@ describe("the launcher tab", () => {
       });
       change({ type: "focus", pane: paneAt(1).id });
       await finish();
-      expect(paneHolding(layout().root, tab(opened))?.id).toBe(menuPane);
+      expect(holderOf(tab(opened))?.id).toBe(menuPane);
     },
   );
 
@@ -412,8 +413,12 @@ describe("reply tabs", () => {
     fromChat(() => store().openFile(ref, "a.ts"));
     reveal("m-1");
     const reply = replyTabId(ref, "m-1");
-    change({ type: "place", source: { tabs: [reply] }, at: { kind: "join", pane: paneAt(0).id } });
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({
+      type: "place",
+      source: { view: viewOf(reply) },
+      at: { kind: "join", pane: paneAt(0).id },
+    });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     expect(shape()).toEqual({ axis: "row", first: ["chat", reply], second: ["file:a.ts"] });
     reveal("m-1");
     expect(shape()).toEqual({ axis: "row", first: ["chat"], second: ["file:a.ts", reply] });
@@ -427,8 +432,12 @@ describe("reply tabs", () => {
     publishWorkAreaView(WIDE);
     fromPrimary().openSubThread("m-1");
     fromPrimary().openSubThread("m-2");
-    change({ type: "place", source: { tabs: [first] }, at: { kind: "join", pane: paneAt(0).id } });
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({
+      type: "place",
+      source: { view: viewOf(first) },
+      at: { kind: "join", pane: paneAt(0).id },
+    });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     expect(shape()).toEqual({ axis: "row", first: ["chat", first], second: [next] });
     const strip = { narrow: true, size: { width: 400, height: 800 } };
     publishWorkAreaView(strip);
@@ -487,7 +496,7 @@ describe("reply tabs", () => {
   });
 
   it.each<[string, () => void]>([
-    ["activated", () => change({ type: "activate", tab: replyTabId(ref, "m-1") })],
+    ["activated", () => change({ type: "activate", view: viewOf(replyTabId(ref, "m-1")) })],
     ["focused", () => change({ type: "focus", pane: paneAt(1).id })],
     ["opened", () => fromPrimary().openSubThread("m-1")],
     [

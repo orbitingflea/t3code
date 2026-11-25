@@ -10,13 +10,14 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import * as entities from "~/state/entities";
 import * as session from "~/state/session";
 
-import { paneHolding, resolveLayout, type WorkAreaLayout } from "./workArea.logic";
+import { holders, resolveLayout, type WorkAreaLayout } from "./workArea.logic";
 import { togglePreview } from "./workAreaCommands";
 import { primaryChatRect, shownSurfaces, type WorkAreaView } from "./workAreaGeometry.logic";
 import { persistedRecord, restoredRecord } from "./workAreaStorage.logic";
 import {
   change,
   fromChat,
+  holderOf,
   layout,
   other,
   paneAt,
@@ -27,6 +28,7 @@ import {
   shape,
   store,
   tab,
+  viewOf,
   WIDE,
 } from "./workAreaTestKit";
 import { publishWorkAreaView } from "./workAreaView";
@@ -46,7 +48,7 @@ const pictureInPicture = (tabId: string) => {
     usePreviewMiniPlayerStore.getState().close(ref);
     return;
   }
-  const pane = paneHolding(layout().root, tab(`browser:${tabId}`));
+  const pane = holderOf(tab(`browser:${tabId}`));
   if (pane) change({ type: "focus", pane: pane.id });
   usePreviewMiniPlayerStore.getState().open(ref, { kind: "browser", tabId });
   store().close(ref);
@@ -56,6 +58,19 @@ const openInPanel = (tabId: string) => {
   store().openBrowser(ref, tabId);
 };
 const settled = () => Promise.resolve();
+// [left.ts, t2] | [t1, right.ts]: the browser t1 and right.ts in a pane of their own.
+const t1BesideRight = () => {
+  change({
+    type: "place",
+    source: { view: viewOf(tab("file:right.ts")) },
+    at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
+  });
+  change({
+    type: "place",
+    source: { view: viewOf(tab("browser:t1")) },
+    at: { kind: "strip", pane: paneAt(2).id, before: tab("file:right.ts") },
+  });
+};
 const previewGrant = () => vi.mocked(session.readEnvironmentScope);
 const sessionState = Atom.make(AsyncResult.initial<AuthSessionState>());
 
@@ -107,18 +122,14 @@ describe("a floating tab", () => {
     store().openBrowser(ref, "t1");
     store().openBrowser(ref, "t2");
     store().openFile(ref, "right.ts");
-    change({
-      type: "place",
-      source: { tabs: [tab("browser:t1"), tab("file:right.ts")] },
-      at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
-    });
-    const home = paneHolding(layout().root, tab("browser:t1"))!.id;
-    expect(paneHolding(layout().root, tab("browser:t2"))?.id).not.toBe(home);
+    t1BesideRight();
+    const home = holderOf(tab("browser:t1"))!.id;
+    expect(holderOf(tab("browser:t2"))?.id).not.toBe(home);
     pictureInPicture("t1");
     pictureInPicture("t2");
     await settled();
     expect(floated()).toBe("t2");
-    expect(paneHolding(layout().root, tab("browser:t1"))?.id).toBe(home);
+    expect(holderOf(tab("browser:t1"))?.id).toBe(home);
     expect(placedTabs()).not.toContain("browser:t2");
     expect(shownIds()).not.toContain("browser:t1");
   });
@@ -137,7 +148,7 @@ describe("a floating tab", () => {
     store().open(ref, "diff");
     store().openBrowser(ref, "t1");
     pictureInPicture("t1");
-    change({ type: "activate", tab: tab("diff") });
+    change({ type: "activate", view: viewOf(tab("diff")) });
     await settled();
     expect(resolveLayout(record()).floating).toBeUndefined();
     expect(placedTabs()).toContain("browser:t1");
@@ -187,17 +198,13 @@ describe("a floating tab", () => {
     store().openFile(ref, "left.ts");
     store().openBrowser(ref, "t1");
     store().openFile(ref, "right.ts");
-    change({
-      type: "place",
-      source: { tabs: [tab("browser:t1"), tab("file:right.ts")] },
-      at: { kind: "edge", edge: "right", pane: paneAt(1).id },
-    });
-    const home = paneHolding(layout().root, tab("browser:t1"))!.id;
+    t1BesideRight();
+    const home = holderOf(tab("browser:t1"))!.id;
     pictureInPicture("t1");
-    expect(paneHolding(layout().root, tab("file:right.ts"))?.id).toBe(home);
+    expect(holderOf(tab("file:right.ts"))?.id).toBe(home);
     exit();
     await settled();
-    expect(paneHolding(read().root, tab("browser:t1"))?.id).toBe(home);
+    expect(holders(read().root, tab("browser:t1"))[0]?.id).toBe(home);
   });
 
   it.each<[string, () => void]>([
@@ -223,7 +230,7 @@ describe("a floating tab", () => {
   it("shows a forced reveal over the Chat of a one-pane strip", () => {
     publishWorkAreaView(STRIP);
     store().openBrowser(ref, "t1");
-    change({ type: "activate", tab: tab("chat") });
+    change({ type: "activate", view: viewOf(tab("chat")) });
     store().revealSurface(ref, "browser:t1");
     expect(shownIds(STRIP)).toEqual(["browser:t1"]);
   });
@@ -292,7 +299,7 @@ describe("preview.toggle", () => {
     store().openBrowser(ref, "t2");
     change({
       type: "place",
-      source: { tabs: [tab("browser:t2")] },
+      source: { view: viewOf(tab("browser:t2")) },
       at: { kind: "edge", pane: panes()[1]!.id, edge: "right" },
     });
     change({ type: "focus", pane: panes()[0]!.id });

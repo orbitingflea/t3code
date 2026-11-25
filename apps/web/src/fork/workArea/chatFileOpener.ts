@@ -19,7 +19,10 @@ import { replyHasDraft } from "../subThreads/subThreadReply";
 import { showBoardRef } from "../whiteboard/boardChannel";
 import { boardMentionParts } from "../whiteboard/markdown-whiteboard";
 import { readThreadProjectRoot } from "../whiteboard/role";
+import { useRightPanelPane } from "./tabStrip";
 import {
+  type PaneId,
+  preferredView,
   PRIMARY_CHAT,
   replyTabId,
   resolveLayout,
@@ -157,8 +160,14 @@ function withMention(target: Omit<ChatFileTarget, "openMention">): ChatFileTarge
  * Opens in `thread`'s own panel through the store, beside an `own` origin's tab. A `shown` origin
  * opens in the owner's layout beside its tab, files read in `thread`'s project.
  */
-export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRef): ChatFileTarget {
+export function chatFileTarget(
+  origin: OpenOrigin | null,
+  thread: ScopedThreadRef,
+  pane?: PaneId,
+): ChatFileTarget {
   const shown = origin?.kind === "shown" ? origin : null;
+  // The pane of the view the click happened in, so an open lands beside that view.
+  const inPane = pane === undefined ? {} : { pane };
   const record = () => shown?.owner ?? rightPanelHostRef(thread);
   const guest = shown?.owner.environmentId === thread.environmentId ? { guest: thread } : {};
   // A drop around the click still places an open that runs after a lookup's await.
@@ -171,6 +180,7 @@ export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRe
             {
               record: record(),
               tab: origin.tab,
+              ...inPane,
               ...(origin.kind === "own" && origin.adjacent ? { adjacent: true } : {}),
               ...guest,
             },
@@ -205,12 +215,12 @@ export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRe
     },
     showOrigin: () => {
       if (origin === null) return;
-      const state = selectThreadRightPanelState(
-        useRightPanelStore.getState().byThreadKey,
-        record(),
+      const layout = resolveLayout(
+        selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, record()),
       );
-      if (!tabShown(resolveLayout(state), currentWorkAreaView(), origin.tab)) {
-        update({ type: "activate", tab: origin.tab });
+      const at = preferredView(layout, origin.tab, pane, "user");
+      if (at !== undefined && !tabShown(layout, currentWorkAreaView(), origin.tab, at.id)) {
+        update({ type: "activate", view: { pane: at.id, tab: origin.tab } });
       }
     },
     panel: record,
@@ -239,7 +249,9 @@ export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRe
         toastManager.add({ type: "info", title: WORK_AREA_COPY.boardInOtherProject });
         return;
       }
-      runOpen({ record: rightPanelHostRef(owner), tab }, () => showBoardRef(href, owner));
+      runOpen({ record: rightPanelHostRef(owner), tab, ...inPane }, () =>
+        showBoardRef(href, owner),
+      );
     },
   });
 }
@@ -253,9 +265,12 @@ export function openLinkedFolder(
   tab: TabId,
   relativePath: string,
   folderTrail: string,
+  pane?: PaneId,
 ): void {
   const store = useRightPanelStore.getState();
-  runOpen({ record: owner, tab }, () => store.openFile(owner, "."));
+  runOpen({ record: owner, tab, ...(pane === undefined ? {} : { pane }) }, () =>
+    store.openFile(owner, "."),
+  );
   store.navigateFolder(owner, "files", relativePath, folderTrail);
 }
 
@@ -270,14 +285,15 @@ export const inChatOrigin =
 const chatFileOpener = (
   threadRef: ScopedThreadRef | null | undefined,
   origin: OpenOrigin | null,
+  pane: PaneId | undefined,
 ): ChatFileOpener | null =>
-  threadRef ? (thread = threadRef) => chatFileTarget(origin, thread) : null;
+  threadRef ? (thread = threadRef) => chatFileTarget(origin, thread, pane) : null;
 
 /** The one way a chat opens a file, an attachment or a board reference. */
 export function useChatFileOpener(
   threadRef: ScopedThreadRef | null | undefined,
 ): ChatFileOpener | null {
-  return chatFileOpener(threadRef, use(OpenOriginContext));
+  return chatFileOpener(threadRef, use(OpenOriginContext), useRightPanelPane()?.id);
 }
 
 /**
@@ -289,9 +305,10 @@ export function useChatViewOpener(
   embedded: boolean,
 ): { readonly origin: OpenOrigin | null; readonly opener: ChatFileOpener | null } {
   const outer = use(OpenOriginContext);
+  const pane = useRightPanelPane()?.id;
   const origin = embedded ? outer : PRIMARY_CHAT_ORIGIN;
   const environmentId = threadRef?.environmentId;
   const threadId = threadRef?.threadId;
   const thread = environmentId && threadId ? scopeThreadRef(environmentId, threadId) : null;
-  return { origin, opener: chatFileOpener(thread, origin) };
+  return { origin, opener: chatFileOpener(thread, origin, embedded ? pane : undefined) };
 }

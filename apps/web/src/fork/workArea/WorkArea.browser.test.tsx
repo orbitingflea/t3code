@@ -1116,3 +1116,175 @@ describe("WorkArea", () => {
     touch(document, "touchend", to);
   });
 });
+
+describe("views of one tab in several panes", () => {
+  const paneById = (id: string) =>
+    document.querySelector<HTMLElement>(`[data-work-area-pane="${id}"]`)!;
+  const stripOf = (pane: Element) =>
+    [...pane.querySelectorAll("[data-right-panel-tab-id]")].map((tab) =>
+      tab.getAttribute("data-right-panel-tab-id"),
+    );
+  const tabIn = (pane: string, tab: string) =>
+    paneById(pane).querySelector<HTMLElement>(`[data-right-panel-tab-id="${CSS.escape(tab)}"]`)!;
+  const strips = () => panes().map(stripOf);
+
+  function press(target: EventTarget, type: string, at: Point, altKey = false) {
+    target.dispatchEvent(
+      new PointerEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        pointerId: 1,
+        pointerType: "mouse",
+        isPrimary: true,
+        button: type === "pointermove" ? -1 : 0,
+        buttons: type === "pointerup" ? 0 : 1,
+        clientX: at.x,
+        clientY: at.y,
+        altKey,
+      }),
+    );
+  }
+
+  /** A pointer drag of `pane`'s own `tab`, released at `to`; Alt held for a copy. */
+  async function dragView(pane: string, tab: string, to: () => Point, altKey = false) {
+    const element = tabIn(pane, tab);
+    const start = center(element);
+    press(element, "pointerdown", start, altKey);
+    press(document, "pointermove", { x: start.x + 10, y: start.y + 10 }, altKey);
+    const target = to();
+    press(document, "pointermove", target, altKey);
+    await vi.waitFor(() =>
+      expect(document.querySelector("[data-work-area-drop-ghost]")).not.toBeNull(),
+    );
+    press(document, "pointerup", target, altKey);
+    await vi.waitFor(() => expect(document.querySelector("[data-drag-shield]")).toBeNull());
+  }
+
+  type Pane = { readonly id: string; readonly tabs: string[]; readonly active: string };
+  const saved = (
+    surfaces: ThreadRightPanelState["surfaces"],
+    first: Pane,
+    second: Pane,
+    focused = "p0",
+  ) =>
+    restoredRecord({
+      isOpen: true,
+      activeSurfaceId: null,
+      surfaces,
+      workArea: restoreWorkArea({
+        root: {
+          kind: "split",
+          id: "s1",
+          axis: "row",
+          ratio: 0.5,
+          first: { kind: "pane", ...first },
+          second: { kind: "pane", ...second },
+        },
+        tabs: {
+          chat: { kind: "primary-chat" },
+          ...Object.fromEntries(surfaces.map((surface) => [surface.id, { kind: "surface" }])),
+        },
+        focused,
+        seq: 2,
+      })!,
+    });
+  const FILES_AND_DIFF: ThreadRightPanelState["surfaces"] = [
+    { id: "files", kind: "files" },
+    { id: "diff", kind: "diff" },
+  ];
+
+  it("copies a content tab with an Alt-drag, and moves a dragged second view out of its own pane", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(twoPanes());
+    await using _app = await openOwner();
+
+    await dragView("p1", "diff", () => center(paneById("p0")), true);
+    await vi.waitFor(() => expect(strips()).toEqual([["chat", "files", "diff"], ["diff"]]));
+
+    await dragView("p1", "diff", () => center(paneById("p0")));
+    await vi.waitFor(() => expect(strips()).toEqual([["chat", "files", "diff"]]));
+    expect(surfaceKinds(owner)).toEqual(["files", "diff"]);
+  });
+
+  it("moves the one Files explorer on an Alt-drag", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(twoPanes());
+    await using _app = await openOwner();
+
+    await dragView("p0", "files", () => center(paneById("p1")), true);
+
+    await vi.waitFor(() => expect(strips()).toEqual([["chat"], ["diff", "files"]]));
+  });
+
+  it("focuses the pane of a pressed second view of the focused pane's shown tab", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(
+      saved(
+        FILES_AND_DIFF,
+        { id: "p0", tabs: ["chat", "diff"], active: "diff" },
+        { id: "p1", tabs: ["diff", "files"], active: "diff" },
+      ),
+    );
+    await using _app = await openOwner();
+    await vi.waitFor(() => expect(tabIn("p1", "diff")).not.toBeNull());
+    const at = center(tabIn("p1", "diff"));
+
+    press(tabIn("p1", "diff"), "pointerdown", at);
+    press(document, "pointerup", at);
+
+    await vi.waitFor(() => expect(ownerLayout().focused).toBe("p1"));
+    expect(strips()).toEqual([
+      ["chat", "diff"],
+      ["diff", "files"],
+    ]);
+  });
+
+  it("closes one of two views with its tab's close button and keeps the tab's other view", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(
+      saved(
+        FILES_AND_DIFF,
+        { id: "p0", tabs: ["chat", "files", "diff"], active: "chat" },
+        { id: "p1", tabs: ["diff"], active: "diff" },
+      ),
+    );
+    await using _app = await openOwner();
+
+    await userEvent.click(
+      page.elementLocator(paneById("p1")).getByRole("button", { name: "Close Diff" }),
+    );
+
+    await vi.waitFor(() => expect(strips()).toEqual([["chat", "files", "diff"]]));
+    expect(surfaceKinds(owner)).toEqual(["files", "diff"]);
+  });
+
+  it("keeps a side chat open when one of its views closes, and closes it with its last view", async () => {
+    const side: FakeThread = {
+      ...threadWithHistory("multiview-side", 1),
+      sideChatOf: ownerThread.id,
+    };
+    const tab = `thread:${side.id}`;
+    using _environment = installFakeEnvironment([ownerThread, side]);
+    setup(
+      saved(
+        [{ id: `thread:${side.id}`, kind: "thread", threadId: side.id }],
+        { id: "p0", tabs: ["chat", tab], active: tab },
+        { id: "p1", tabs: [tab], active: tab },
+      ),
+    );
+    await using _app = await openOwner();
+    const closeIn = (pane: string) =>
+      page.elementLocator(paneById(pane)).getByRole("button", { name: "Close side chat" });
+    await expect.element(closeIn("p1")).toBeVisible();
+
+    // The side chat's own close path, which releases it, runs only for its last view.
+    await userEvent.click(closeIn("p1"));
+    await vi.waitFor(() => expect(strips()).toEqual([["chat", tab]]));
+    expect(surfaceKinds(owner)).toEqual(["thread"]);
+
+    await userEvent.click(closeIn("p0"));
+    await vi.waitFor(() => expect(surfaceKinds(owner)).toEqual([]));
+    expect(strips()).toEqual([["chat"]]);
+  });
+});

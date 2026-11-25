@@ -28,8 +28,8 @@ import {
   type LayoutNode,
   leaves,
   linkedFileTabId,
+  holders,
   openInFileTab,
-  paneHolding,
   PRIMARY_CHAT,
   replyTabId,
   secondaryChatTabId,
@@ -61,6 +61,7 @@ import {
   env,
   focusedIndex,
   fromChat,
+  holderOf,
   layout,
   onePane,
   other,
@@ -74,6 +75,7 @@ import {
   store,
   tab,
   third,
+  viewOf,
   WIDE,
   wide,
 } from "./workAreaTestKit";
@@ -124,7 +126,7 @@ describe("work area tree", () => {
     onePane("a.ts");
     change({
       type: "place",
-      source: { tabs: [tab("file:a.ts")] },
+      source: { view: viewOf(tab("file:a.ts")) },
       at: { kind: "edge", pane: paneAt(0).id, edge },
     });
     expect(shape()).toEqual(expected);
@@ -154,7 +156,7 @@ describe("work area tree", () => {
         chatBeside("a.ts", "b.ts");
         change({
           type: "place",
-          source: { tabs: [tab("file:b.ts")] },
+          source: { view: viewOf(tab("file:b.ts")) },
           at: { kind: "edge", pane: paneAt(1).id, edge: "bottom" },
         });
       },
@@ -167,7 +169,7 @@ describe("work area tree", () => {
   ])("moves a tab from its menu %s", (_name, arrange, moved, edge, expected, focused) => {
     arrange();
     const before = shape();
-    const move = moveToward(layout(), tab(moved), edge);
+    const move = moveToward(layout(), viewOf(tab(moved)), edge);
     if (move) change(move);
     expect(shape()).toEqual(expected ?? before);
     expect(move === null).toBe(expected === null);
@@ -179,7 +181,7 @@ describe("work area tree", () => {
     chatBeside("a.ts", "b.ts");
     change({
       type: "place",
-      source: { tabs: [tab("file:b.ts")] },
+      source: { view: viewOf(tab("file:b.ts")) },
       at: { kind: "edge", pane: paneAt(1).id, edge: "bottom" },
     });
     expect(shape()).toEqual({
@@ -189,7 +191,7 @@ describe("work area tree", () => {
     });
     change({
       type: "place",
-      source: { tabs: [tab("file:b.ts")] },
+      source: { view: viewOf(tab("file:b.ts")) },
       at: { kind: "edge", pane: paneAt(0).id, edge: "left" },
     });
     expect(shape()).toEqual({
@@ -204,7 +206,7 @@ describe("work area tree", () => {
     const before = layout();
     change({
       type: "place",
-      source: { tabs: [tab("file:a.ts")] },
+      source: { view: viewOf(tab("file:a.ts")) },
       at: { kind: "edge", pane: paneAt(1).id, edge: "bottom" },
     });
     expect(layout()).toBe(before);
@@ -215,9 +217,8 @@ describe("work area tree", () => {
     store().activateSurface(ref, "file:a.ts");
     change({
       type: "place",
-      source: { tabs: [tab("file:a.ts")] },
+      source: { view: viewOf(tab("file:a.ts")), restore: tab("file:b.ts") },
       at: { kind: "join", pane: paneAt(0).id },
-      restore: tab("file:b.ts"),
     });
     expect(shape()).toEqual({ axis: "row", first: ["chat", "file:a.ts"], second: ["file:b.ts"] });
     expect(actives()).toEqual(["file:a.ts", "file:b.ts"]);
@@ -232,7 +233,7 @@ describe("work area tree", () => {
     expect(actives()).toEqual(["browser:t4"]);
   });
 
-  it("shows the nearest remaining tab when the active one leaves with others for an edge", () => {
+  it("shows the nearest remaining tab when the active one leaves for an edge", () => {
     const pane = asPaneId("p0");
     const [a, o, t, b, c] = ["file:a", "chat:o", "chat:t", "file:b", "file:c"].map(asTabId);
     const grid: WorkAreaLayout = {
@@ -251,13 +252,14 @@ describe("work area tree", () => {
       grid,
       {
         type: "place",
-        source: { tabs: [o!, t!] },
+        source: { view: { pane, tab: t! } },
         at: { kind: "edge", pane, edge: "right" },
       },
       ref,
+      [],
       WIDE,
     );
-    expect(paneHolding(next.root, a!)?.active).toBe(b);
+    expect(holders(next.root, a!)[0]?.active).toBe(b);
   });
 
   it("closes a pane with its last tab and never reuses its id", () => {
@@ -278,7 +280,7 @@ describe("work area tree", () => {
     });
     change({
       type: "place",
-      source: { threads: [other] },
+      source: { view: viewOf(secondaryChatTabId(other)) },
       at: { kind: "edge", pane: paneAt(0).id, edge: "right" },
     });
     expect(shape()).toEqual({ axis: "row", first: ["chat"], second: [secondaryChatTabId(other)] });
@@ -339,26 +341,11 @@ describe("work area tree", () => {
     expect(shape()).toEqual(["chat", secondaryChatTabId(other), secondaryChatTabId(third)]);
   });
 
-  it("inserts a strip drop in the pane that holds the tab under the marker", () => {
-    chatBeside("a.ts");
-    change({
-      type: "place",
-      source: { threads: [other] },
-      at: { kind: "strip", pane: paneAt(1).id, before: PRIMARY_CHAT },
-    });
-    expect(shape()).toEqual({
-      axis: "row",
-      first: [secondaryChatTabId(other), "chat"],
-      second: ["file:a.ts"],
-    });
-    expect(focusedIndex()).toBe(0);
-  });
-
   it("keeps every pane at its minimum when a divider is dragged to its bound", () => {
     chatBeside("a.ts", "b.ts");
     change({
       type: "place",
-      source: { tabs: [tab("file:b.ts")] },
+      source: { view: viewOf(tab("file:b.ts")) },
       at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
     });
     const dividers = () => drawWorkArea(layout(), WIDE).dividers;
@@ -428,8 +415,8 @@ describe("work area tree", () => {
       "the only Chat joins the Files pane",
       (files) => ({
         type: "place",
-        source: { tabs: [PRIMARY_CHAT] },
-        at: { kind: "join", pane: paneHolding(layout().root, files)!.id },
+        source: { view: viewOf(PRIMARY_CHAT) },
+        at: { kind: "join", pane: holderOf(files)!.id },
       }),
       true,
     ],
@@ -437,8 +424,8 @@ describe("work area tree", () => {
       "the only Chat splits the Files pane, leaving no pane behind",
       (files) => ({
         type: "place",
-        source: { tabs: [PRIMARY_CHAT] },
-        at: { kind: "edge", pane: paneHolding(layout().root, files)!.id, edge: "right" },
+        source: { view: viewOf(PRIMARY_CHAT) },
+        at: { kind: "edge", pane: holderOf(files)!.id, edge: "right" },
       }),
       true,
     ],
@@ -447,7 +434,7 @@ describe("work area tree", () => {
       (files) => ({
         type: "place",
         source: { threads: [other] },
-        at: { kind: "join", pane: paneHolding(layout().root, files)!.id },
+        at: { kind: "join", pane: holderOf(files)!.id },
       }),
       false,
     ],
@@ -456,7 +443,7 @@ describe("work area tree", () => {
       () => ({
         type: "place",
         source: { threads: [other] },
-        at: { kind: "edge", pane: paneHolding(layout().root, PRIMARY_CHAT)!.id, edge: "right" },
+        at: { kind: "edge", pane: holderOf(PRIMARY_CHAT)!.id, edge: "right" },
       }),
       false,
     ],
@@ -464,15 +451,16 @@ describe("work area tree", () => {
       "a lone tab on its own pane's edge changes nothing",
       (files) => ({
         type: "place",
-        source: { tabs: [files] },
-        at: { kind: "edge", pane: paneHolding(layout().root, files)!.id, edge: "bottom" },
+        source: { view: viewOf(files) },
+        at: { kind: "edge", pane: holderOf(files)!.id, edge: "bottom" },
       }),
       false,
     ],
   ])("at 600 px, beside a 360 px Chat, %s", (_name, make, fits) => {
     publishWorkAreaView(wide(600));
     fromChat(() => store().openFile(ref, "a.ts"));
-    expect(landingRect(layout(), make(tab("file:a.ts")), ref, wide(600)) !== null).toBe(fits);
+    const made = make(tab("file:a.ts"));
+    expect(landingRect(layout(), made, ref, record().surfaces, wide(600)) !== null).toBe(fits);
   });
 
   it.each([
@@ -487,7 +475,7 @@ describe("work area tree", () => {
     });
     change({
       type: "place",
-      source: { tabs: [secondaryChatTabId(other)] },
+      source: { view: viewOf(secondaryChatTabId(other)) },
       at: { kind: "edge", pane: paneAt(0).id, edge: "right" },
     });
     expect(panes()).toHaveLength(count);
@@ -521,7 +509,7 @@ describe("where shown tabs go", () => {
 
   it("activates a pressed tab where it is, even over a Chat, and focuses its pane", () => {
     onePane("a.ts");
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     chatBeside("b.ts");
     expect(shape()).toEqual({ axis: "row", first: ["chat", "file:a.ts"], second: ["file:b.ts"] });
     store().activateSurface(ref, "file:a.ts");
@@ -533,7 +521,7 @@ describe("where shown tabs go", () => {
     const narrow = publishWorkAreaView({ narrow: true, size: null });
     store().open(ref, "diff");
     narrow();
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     chatBeside("b.ts");
     store().open(ref, "diff", true);
     expect(shape()).toEqual({ axis: "row", first: ["chat"], second: ["file:b.ts", "diff"] });
@@ -616,7 +604,7 @@ describe("where shown tabs go", () => {
         const narrow = publishWorkAreaView({ narrow: true, size: null });
         store().open(ref, "files");
         narrow();
-        change({ type: "activate", tab: PRIMARY_CHAT });
+        change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
       },
       () => store().openFile(ref, "x.ts"),
       { axis: "row", first: ["chat"], second: ["file:x.ts"] },
@@ -631,7 +619,7 @@ describe("where shown tabs go", () => {
 
   it("adds a background browser beside the Chat and treats a removal fallback as maintenance", () => {
     onePane("a.ts");
-    change({ type: "activate", tab: PRIMARY_CHAT });
+    change({ type: "activate", view: viewOf(PRIMARY_CHAT) });
     chatBeside("b.ts");
     store().reconcileBrowserSurfaces(ref, ["t1"]);
     expect(shape()).toEqual({
@@ -906,7 +894,7 @@ describe("opens that start in a chat", () => {
     store().open(ref, "files");
     change({
       type: "place",
-      source: { tabs: [tab("files")] },
+      source: { view: viewOf(tab("files")) },
       at: { kind: "edge", pane: paneAt(1).id, edge: "right" },
     });
     fromChat(() => store().openFile(ref, "x.ts"));
@@ -1133,7 +1121,7 @@ describe("opens that start in a chat", () => {
     store().open(ref, "files");
     change({
       type: "place",
-      source: { tabs: [tab("files")] },
+      source: { view: viewOf(tab("files")) },
       at: { kind: "edge", pane: paneAt(0).id, edge: "left" },
     });
     const snapshot = { tabId: "t1", navStatus: { _tag: "Idle" } } as never;
@@ -1186,7 +1174,7 @@ describe("opens that start in a chat", () => {
     store().open(ref, "files");
     change({
       type: "place",
-      source: { tabs: [tab("files")] },
+      source: { view: viewOf(tab("files")) },
       at: { kind: "edge", pane: paneAt(0).id, edge: "left" },
     });
     const opened = fromChat(() =>

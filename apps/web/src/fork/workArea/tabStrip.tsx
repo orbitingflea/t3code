@@ -52,6 +52,7 @@ interface RightPanelPane {
   readonly tabMenu: RightPanelTabMenu;
   /** Runs before a press activates its tab, so a drop can give the pane back what it showed. */
   readonly notePress: (surfaceId: string) => void;
+  readonly dragId: (surfaceId: string) => string;
 }
 
 export const RightPanelPaneContext = createContext<RightPanelPane | null>(null);

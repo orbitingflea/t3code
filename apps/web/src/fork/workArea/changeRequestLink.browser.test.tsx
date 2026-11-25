@@ -35,7 +35,7 @@ import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelSto
 import { AppAtomRegistryProvider } from "~/rpc/atomRegistry";
 
 import { hostShownChat } from "./chatFileOpener";
-import { paneHolding, PRIMARY_CHAT, resolveLayout, surfaceTabId } from "./workArea.logic";
+import { holders, PRIMARY_CHAT, resolveLayout, surfaceTabId, type TabId } from "./workArea.logic";
 import { publishWorkAreaView, runWithOpenOrigin } from "./workAreaView";
 
 const environmentId = EnvironmentId.make("local");
@@ -94,6 +94,7 @@ function setup() {
 const recordOf = (thread: typeof threadRef) =>
   selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, thread);
 const layout = () => resolveLayout(recordOf(threadRef));
+const holderOf = (tab: TabId) => holders(layout().root, tab)[0];
 
 it("opens a commit from the Chat in the Diff tab beside the Chat after the lookup", async () => {
   setup();
@@ -106,12 +107,14 @@ it("opens a commit from the Chat in the Diff tab beside the Chat after the looku
   store.openFile(threadRef, "b.ts");
   store.updateWorkArea(threadRef, {
     type: "place",
-    source: { tabs: [surfaceTabId("file:a.ts")] },
-    at: { kind: "edge", pane: paneHolding(layout().root, PRIMARY_CHAT)!.id, edge: "left" },
+    source: {
+      view: { pane: holderOf(surfaceTabId("file:a.ts"))!.id, tab: surfaceTabId("file:a.ts") },
+    },
+    at: { kind: "edge", pane: holderOf(PRIMARY_CHAT)!.id, edge: "left" },
   });
   store.updateWorkArea(threadRef, {
     type: "focus",
-    pane: paneHolding(layout().root, surfaceTabId("file:a.ts"))!.id,
+    pane: holderOf(surfaceTabId("file:a.ts"))!.id,
   });
   await using screen = await render(
     <AppAtomRegistryProvider>
@@ -119,9 +122,7 @@ it("opens a commit from the Chat in the Diff tab beside the Chat after the looku
     </AppAtomRegistryProvider>,
   );
   await screen.getByRole("link", { name: "Commit" }).click();
-  await vi.waitFor(() =>
-    expect(paneHolding(layout().root, surfaceTabId("diff"))?.tabs).toContain("file:b.ts"),
-  );
+  await vi.waitFor(() => expect(holderOf(surfaceTabId("diff"))?.tabs).toContain("file:b.ts"));
   expect(useDiffPanelStore.getState().byThreadKey).toEqual({
     [scopedThreadKey(threadRef)]: { kind: "commit", sha, baseRef: null },
   });

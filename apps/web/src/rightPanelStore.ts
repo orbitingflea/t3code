@@ -589,6 +589,7 @@ const withWorkAreaChange = (
     layout,
     change,
     ref,
+    current.surfaces,
     currentWorkAreaView(),
     currentOpenOrigin(scopedThreadKey(ref)),
   );

@@ -7,12 +7,14 @@ import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelec
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { chatFileTarget } from "../workArea/chatFileOpener";
 import {
+  holders,
   isReplyEntry,
   PRIMARY_CHAT,
   type ReplyEntry,
   replyTabId,
   resolveLayout,
   stripEntries,
+  type TabId,
 } from "../workArea/workArea.logic";
 import { drawWorkArea, NO_VIEW } from "../workArea/workAreaGeometry.logic";
 import { citeInThread, citeOpensReplies, registerReplyBox } from "./subThreadCite";
@@ -60,6 +62,7 @@ const record = () =>
   selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
 const layout = () => resolveLayout(record());
 const shownTabs = () => drawWorkArea(layout(), NO_VIEW).panes.map((pane) => pane.active);
+const firstView = (tab: TabId) => ({ pane: holders(layout().root, tab)[0]!.id, tab });
 
 /** Opens `first`'s reply tab beside the primary Chat, as a Reply in the main list does. */
 const openReply = (first: string, options?: { readonly reveal?: "find" | "quote" }) =>
@@ -163,7 +166,7 @@ describe("a Cite in the main list of a Chat mode thread", () => {
     openReply("first-c");
     useRightPanelStore.getState().updateWorkArea(threadRef, {
       type: "place",
-      source: { tabs: [replyTab("first-c")] },
+      source: { view: firstView(replyTab("first-c")) },
       at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
     });
     using a = replyBox("first-a", boxes["first-a"]);
@@ -186,7 +189,7 @@ describe("a Cite in the main list of a Chat mode thread", () => {
     openReply("first-c");
     useRightPanelStore.getState().updateWorkArea(threadRef, {
       type: "place",
-      source: { tabs: [replyTab("first-c")] },
+      source: { view: firstView(replyTab("first-c")) },
       at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
     });
     using a = replyBox("first-a", boxA);
@@ -230,7 +233,7 @@ describe("a Cite in the main list of a Chat mode thread", () => {
     openReply("first-c");
     useRightPanelStore.getState().updateWorkArea(threadRef, {
       type: "place",
-      source: { tabs: [replyTab("first-c")] },
+      source: { view: firstView(replyTab("first-c")) },
       at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
     });
     using a = replyBox("first-a", draft);

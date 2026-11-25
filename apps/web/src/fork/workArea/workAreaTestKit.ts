@@ -4,11 +4,14 @@ import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
 import {
+  holders,
   type LayoutNode,
   leaves,
   PRIMARY_CHAT,
   resolveLayout,
   surfaceTabId,
+  type TabId,
+  type ViewRef,
 } from "./workArea.logic";
 import { NO_VIEW } from "./workAreaGeometry.logic";
 import type { WorkAreaChange } from "./workAreaPlacement.logic";
@@ -38,6 +41,8 @@ export const record = () => selectThreadRightPanelState(store().byThreadKey, ref
 export const layout = () => resolveLayout(record());
 export const panes = () => leaves(layout().root);
 export const paneAt = (index: number) => panes()[index]!;
+export const holderOf = (tab: TabId) => holders(layout().root, tab)[0];
+export const viewOf = (tab: TabId): ViewRef => ({ pane: holderOf(tab)!.id, tab });
 
 export type Shape =
   | readonly string[]

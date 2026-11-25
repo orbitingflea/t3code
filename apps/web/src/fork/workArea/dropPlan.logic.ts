@@ -1,9 +1,9 @@
 import {
   type Edge,
+  holders,
   type LayoutNode,
   leaves,
   type PaneId,
-  paneHolding,
   type TabId,
 } from "./workArea.logic";
 import type { Placement } from "./workAreaPlacement.logic";
@@ -25,7 +25,7 @@ export interface PaneGeometry {
 }
 
 export type DragSubject =
-  | { readonly kind: "tab"; readonly tab: TabId; readonly from: PaneId }
+  | { readonly kind: "tab"; readonly tab: TabId; readonly from: PaneId; readonly copy?: true }
   | { readonly kind: "outside" };
 
 export type DropGhost =
@@ -127,7 +127,8 @@ export function planDrop(
   ).reduce((nearest, entry) => (entry[1] < nearest[1] ? entry : nearest));
   const landing = distance < EDGE_SHARE ? fits(pane.id, edge) : null;
   if (landing !== null) {
-    if (own && pane.tabs.length <= 1) return null;
+    // A copy of a lone tab may split its own pane; a move would leave the pane empty.
+    if (own && pane.tabs.length <= 1 && subject.copy !== true) return null;
     return { at: { kind: "edge", pane: pane.id, edge }, ghost: boxGhost(landing) };
   }
   if (own || fits(pane.id, "join") === null) return null;
@@ -140,7 +141,8 @@ export function planDrop(
  */
 export function inStripView(plan: DropPlan | null, root: LayoutNode): DropPlan | null {
   if (plan?.at.kind !== "strip") return plan;
-  const pane = plan.at.before === null ? leaves(root).at(-1) : paneHolding(root, plan.at.before);
+  // The strip draws a tab where it first occurs in leaf order.
+  const pane = plan.at.before === null ? leaves(root).at(-1) : holders(root, plan.at.before)[0];
   return pane ? { ...plan, at: { ...plan.at, pane: pane.id } } : null;
 }
 

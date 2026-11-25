@@ -18,13 +18,22 @@ import {
 import { miniPlayerDraws } from "./miniPlayerFollow";
 import {
   type ArmKind,
+  closePlan,
   focusedTab,
+  gestureViews,
+  isPlaced,
   type PaneId,
-  paneHolding,
   resolveLayout,
   surfaceTabId,
+  type ViewRef,
 } from "./workArea.logic";
-import { currentDropAt, runWithOpenOrigin, shownSurfaceOf } from "./workAreaView";
+import { isStripView } from "./workAreaGeometry.logic";
+import {
+  currentDropAt,
+  currentWorkAreaView,
+  runWithOpenOrigin,
+  shownSurfaceOf,
+} from "./workAreaView";
 
 const readRecord = (threadRef: ScopedThreadRef) =>
   selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
@@ -78,9 +87,25 @@ export function closeFocusedTab(
   threadRef: ScopedThreadRef,
   closeSurface: (surface: RightPanelSurface) => void,
 ): boolean {
+  const layout = resolveLayout(readRecord(threadRef));
+  const view = { pane: layout.focused, tab: focusedTab(layout) };
+  const strip = isStripView(layout, currentWorkAreaView());
+  return closeTab(threadRef, gestureViews(layout, view, strip), closeSurface);
+}
+
+export function closeTab(
+  threadRef: ScopedThreadRef,
+  views: readonly ViewRef[],
+  closeSurface: (surface: RightPanelSurface) => void,
+): boolean {
   const record = readRecord(threadRef);
   const layout = resolveLayout(record);
-  const tab = focusedTab(layout);
+  // A view the tab keeps elsewhere closes alone; the tab's last views close the tab.
+  const { alone, tabs } = closePlan(layout.root, views);
+  const store = useRightPanelStore.getState();
+  for (const view of alone) store.updateWorkArea(threadRef, { type: "close-view", view });
+  const tab = tabs[0];
+  if (tab === undefined) return alone.length > 0;
   const payload = layout.tabs[tab];
   if (payload === undefined || payload.kind === "surface") {
     const surface = record.surfaces.find((entry) => entry.id === tab);
@@ -88,8 +113,32 @@ export function closeFocusedTab(
     closeSurface(surface);
     return true;
   }
-  useRightPanelStore.getState().updateWorkArea(threadRef, { type: "close", tab });
-  return paneHolding(resolveLayout(readRecord(threadRef)).root, tab) === undefined;
+  store.updateWorkArea(threadRef, { type: "close", tab });
+  return !isPlaced(resolveLayout(readRecord(threadRef)).root, tab);
+}
+
+export function closeViews(
+  threadRef: ScopedThreadRef,
+  views: readonly ViewRef[],
+  closeSurfaces: (surfaces: RightPanelSurface[], after: () => void) => void,
+): void {
+  const record = readRecord(threadRef);
+  const layout = resolveLayout(record);
+  const { alone, tabs } = closePlan(layout.root, views);
+  const surfaces = record.surfaces.filter((surface) => tabs.includes(surfaceTabId(surface.id)));
+  // Runs once the surfaces' close path confirms, so a cancel closes nothing.
+  const rest = () => {
+    const store = useRightPanelStore.getState();
+    for (const view of alone) store.updateWorkArea(threadRef, { type: "close-view", view });
+    for (const tab of tabs) {
+      const payload = layout.tabs[tab];
+      if (payload !== undefined && payload.kind !== "surface") {
+        store.updateWorkArea(threadRef, { type: "close", tab });
+      }
+    }
+  };
+  if (surfaces.length > 0) closeSurfaces(surfaces, rest);
+  else rest();
 }
 
 /** Opens the next `kind` the user opens as the active tab of the focused pane, as its + menu does. */

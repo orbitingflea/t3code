@@ -98,6 +98,21 @@ describe("planDrop", () => {
     expect(planDrop([left, right], { x: 170, y: 20 }, diff, always)).toBeNull();
   });
 
+  it("lets a copy of a lone tab split its own pane, but not join it", () => {
+    const copy: DragSubject = {
+      kind: "tab",
+      tab: "file:a" as TabId,
+      from: "p1" as PaneId,
+      copy: true,
+    };
+    expect(planDrop([left, right], { x: 1190, y: 320 }, copy, always)?.at).toEqual({
+      kind: "edge",
+      pane: "p1",
+      edge: "right",
+    });
+    expect(planDrop([left, right], { x: 900, y: 320 }, copy, always)).toBeNull();
+  });
+
   it("picks stacked panes by the pointer's height", () => {
     const top = pane("p0", box(0, 0, 600, 300), ["chat"]);
     const bottom = pane("p2", box(0, 300, 600, 600), ["diff"]);
@@ -140,6 +155,15 @@ describe("inStripView", () => {
   ])("drops a tab of the one strip %s", (_name, point, expected) => {
     expect(inStripView(planDrop([strip], point, fileA, joinOnly), root)?.at ?? null).toEqual(
       expected,
+    );
+  });
+
+  it("drops before a tab two panes hold into the pane the strip draws it from, its first", () => {
+    const twice: LayoutNode = { ...root, second: leaf("p1", ["file:a", "file:c"]) } as LayoutNode;
+    const drawn = pane("p1", box(0, 0, 1200, 600), ["chat", "file:a", "file:c"]);
+    const fileC: DragSubject = { kind: "tab", tab: "file:c" as TabId, from: "p1" as PaneId };
+    expect(inStripView(planDrop([drawn], { x: 100, y: 20 }, fileC, joinOnly), twice)?.at).toEqual(
+      into("p0", "file:a"),
     );
   });
 

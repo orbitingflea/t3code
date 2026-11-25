@@ -3436,7 +3436,11 @@ export default function ChatView(props: ChatViewProps) {
     return embedded ? null : <NoActiveThreadState />;
   }
 
-  const renderRightPanelSurface = (surface: RightPanelSurface, visible: boolean) =>
+  const renderRightPanelSurface = (
+    surface: RightPanelSurface,
+    visible: boolean,
+    onClose = closeRightPanelSurface,
+  ) =>
     activeThreadRef ? (
       <RightPanelSurfaceContent
         surface={surface}
@@ -3451,7 +3455,7 @@ export default function ChatView(props: ChatViewProps) {
         workspaceRevision={workspaceRevision.revision}
         getShortcutContext={getShortcutContextStable}
         onSendAnnotation={sendPreviewAnnotationStable}
-        onCloseSurface={closeRightPanelSurface}
+        onCloseSurface={onClose}
         sideChatParentPanel={sideChatParentPanel}
         onCiteAssistantText={citeAssistantTextStable}
         terminal={{

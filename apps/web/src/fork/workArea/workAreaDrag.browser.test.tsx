@@ -36,13 +36,7 @@ import { appAtomRegistry } from "~/rpc/atomRegistry";
 import { deviceEnvironment } from "~/state/device";
 
 import { type DragThread, holdSideChatForks, installDragEnvironment } from "./dragTestEnvironment";
-import {
-  asTabId,
-  LAUNCHER,
-  paneHolding,
-  resolveLayout,
-  secondaryChatTabId,
-} from "./workArea.logic";
+import { asTabId, LAUNCHER, holders, resolveLayout, secondaryChatTabId } from "./workArea.logic";
 import { restoredRecord, restoreWorkArea } from "./workAreaStorage.logic";
 
 vi.mock(
@@ -438,15 +432,16 @@ describe("drag a + menu or launcher item to a pane", () => {
     expect(ownerLayout().armed).toBeUndefined();
   });
 
-  it.each<[string, () => Promise<unknown>]>([
-    ["clicked", () => userEvent.click(menuItem("Diff"))],
+  it.each<[string, () => Promise<unknown>, readonly (readonly string[])[]]>([
+    ["clicked", () => userEvent.click(menuItem("Diff")), [["chat", "files"], ["diff"]]],
     [
-      "dropped near its pane's right edge",
+      "dropped near its pane's right edge, as a second view there",
       () => dragMenuItemOnto("Diff", paneById("p1"), atRightEdge),
+      [["chat", "files"], ["diff"], ["diff"]],
     ],
   ])(
     "leaves no arm when Diff, alone in the pane whose + menu offers it, is %s",
-    async (_, pick) => {
+    async (_, pick, strips) => {
       using _environment = installDragEnvironment([ownerThread, otherThread]);
       setup(twoPanes());
       await using _app = await openOwner();
@@ -455,8 +450,7 @@ describe("drag a + menu or launcher item to a pane", () => {
       await pick();
 
       await vi.waitFor(() => expect(menuOpen()).toBe(false));
-      expect(panes()).toHaveLength(2);
-      expect(stripOf(paneById("p1"))).toEqual(["diff"]);
+      await vi.waitFor(() => expect(panes().map(stripOf)).toEqual(strips));
       expect(ownerLayout().armed).toBeUndefined();
       await expectDragDone();
     },
@@ -677,7 +671,7 @@ describe("drag a + menu or launcher item to a pane", () => {
     await expectDragDone();
   });
 
-  it("moves a + item's already-placed tab to the strip it is dropped on", async () => {
+  it("opens a view of a + item's already-placed tab in the strip it is dropped on", async () => {
     using _environment = installDragEnvironment([ownerThread, otherThread]);
     setup(twoPanes());
     await using _app = await openOwner();
@@ -685,7 +679,7 @@ describe("drag a + menu or launcher item to a pane", () => {
     await dragMenuItemOnto("Diff", tabIn("p0", "files"));
 
     await vi.waitFor(() => expect(stripOf(paneById("p0"))).toEqual(["chat", "diff", "files"]));
-    expect(panes()).toHaveLength(1);
+    expect(stripOf(paneById("p1"))).toEqual(["diff"]);
     expect(surfaceKinds(owner)).toEqual(["files", "diff"]);
     await expectDragDone();
   });
@@ -730,7 +724,7 @@ describe("drag a + menu or launcher item to a pane", () => {
 
     expect(shown()).toBe(true);
     await vi.waitFor(() =>
-      expect(paneHolding(ownerLayout().root, asTabId("diff"))?.active).toBe("diff"),
+      expect(holders(ownerLayout().root, asTabId("diff"))[0]?.active).toBe("diff"),
     );
     expect(stripOf(paneById("p1"))).toEqual(["diff", "files"]);
     expect(panes()).toHaveLength(2);

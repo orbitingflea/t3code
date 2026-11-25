@@ -15,7 +15,7 @@ import { panelHostedElsewhere } from "./chatFileOpener";
 import { findOpensThreadPage } from "./findOpensThread";
 import {
   focusedTab,
-  paneHolding,
+  preferredView,
   PRIMARY_CHAT,
   resolveLayout,
   type WorkAreaLayout,
@@ -101,7 +101,7 @@ export function followFindRequests(): void {
 function focusChatPane(owner: ScopedThreadRef) {
   const store = useRightPanelStore.getState();
   const layout = resolveLayout(selectThreadRightPanelState(store.byThreadKey, owner));
-  const pane = paneHolding(layout.root, PRIMARY_CHAT);
+  const pane = preferredView(layout, PRIMARY_CHAT, undefined, "user");
   if (pane && pane.active === PRIMARY_CHAT && pane.id !== layout.focused) {
     store.updateWorkArea(owner, { type: "focus", pane: pane.id });
   }

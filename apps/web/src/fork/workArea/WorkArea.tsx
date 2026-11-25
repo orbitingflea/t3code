@@ -74,11 +74,15 @@ import { followFindRequests } from "./useWorkAreaChat";
 import {
   type ArmKind,
   type Edge,
+  findPane,
+  gestureViews,
   isDisplayEntry,
+  isPlaced,
   isReplyEntry,
   LAUNCHER,
   linkedFileEntry,
-  paneHolding,
+  parseViewKey,
+  preferredView,
   PRIMARY_CHAT,
   replyTabId,
   resolveLayout,
@@ -86,6 +90,9 @@ import {
   stripEntries,
   surfaceTabId,
   type TabId,
+  type ViewRef,
+  viewKey,
+  viewsOf,
   type WorkAreaEntry,
   type WorkAreaLayout,
   type WorkAreaTab,
@@ -102,7 +109,7 @@ import {
   splitVariable,
   splitVariables,
 } from "./workAreaGeometry.logic";
-import { openFromPaneMenu, runOpen } from "./workAreaCommands";
+import { closeTab, closeViews, openFromPaneMenu, runOpen } from "./workAreaCommands";
 import {
   landingRect,
   moveToward,
@@ -140,7 +147,11 @@ type WorkAreaProps = PaneTabsProps & {
   /** The primary Chat's own controls, at the end of the bar of the pane that shows it. */
   readonly chatControls?: ReactNode;
   readonly availableEditors: ReadonlyArray<EditorId>;
-  readonly renderSurface: (surface: RightPanelSurface, visible: boolean) => ReactNode;
+  readonly renderSurface: (
+    surface: RightPanelSurface,
+    visible: boolean,
+    onClose?: (surface: RightPanelSurface) => void,
+  ) => ReactNode;
 };
 
 type Point = { readonly x: number; readonly y: number };
@@ -223,9 +234,13 @@ export function WorkArea(props: WorkAreaProps) {
   const drawn = drawWorkArea(layout, drawModeView(strip));
   const narrow = useMediaQuery(RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY);
   const rootRef = useRef<HTMLDivElement>(null);
-  const press = useRef<{ readonly tab: TabId; readonly restore: TabId | undefined } | null>(null);
+  const press = useRef<{ readonly view: ViewRef; readonly restore: TabId | undefined } | null>(
+    null,
+  );
   // The pointer itself: a drag event's delta also counts the tab strip's auto-scroll.
   const pointer = useRef<Point | null>(null);
+  // Alt held at the pointer's last event: a tab drag then copies a many-view tab.
+  const alt = useRef(false);
   const followingPointer = useRef<AbortController | null>(null);
   const [tabDrag, setTabDrag] = useState<{ title: string; plan: DropPlan | null } | null>(null);
   const [threadDrag, setThreadDrag] = useState<{ plan: DropPlan | null } | null>(null);
@@ -233,10 +248,9 @@ export function WorkArea(props: WorkAreaProps) {
   const sensors = useTabDragSensors();
   useAdoptServerTerminals(threadRef);
 
-  const readLayout = () =>
-    resolveLayout(
-      selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef),
-    );
+  const readRecord = () =>
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
+  const readLayout = () => resolveLayout(readRecord());
 
   const update = useStableCallback((change: WorkAreaChange) => {
     const store = useRightPanelStore.getState();
@@ -251,10 +265,9 @@ export function WorkArea(props: WorkAreaProps) {
     }
   });
 
-  const notePress = useStableCallback((surfaceId: string) => {
-    const tab = surfaceTabId(surfaceId);
-    const shown = paneHolding(readLayout().root, tab)?.active;
-    press.current = { tab, restore: shown === tab ? undefined : shown };
+  const notePress = useStableCallback((view: ViewRef) => {
+    const shown = findPane(readLayout().root, view.pane)?.active;
+    press.current = { view, restore: shown === view.tab ? undefined : shown };
   });
 
   const measure = (current: WorkAreaLayout): PaneGeometry[] => {
@@ -310,6 +323,7 @@ export function WorkArea(props: WorkAreaProps) {
           at: at === "join" ? { kind: "join", pane } : { kind: "edge", pane, edge: at },
         },
         threadRef,
+        readRecord().surfaces,
         view,
       );
       return rect && inArea(rect);
@@ -318,21 +332,40 @@ export function WorkArea(props: WorkAreaProps) {
     return strip ? inStripView(plan, current.root) : plan;
   };
 
+  // A drag of `view` with Alt held copies it, when its tab may have several views; the one strip
+  // lists tabs, so there it moves.
+  const copies = (view: ViewRef): boolean => {
+    const current = readLayout();
+    return (
+      alt.current &&
+      !isStripView(current, currentWorkAreaView()) &&
+      viewsOf(current, readRecord().surfaces, view.tab) === "many"
+    );
+  };
+
   const tabPlan = (id: UniqueIdentifier): DropPlan | null => {
     const point = pointer.current;
-    const tab = surfaceTabId(String(id));
+    const view = parseViewKey(String(id));
     const current = readLayout();
     // In the strip view the one strip is the source pane, so a drop that keeps the order is none.
-    const from = drawWorkArea(current, currentWorkAreaView()).panes.find((pane) =>
-      pane.tabs.includes(tab),
+    const panes = drawWorkArea(current, currentWorkAreaView()).panes;
+    const from =
+      view &&
+      (panes.find((pane) => pane.id === view.pane && pane.tabs.includes(view.tab)) ??
+        panes.find((pane) => pane.tabs.includes(view.tab)));
+    if (!point || !view || !from) return null;
+    const copy = copies(view);
+    return planAt(
+      point,
+      { kind: "tab", tab: view.tab, from: from.id, ...(copy ? { copy } : {}) },
+      { view, ...(copy ? { copy } : {}) },
     );
-    if (!point || !from) return null;
-    return planAt(point, { kind: "tab", tab, from: from.id }, { tabs: [tab] });
   };
 
   const followPointer = (activator: Event) => {
     const controller = new AbortController();
     const follow = (event: PointerEvent | TouchEvent) => {
+      alt.current = event.altKey;
       const at = "touches" in event ? event.touches[0] : event;
       if (at) pointer.current = { x: at.clientX, y: at.clientY };
     };
@@ -355,6 +388,7 @@ export function WorkArea(props: WorkAreaProps) {
     followingPointer.current = null;
     press.current = null;
     pointer.current = null;
+    alt.current = false;
     setTabDrag(null);
   };
 
@@ -464,7 +498,8 @@ export function WorkArea(props: WorkAreaProps) {
           // A touch drag starts without a press activation, so an older press record is stale.
           const pressed =
             activatorEvent instanceof PointerEvent && activatorEvent.pointerType !== "touch";
-          if (!pressed || press.current?.tab !== active.id) press.current = null;
+          const noted = press.current === null ? null : viewKey(press.current.view);
+          if (!pressed || noted !== active.id) press.current = null;
           followPointer(activatorEvent);
           setTabDrag({ title: titleOf(active.data.current), plan: null });
         }}
@@ -475,16 +510,22 @@ export function WorkArea(props: WorkAreaProps) {
           );
         }}
         onDragEnd={({ active }) => {
-          const tab = surfaceTabId(String(active.id));
+          const view = parseViewKey(String(active.id));
           const plan = tabPlan(active.id);
-          const restore = press.current?.tab === tab ? press.current.restore : undefined;
+          const pressed = press.current;
+          const restore =
+            pressed && viewKey(pressed.view) === active.id ? pressed.restore : undefined;
+          const copy = view !== null && copies(view);
           finishTabDrag();
-          if (!plan) return;
+          if (!plan || !view) return;
           update({
             type: "place",
-            source: { tabs: [tab] },
+            source: {
+              view,
+              ...(copy ? { copy } : {}),
+              ...(restore === undefined ? {} : { restore }),
+            },
             at: plan.at,
-            ...(restore === undefined ? {} : { restore }),
           });
         }}
         onDragCancel={finishTabDrag}
@@ -566,24 +607,34 @@ function WorkAreaPane(props: {
   readonly renderSurface: WorkAreaProps["renderSurface"];
   readonly chatControls: ReactNode;
   readonly update: (change: WorkAreaChange) => void;
-  readonly notePress: (surfaceId: string) => void;
+  readonly notePress: (view: ViewRef) => void;
 }) {
   const { pane, layout, threadRef, tabs, update } = props;
-  const entries = stripEntries(layout, props.record, pane.tabs, threadRef, WORK_AREA_COPY.chat);
+  const { surfaces } = props.record;
+  const entries = stripEntries(
+    layout,
+    props.record,
+    pane.tabs,
+    threadRef,
+    WORK_AREA_COPY.chat,
+    props.strip,
+  );
   const tabOf = (entry: WorkAreaEntry) => surfaceTabId(entry.id);
+  // This pane's view of a strip entry; the one strip's drawn pane is the focused one.
+  const viewOf = (tab: TabId): ViewRef => ({
+    pane: preferredView(layout, tab, pane.id, "user")?.id ?? pane.id,
+    tab,
+  });
+  const gesture = (tab: TabId) => gestureViews(layout, viewOf(tab), props.strip);
+  const closeEntry = (entry: WorkAreaEntry) =>
+    closeTab(threadRef, gesture(tabOf(entry)), tabs.onCloseSurface);
   // Bulk closes never close a Chat; other tabs close once the surfaces' close path confirms.
-  const closeEntries = (closing: readonly WorkAreaEntry[]) => {
-    const closeDisplayed = () => {
-      for (const entry of closing) {
-        if (isDisplayEntry(entry) && entry.kind !== "chat") {
-          update({ type: "close", tab: tabOf(entry) });
-        }
-      }
-    };
-    const surfaces = closing.flatMap((entry) => (isDisplayEntry(entry) ? [] : [entry]));
-    if (surfaces.length > 0) tabs.onCloseAllSurfaces(surfaces, closeDisplayed);
-    else closeDisplayed();
-  };
+  const closeEntries = (closing: readonly WorkAreaEntry[]) =>
+    closeViews(
+      threadRef,
+      closing.flatMap((entry) => (entry.kind === "chat" ? [] : gesture(tabOf(entry)))),
+      tabs.onCloseAllSurfaces,
+    );
   // A browser or a side chat is created after an await, so its place travels with the request,
   // and its promise reaches a drop, which yields to what the user does before it settles. A drop
   // brings its own place, so it takes neither this pane's arm nor the launcher's.
@@ -600,31 +651,27 @@ function WorkAreaPane(props: {
         ? openAfter(LAUNCHER, open)
         : open();
   const { onDuplicateBrowser: duplicate, ...stripProps } = tabs;
-  const splitDisabled = (entry: WorkAreaEntry, edge: Edge) => {
-    const holder = paneHolding(layout.root, tabOf(entry));
-    return (
-      props.strip ||
-      !holder ||
-      holder.tabs.length < 2 ||
-      landingRect(
-        layout,
-        {
-          type: "place",
-          source: { tabs: [tabOf(entry)] },
-          at: { kind: "edge", pane: holder.id, edge },
-        },
-        threadRef,
-        currentWorkAreaView(),
-      ) === null
-    );
+  // Split right or down copies a many-view tab into the new pane and moves a one-view tab there.
+  const split = (entry: WorkAreaEntry, edge: Edge): WorkAreaChange => {
+    const view = viewOf(tabOf(entry));
+    const copy = viewsOf(layout, surfaces, view.tab) === "many";
+    return {
+      type: "place",
+      source: { view, ...(copy ? { copy } : {}) },
+      at: { kind: "edge", pane: view.pane, edge },
+    };
   };
+  const splitDisabled = (entry: WorkAreaEntry, edge: Edge) =>
+    props.strip ||
+    landingRect(layout, split(entry, edge), threadRef, surfaces, currentWorkAreaView()) === null;
   const moves = (entry: WorkAreaEntry) =>
     props.strip
       ? []
       : MOVE_ITEMS.flatMap(({ edge, label }) => {
-          const move = moveToward(layout, tabOf(entry), edge);
+          const move = moveToward(layout, viewOf(tabOf(entry)), edge);
           if (!move) return [];
-          const fits = landingRect(layout, move, threadRef, currentWorkAreaView()) !== null;
+          const fits =
+            landingRect(layout, move, threadRef, surfaces, currentWorkAreaView()) !== null;
           return [{ id: `move-${edge}` as const, label, disabled: !fits, move }];
         });
   const tabMenu: RightPanelTabMenu = {
@@ -647,13 +694,7 @@ function WorkAreaPane(props: {
         if (move && !move.disabled) update(move.move);
         return;
       }
-      const holder = paneHolding(layout.root, tabOf(entry));
-      if (!holder) return;
-      update({
-        type: "place",
-        source: { tabs: [tabOf(entry)] },
-        at: { kind: "edge", pane: holder.id, edge: action === "split-right" ? "right" : "bottom" },
-      });
+      update(split(entry, action === "split-right" ? "right" : "bottom"));
     },
   };
   const modeSurfaceActions = [
@@ -661,7 +702,7 @@ function WorkAreaPane(props: {
       ...action,
       onClick: armed(action.id, action.onClick),
     })),
-    ...(paneHolding(layout.root, PRIMARY_CHAT) === undefined
+    ...(!isPlaced(layout.root, PRIMARY_CHAT)
       ? [
           chatSurfaceAction(
             armed("chat", () =>
@@ -681,7 +722,8 @@ function WorkAreaPane(props: {
   const canSplit = useWorkAreaViewCheck(
     (view) =>
       lone &&
-      landingRect(layout, { type: "split-launcher", pane: pane.id }, threadRef, view) !== null,
+      landingRect(layout, { type: "split-launcher", pane: pane.id }, threadRef, surfaces, view) !==
+        null,
   );
   const chatControls = pane.active === PRIMARY_CHAT ? props.chatControls : null;
   const layoutControls =
@@ -721,7 +763,7 @@ function WorkAreaPane(props: {
         {props.renderSurface(REPLIES_SURFACE, true)}
       </ReplyTabContext>
     ) : activeEntry !== undefined && !isDisplayEntry(activeEntry) ? (
-      props.renderSurface(activeEntry, true)
+      props.renderSurface(activeEntry, true, closeEntry)
     ) : null;
   return (
     <div
@@ -751,7 +793,8 @@ function WorkAreaPane(props: {
           edges: pane.edges,
           focused: pane.focused,
           tabMenu,
-          notePress: props.notePress,
+          notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
+          dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
         }}
       >
         <RightPanelTabs
@@ -763,18 +806,15 @@ function WorkAreaPane(props: {
           {...(payload?.kind === "launcher" ? { launcher: { shortcuts: pane.focused } } : {})}
           onMoveSurface={ignoreMove}
           onActivate={(entry) => {
+            // This view first: the surface path below names only the tab.
+            update({ type: "activate", view: viewOf(tabOf(entry)) });
             if (!isDisplayEntry(entry)) {
               tabs.onActivate(entry);
               return;
             }
-            update({ type: "activate", tab: tabOf(entry) });
             focusChatComposer(layout.tabs[tabOf(entry)]);
           }}
-          onCloseSurface={(entry) =>
-            isDisplayEntry(entry)
-              ? update({ type: "close", tab: tabOf(entry) })
-              : tabs.onCloseSurface(entry)
-          }
+          onCloseSurface={closeEntry}
           onCloseOtherSurfaces={(entry, strip) =>
             closeEntries(strip.filter((other) => other.id !== entry.id))
           }
