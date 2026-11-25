@@ -62,6 +62,7 @@ import { LINK_PROBE, probeLayout } from "./linkDrop.logic";
 import { filesTreeOwner } from "./linkSources";
 import { PanelLinkOwnerContext } from "./panelLinkDrag";
 import { SecondaryChat } from "./SecondaryChat";
+import { useTabHistory } from "./tabHistory";
 import {
   ReplyTabContext,
   RightPanelPaneContext,
@@ -250,6 +251,7 @@ export function WorkArea(props: WorkAreaProps) {
       setActivePreviewTab(threadRef, focused.resourceId);
     }
   });
+  useTabHistory(threadRef, narrow, (tab) => update({ type: "activate", tab }));
 
   const notePress = useStableCallback((surfaceId: string) => {
     const tab = surfaceTabId(surfaceId);
