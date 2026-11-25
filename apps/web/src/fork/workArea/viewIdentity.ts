@@ -53,6 +53,7 @@ export function onViewEnd(listener: (id: ViewId) => void): () => void {
   return () => endListeners.delete(listener);
 }
 
+/** Returns the owner thread key and current `ViewRef` for a tracked `id`, or `undefined`. */
 export function viewAt(id: ViewId): { readonly owner: string; readonly view: ViewRef } | undefined {
   for (const [owner, byView] of ids) {
     for (const [key, value] of byView) {
@@ -63,6 +64,10 @@ export function viewAt(id: ViewId): { readonly owner: string; readonly view: Vie
   return undefined;
 }
 
+/**
+ * Returns the file surface or payload held for `id` when another view takes a line reveal, or
+ * `live` when none is held. A reveal targeting `id`, or `id` ending, clears the held value.
+ */
 export const shownBy = <T>(id: ViewId, live: T): T => (held.get(id) as T | undefined) ?? live;
 
 const viewsIn = (record: ThreadRightPanelState | undefined): ViewKey[] =>

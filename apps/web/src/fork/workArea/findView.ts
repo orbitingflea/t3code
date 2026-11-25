@@ -53,19 +53,30 @@ function ownerFor(thread: string): FindOwner | null {
 }
 
 /**
- * Records a Find request, and lets `findTakesFocus` grant focus once for this request.
+ * Records a Find request and lets `findTakesFocus` grant focus once for it. Assigns Find to the
+ * Chat view of `thread` holding keyboard focus, else the focused pane, else the first pane, or
+ * clears ownership when `thread` is `null`.
  */
 export function noteFindRequest(thread: string | null): void {
   requests += 1;
   useFindOwner.setState({ owner: thread === null ? null : ownerFor(thread) });
 }
 
+/**
+ * Returns whether this view owns Find. Always true outside a work-area pane or in the single tab
+ * strip; in split panes, true only for the view assigned Find.
+ */
 export function useOwnsFind(): boolean {
   const pane = useRightPanelPane();
   const owner = useFindOwner((state) => state.owner?.view);
   return pane === null || pane.strip || owner === pane.view;
 }
 
+/**
+ * Returns whether Find is open for `thread` in this view, and registers work-area Chat views for
+ * Find ownership. Returns true when `thread` matches `openThread`, except in split panes where
+ * only the owning Chat view (and any reply view) returns true.
+ */
 export function useFindInView(thread: ScopedThreadRef | null, openThread: string | null): boolean {
   const key = thread === null ? null : scopedThreadKey(thread);
   const pane = useRightPanelPane();
