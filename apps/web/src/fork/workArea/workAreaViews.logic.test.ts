@@ -30,6 +30,7 @@ import {
   type WorkAreaLayout,
 } from "./workArea.logic";
 import { followViewScopes, viewScope } from "./viewReading";
+import { onViewEnd, viewIdOf } from "./viewIdentity";
 import { closeFocusedTab, closeTab, closeViews } from "./workAreaCommands";
 import { drawWorkArea, NO_VIEW } from "./workAreaGeometry.logic";
 import { applyWorkAreaChange, reconcileWorkArea, repairWorkArea } from "./workAreaPlacement.logic";
@@ -726,6 +727,58 @@ describe("a file view's own reading place", () => {
     });
     expect(holders(layout().root, tab("file:a")).map((node) => node.id)).toEqual(["p0", "p1"]);
     expect(scopes.calls).toEqual([]);
+  });
+});
+
+describe("a view's identity", () => {
+  const idOf = (paneId: string, id: string, owner = ref) =>
+    viewIdOf(scopedThreadKey(owner), view(paneId, id));
+  function followEnds() {
+    const ended: string[] = [];
+    const stop = onViewEnd((id) => ended.push(id));
+    return { ended, [Symbol.dispose]: stop };
+  }
+
+  it("goes with its view to another pane and ends when the view closes", () => {
+    seat(
+      [file("a")],
+      row(pane("p0", ["chat"]), column(pane("p1", ["file:a"]), pane("p2", ["file:a"]))),
+    );
+    const moving = idOf("p1", "file:a");
+    const staying = idOf("p2", "file:a");
+    expect(moving).not.toBe(staying);
+    using ends = followEnds();
+    change({
+      type: "place",
+      source: { view: view("p1", "file:a") },
+      at: { kind: "join", pane: asPaneId("p0") },
+    });
+    expect(idOf("p0", "file:a")).toBe(moving);
+    expect(idOf("p2", "file:a")).toBe(staying);
+    expect(ends.ended).toEqual([]);
+
+    change({ type: "close-view", view: view("p2", "file:a") });
+    expect(ends.ended).toEqual([staying]);
+  });
+
+  it("gives a copy a new id and keeps the source's", () => {
+    seat([file("a"), file("b")], row(pane("p0", ["chat", "file:a"]), pane("p1", ["file:b"])));
+    const source = idOf("p0", "file:a");
+    using ends = followEnds();
+    change({
+      type: "place",
+      source: { view: view("p0", "file:a"), copy: true },
+      at: { kind: "join", pane: asPaneId("p1") },
+    });
+    expect(holders(layout().root, tab("file:a")).map((node) => node.id)).toEqual(["p0", "p1"]);
+    expect(idOf("p0", "file:a")).toBe(source);
+    expect(idOf("p1", "file:a")).not.toBe(source);
+    expect(ends.ended).toEqual([]);
+  });
+
+  it("is never shared between threads whose panes have the same ids", () => {
+    seat([file("a")], row(pane("p0", ["chat"]), pane("p1", ["file:a"])));
+    expect(idOf("p1", "file:a", other)).not.toBe(idOf("p1", "file:a"));
   });
 });
 

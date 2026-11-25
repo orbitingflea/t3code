@@ -72,6 +72,7 @@ import {
 import { dragShieldProps, registerThreadDragFallback } from "./threadDragFallback";
 import { useLinkDrops } from "./useLinkDrops";
 import { followFindRequests } from "./useWorkAreaChat";
+import { onViewEnd, type ViewId, viewIdOf } from "./viewIdentity";
 import { viewScope } from "./viewReading";
 import {
   type ArmKind,
@@ -602,17 +603,17 @@ export function WorkArea(props: WorkAreaProps) {
   );
 }
 
-/**
- * What one `view` of a tab shows of `live`: a change lands in the view that leads the tab, and
- * another view keeps what it showed, then and once it leads. A view new to the pane, of another
- * tab or another thread's work area, shows `live`.
- */
-function useViewShown<T>(view: string, live: T, leads: boolean): T {
-  const [seen, setSeen] = useState({ view, live, shown: live });
-  if (seen.view === view && seen.live === live) return seen.shown;
-  const next = { view, live, shown: seen.view !== view || leads ? live : seen.shown };
-  setSeen(next);
-  return next.shown;
+// What each view last showed of its tab, kept by the view's id across remounts and moves.
+const shownByView = new Map<ViewId, { readonly live: unknown; readonly shown: unknown }>();
+onViewEnd((id) => shownByView.delete(id));
+
+// What `view` shows of `live`: a change lands in the view that leads the tab, and another view
+// keeps what it showed, then and once it leads. A view with nothing shown yet shows `live`.
+function viewShown<T>(view: ViewId, live: T, leads: boolean): T {
+  const seen = shownByView.get(view);
+  const shown = seen === undefined || (seen.live !== live && leads) ? live : (seen.shown as T);
+  shownByView.set(view, { live, shown });
+  return shown;
 }
 
 function WorkAreaPane(props: {
@@ -740,9 +741,10 @@ function WorkAreaPane(props: {
   // Of the views showing this tab, the focused one, else the first, takes its reveals.
   const leads =
     props.strip || preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id;
-  const viewId = viewScope(scopedThreadKey(threadRef), { pane: pane.id, tab: pane.active });
+  const ownerKey = scopedThreadKey(threadRef);
+  const viewId = viewIdOf(ownerKey, viewOf(pane.active));
   // A line reveal shows in the view that leads its file; another view keeps the file as it was.
-  const shown = useViewShown(
+  const shown = viewShown(
     viewId,
     payload?.kind === "linked-file"
       ? payload
@@ -830,7 +832,9 @@ function WorkAreaPane(props: {
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
           leads,
           // The one strip lists tabs, not views, so its file keeps the file's own place.
-          readingScope: props.strip ? undefined : viewId,
+          readingScope: props.strip
+            ? undefined
+            : viewScope(ownerKey, { pane: pane.id, tab: pane.active }),
         }}
       >
         <RightPanelTabs

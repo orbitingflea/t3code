@@ -134,6 +134,8 @@ async function openOwner(record: ReturnType<typeof chatBeside>, lead = "") {
     "b.ts": sourceFile("b.ts", "beta", 300),
     "c.ts": sourceFile("c.ts", "gamma", 10),
   };
+  // The last test's views end with its layouts, so what they showed does not carry over.
+  useRightPanelStore.setState({ byThreadKey: {} });
   useRightPanelStore.setState({ byThreadKey: { [scopedThreadKey(owner)]: record } });
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,

@@ -177,7 +177,13 @@ async function openOwner(
     "g.ts": sourceFile("g.ts", "eta", 300),
     "h.ts": sourceFile("h.ts", "theta", 300),
     "i.ts": sourceFile("i.ts", "iota", 300),
+    "j.ts": sourceFile("j.ts", "kappa", 300),
+    "k.ts": sourceFile("k.ts", "lambda", 300),
+    "l.ts": sourceFile("l.ts", "mu", 300),
+    "m.ts": sourceFile("m.ts", "nu", 300),
   };
+  // The last test's views end with its layouts, so what they showed does not carry over.
+  useRightPanelStore.setState({ byThreadKey: {} });
   useRightPanelStore.setState({ byThreadKey: { ...others, [scopedThreadKey(owner)]: record } });
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
@@ -207,6 +213,14 @@ async function openOwner(
 
 const cited = (view: ReturnType<typeof sourceView>, line: number) =>
   view.line(line)?.hasAttribute(FILE_LINK_REVEAL_ATTRIBUTE) === true;
+const moveView = (from: string, to: string, tab: string) =>
+  act(() =>
+    useRightPanelStore.getState().updateWorkArea(owner, {
+      type: "place",
+      source: { view: { pane: asPaneId(from), tab: surfaceTabId(tab) } },
+      at: { kind: "join", pane: asPaneId(to) },
+    }),
+  );
 // The lines a pane's code view draws with the cited-line mark.
 const citedIn = (pane: string) =>
   [
@@ -454,6 +468,37 @@ describe("one file open in two panes", () => {
     const moved = sourceView(paneById("p0"));
 
     await vi.waitFor(() => expectScrolledTo(moved, topTop));
+  });
+
+  it("keeps a moved view's own cited line", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    await using _app = await openOwner(chatBeside("file:k.ts", "file:k.ts"));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      top.expectLineInView(1, "lambda_1");
+      bottom.expectLineInView(1, "lambda_1");
+    });
+    const reveal = (pane: string, line: number) =>
+      act(() => {
+        const store = useRightPanelStore.getState();
+        store.updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) });
+        store.openFile(owner, "k.ts", line);
+      });
+    await reveal("p1", 60);
+    await vi.waitFor(() => expect(cited(top, 60)).toBe(true));
+    await reveal("p2", 200);
+    await vi.waitFor(() => expect(cited(bottom, 200)).toBe(true));
+    expect(citedIn("p1")).toEqual([60]);
+
+    await moveView("p1", "p0", "file:k.ts");
+    await vi.waitFor(() => expect(stripOf("p0")).toEqual(["chat", "file:k.ts"]));
+    const moved = sourceView(paneById("p0"));
+
+    await vi.waitFor(() => {
+      expect(citedIn("p0")).toEqual([60]);
+      expect(Math.abs(moved.topLine().line - 60)).toBeLessThanOrEqual(30);
+    });
   });
 });
 
