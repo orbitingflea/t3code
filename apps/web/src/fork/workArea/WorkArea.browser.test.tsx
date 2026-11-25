@@ -1288,39 +1288,41 @@ describe("views of one tab in several panes", () => {
     expect(strips()).toEqual([["chat"]]);
   });
 
+  // The owner's Chat in p0 beside the other thread's Chat in p1 and in p2 below it.
+  const otherChatTwice = () =>
+    restoredRecord({
+      isOpen: false,
+      activeSurfaceId: null,
+      surfaces: [],
+      workArea: restoreWorkArea({
+        root: {
+          kind: "split",
+          id: "s2",
+          axis: "row",
+          ratio: 0.5,
+          first: { kind: "pane", id: "p0", tabs: ["chat"], active: "chat" },
+          second: {
+            kind: "split",
+            id: "s3",
+            axis: "column",
+            ratio: 0.5,
+            first: { kind: "pane", id: "p1", tabs: [otherChat], active: otherChat },
+            second: { kind: "pane", id: "p2", tabs: [otherChat], active: otherChat },
+          },
+        },
+        tabs: {
+          chat: { kind: "primary-chat" },
+          [otherChat]: { kind: "secondary-chat", thread: other, placement: 1 },
+        },
+        focused: "p0",
+        seq: 4,
+      })!,
+    });
+
   // V6: a review comment goes to the caret of the composer the user focused last.
   it("inserts context at the caret of the last-focused of two composers of one chat", async () => {
     using _environment = installFakeEnvironment([ownerThread, otherThread]);
-    setup(
-      restoredRecord({
-        isOpen: false,
-        activeSurfaceId: null,
-        surfaces: [],
-        workArea: restoreWorkArea({
-          root: {
-            kind: "split",
-            id: "s2",
-            axis: "row",
-            ratio: 0.5,
-            first: { kind: "pane", id: "p0", tabs: ["chat"], active: "chat" },
-            second: {
-              kind: "split",
-              id: "s3",
-              axis: "column",
-              ratio: 0.5,
-              first: { kind: "pane", id: "p1", tabs: [otherChat], active: otherChat },
-              second: { kind: "pane", id: "p2", tabs: [otherChat], active: otherChat },
-            },
-          },
-          tabs: {
-            chat: { kind: "primary-chat" },
-            [otherChat]: { kind: "secondary-chat", thread: other, placement: 1 },
-          },
-          focused: "p0",
-          seq: 4,
-        })!,
-      }),
-    );
+    setup(otherChatTwice());
     const draft = useComposerDraftStore.getState();
     draft.setPrompt(other, "alpha beta");
     try {
@@ -1355,6 +1357,40 @@ describe("views of one tab in several panes", () => {
       expect(draft.getComposerDraft(other)?.prompt).toMatch(/^\[b\.ts L4\].* alpha beta$/);
     } finally {
       draft.removeReviewComment(other, "multiview");
+      draft.setPrompt(other, "");
+    }
+  });
+
+  it("shows what is typed in one of two composers of one chat in the other, once", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(otherChatTwice());
+    const draft = useComposerDraftStore.getState();
+    try {
+      await using _app = await openOwner();
+      await vi.waitFor(() => expect(panes()).toHaveLength(3));
+      const composerIn = (id: string) =>
+        page
+          .elementLocator(paneById(id))
+          .getByRole("textbox", { name: `Message ${otherThread.title}` });
+      await expect.element(composerIn("p1")).toBeVisible();
+      await expect.element(composerIn("p2")).toBeVisible();
+      // The editor keeps a zero-width caret holder in an empty paragraph.
+      const texts = () =>
+        ["p1", "p2"].map((id) =>
+          (composerIn(id).element().textContent ?? "").replace(/[\u200b\ufeff]/g, "").trim(),
+        );
+
+      await composerIn("p1").click();
+      await userEvent.keyboard("first words");
+      await vi.waitFor(() => expect(texts()).toEqual(["first words", "first words"]));
+
+      await composerIn("p2").click();
+      await userEvent.keyboard("{End} and more");
+      await vi.waitFor(() =>
+        expect(texts()).toEqual(["first words and more", "first words and more"]),
+      );
+      expect(draft.getComposerDraft(other)?.prompt).toBe("first words and more");
+    } finally {
       draft.setPrompt(other, "");
     }
   });
