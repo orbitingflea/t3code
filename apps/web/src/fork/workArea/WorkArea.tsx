@@ -803,6 +803,8 @@ function WorkAreaPane(props: {
           leads:
             props.strip ||
             preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id,
+          owner: threadRef,
+          view: viewOf(pane.active),
         }}
       >
         <RightPanelTabs

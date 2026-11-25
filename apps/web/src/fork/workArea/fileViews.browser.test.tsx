@@ -83,12 +83,17 @@ const ownerThread: FakeThread = {
 };
 const owner = scopeThreadRef(ENVIRONMENT_ID, ownerThread.id);
 
-/** The Chat in p0 beside p1 and p2 below it, each showing its one tab. */
-const chatBeside = (top: string, bottom: string) =>
+type Tabs = string | readonly [string, ...string[]];
+const tabsOf = (tabs: Tabs) => (typeof tabs === "string" ? [tabs] : tabs);
+
+/** The Chat in p0 beside p1 and p2 below it, each showing its first tab. */
+const chatBeside = (top: Tabs, bottom: Tabs) =>
   restoredRecord({
     isOpen: true,
     activeSurfaceId: null,
-    surfaces: [...new Set([top, bottom])].map((id) => fileSurface(id.slice("file:".length))),
+    surfaces: [...new Set([...tabsOf(top), ...tabsOf(bottom)])].map((id) =>
+      fileSurface(id.slice("file:".length)),
+    ),
     workArea: restoreWorkArea({
       root: {
         kind: "split",
@@ -101,14 +106,15 @@ const chatBeside = (top: string, bottom: string) =>
           id: "s2",
           axis: "column",
           ratio: 0.5,
-          first: { kind: "pane", id: "p1", tabs: [top], active: top },
-          second: { kind: "pane", id: "p2", tabs: [bottom], active: bottom },
+          first: { kind: "pane", id: "p1", tabs: tabsOf(top), active: tabsOf(top)[0] },
+          second: { kind: "pane", id: "p2", tabs: tabsOf(bottom), active: tabsOf(bottom)[0] },
         },
       },
       tabs: {
         chat: { kind: "primary-chat" },
-        [top]: { kind: "surface" },
-        [bottom]: { kind: "surface" },
+        ...Object.fromEntries(
+          [...tabsOf(top), ...tabsOf(bottom)].map((id) => [id, { kind: "surface" }]),
+        ),
       },
       focused: "p0",
       seq: 3,
@@ -121,6 +127,17 @@ const stripOf = (id: string) =>
   [...paneById(id).querySelectorAll("[data-right-panel-tab-id]")].map((tab) =>
     tab.getAttribute("data-right-panel-tab-id"),
   );
+
+// The source line saved for a workspace file once its save delay passed.
+const savedLine = (path: string): number | undefined =>
+  JSON.parse(
+    localStorage.getItem(
+      `t3code.fileReading.v1:${JSON.stringify([ENVIRONMENT_ID, `/workspace/render/${path}`, "source"])}`,
+    ) ?? "null",
+  )?.line;
+
+const tabIn = (pane: string, tab: string) =>
+  paneById(pane).querySelector<HTMLElement>(`[data-right-panel-tab-id="${tab}"]`)!;
 
 const fileLink = (name: string) =>
   [...document.querySelectorAll<HTMLElement>("a.chat-markdown-file-link")].find((link) =>
@@ -140,6 +157,8 @@ async function openOwner(record: ReturnType<typeof chatBeside>) {
     "a.ts": sourceFile("a.ts", "alpha", 300),
     "b.ts": sourceFile("b.ts", "beta", 300),
     "c.ts": sourceFile("c.ts", "gamma", 10),
+    "d.ts": sourceFile("d.ts", "delta", 300),
+    "e.ts": sourceFile("e.ts", "epsilon", 300),
   };
   useRightPanelStore.setState({ byThreadKey: { [scopedThreadKey(owner)]: record } });
   __setClientSettingsForTests({
@@ -221,5 +240,59 @@ describe("one file open in two panes", () => {
     await userEvent.keyboard("Z");
 
     await vi.waitFor(() => expect(kept.line(40)?.textContent).toContain("Zconst beta_40 "));
+  });
+
+  it("brings each view of a file back to its own place after a switch to another tab", async () => {
+    using _environment = installFakeEnvironment([ownerThread]);
+    await using _app = await openOwner(chatBeside("file:d.ts", ["file:d.ts", "file:c.ts"]));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      top.expectLineInView(1, "delta_1");
+      bottom.expectLineInView(1, "delta_1");
+    });
+    await userEvent.wheel(bottom.scroller(), { delta: { y: 3000 } });
+    await vi.waitFor(() => expect(savedLine("d.ts")).toBeGreaterThan(100));
+    const bottomPlace = bottom.topLine();
+    // The top view reads last, so the file's place is the top view's.
+    await userEvent.wheel(top.scroller(), { delta: { y: 1200 } });
+    await vi.waitFor(() => expect(savedLine("d.ts")).toBeLessThan(bottomPlace.line - 20));
+
+    await userEvent.click(tabIn("p2", "file:c.ts"));
+    await vi.waitFor(() => bottom.expectLineInView(1, "gamma_1"));
+    await userEvent.click(tabIn("p2", "file:d.ts"));
+
+    await vi.waitFor(() => expect(bottom.topLine()).toEqual(bottomPlace));
+  });
+
+  it("opens a file's one view, moved away and back, where it was read last", async () => {
+    using _environment = installFakeEnvironment([ownerThread]);
+    await using _app = await openOwner(chatBeside(["file:e.ts", "file:c.ts"], "file:c.ts"));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => top.expectLineInView(1, "epsilon_1"));
+    await userEvent.wheel(top.scroller(), { delta: { y: 1200 } });
+    await vi.waitFor(() => expect(top.topLine().line).toBeGreaterThan(20));
+    const first = top.topLine();
+    await vi.waitFor(() => expect(savedLine("e.ts")).toBeGreaterThan(20));
+    const move = (from: string, to: string) =>
+      act(() =>
+        useRightPanelStore.getState().updateWorkArea(owner, {
+          type: "place",
+          source: { view: { pane: asPaneId(from), tab: surfaceTabId("file:e.ts") } },
+          at: { kind: "join", pane: asPaneId(to) },
+        }),
+      );
+
+    await move("p1", "p2");
+    await vi.waitFor(() => expect(stripOf("p1")).toEqual(["file:c.ts"]));
+    await vi.waitFor(() => expect(bottom.topLine()).toEqual(first));
+    await userEvent.wheel(bottom.scroller(), { delta: { y: 3000 } });
+    await vi.waitFor(() => expect(bottom.topLine().line).toBeGreaterThan(first.line + 20));
+    const last = bottom.topLine();
+    await vi.waitFor(() => expect(savedLine("e.ts")).toBeGreaterThan(first.line + 20));
+    await move("p2", "p1");
+
+    await vi.waitFor(() => expect(top.topLine()).toEqual(last));
   });
 });

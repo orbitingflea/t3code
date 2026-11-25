@@ -9,6 +9,7 @@ import { isBrowserPreviewFile } from "~/browser/openFileInPreview";
 import { useClosedViewStore } from "~/closedViewStore";
 import type { FileSurface } from "~/fork/workArea/workArea.logic";
 import { useRightPanelPane } from "~/fork/workArea/tabStrip";
+import { forgetEndedViews, viewScope } from "~/fork/workArea/viewReading";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import {
@@ -36,6 +37,7 @@ export const pathReadingKey = (environmentId: string, absolutePath: string): Fil
   absolutePath,
 });
 ledger.start();
+forgetEndedViews(readings.forgetScope, useRightPanelStore);
 
 const NO_VIEWS: ReadonlyArray<ReadingView> = [];
 // A workspace file's code view has its own tracker; an attachment's source view is the container's.
@@ -166,15 +168,24 @@ export function useFileReadingPosition(input: {
   const threadKey = scopedThreadKey(input.threadRef);
   // This view's code container: two views of one file each keep their own reading place.
   const sourceContainer = useRef<HTMLElement | null>(null);
+  const pane = useRightPanelPane();
   // A tab open in several panes shows a line reveal in one view; the others keep their place.
-  const leads = useRightPanelPane()?.leads ?? true;
+  const leads = pane?.leads ?? true;
+  // Each work-area view of a file keeps its own place.
+  const scope = pane === null ? {} : { scope: viewScope(scopedThreadKey(pane.owner), pane.view) };
   const surface = useRightPanelStore(
     (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );
-  const file =
+  const file: FileReadingKey | null =
     input.relativePath === null
       ? null
-      : pathReadingKey(input.environmentId, resolvePathLinkTarget(input.relativePath, input.cwd));
+      : {
+          ...pathReadingKey(
+            input.environmentId,
+            resolvePathLinkTarget(input.relativePath, input.cwd),
+          ),
+          ...scope,
+        };
   // Like an expired receipt, an expired saved place lets the line show again.
   if (
     input.revealShown === true &&
@@ -219,6 +230,7 @@ export function useFileReadingPosition(input: {
           kind: "attachment",
           environmentId: input.environmentId,
           attachmentId: input.attachment.id,
+          ...scope,
         };
   // AttachmentFilePreview shows an attachment by its content type, the panel a file by its name.
   const kind = input.attachment === undefined ? null : filePreviewKind(input.attachment);

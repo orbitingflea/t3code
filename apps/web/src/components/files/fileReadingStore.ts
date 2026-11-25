@@ -67,9 +67,10 @@ const decodeHeader = Schema.decodeUnknownOption(EntryHeader);
 const decodeReceiptKey = Schema.decodeUnknownOption(Schema.Tuple([Schema.String, Schema.String]));
 
 /** A workspace or host file by absolute path, or a chat attachment by id. */
-export type FileReadingKey =
+export type FileReadingKey = (
   | { readonly kind: "path"; readonly environmentId: string; readonly absolutePath: string }
-  | { readonly kind: "attachment"; readonly environmentId: string; readonly attachmentId: string };
+  | { readonly kind: "attachment"; readonly environmentId: string; readonly attachmentId: string }
+) & { readonly scope?: string };
 
 /** A sample a debounced save holds; reads see it before it is written. */
 export interface HeldPosition {
@@ -120,7 +121,11 @@ function table<A>(
 const documentOf = (file: FileReadingKey) =>
   file.kind === "path" ? file.absolutePath : { attachment: file.attachmentId };
 export const fileReadingId = (file: FileReadingKey) =>
-  JSON.stringify([file.environmentId, documentOf(file)]);
+  JSON.stringify([
+    file.environmentId,
+    documentOf(file),
+    ...(file.scope === undefined ? [] : [file.scope]),
+  ]);
 const positionKey = (file: FileReadingKey, view: ReadingView) =>
   POSITION_PREFIX + JSON.stringify([file.environmentId, documentOf(file), view]);
 const receiptKey = (threadKey: string, relativePath: string) =>
@@ -138,6 +143,8 @@ export function createFileReadingStore(options: {
     Schema.decodeUnknownOption(ReadingPosition),
   );
   const receipts = table(RECEIPT_PREFIX, RECEIPT_CAP, Schema.decodeUnknownOption(RevealReceipt));
+  // Each view's own places by its scope, for this page only; storage keeps the file's place.
+  const scoped = new Map<string, Map<string, Entry<ReadingPosition>>>();
   const tables: ReadonlyArray<Table<unknown>> = [positions, receipts];
   let storage: StorageLike | null | undefined;
   let captured = 0;
@@ -289,25 +296,35 @@ export function createFileReadingStore(options: {
     evict(target, at);
   };
 
+  const own = (file: FileReadingKey) =>
+    file.scope === undefined ? undefined : scoped.get(file.scope);
+  const keepOwn = (file: FileReadingKey, entry: Entry<ReadingPosition>) => {
+    if (file.scope === undefined) return;
+    const places = own(file) ?? new Map<string, Entry<ReadingPosition>>();
+    scoped.set(file.scope, places.set(positionKey(file, entry.value.view), entry));
+  };
+  // A view's own entry, else the file's while the view saved none of that kind.
+  const readEntry = (file: FileReadingKey, view: ReadingView) =>
+    own(file)?.get(positionKey(file, view)) ?? read(positions, positionKey(file, view));
+
   return {
     readPosition<V extends ReadingView>(
       file: FileReadingKey,
       view: V,
     ): ReadingPositionOf<V> | null {
-      const value = read(positions, positionKey(file, view))?.value;
+      const value = readEntry(file, view)?.value;
       return value?.view === view ? (value as ReadingPositionOf<V>) : null;
     },
     writePosition(file: FileReadingKey, position: ReadingPosition): void {
-      write(positions, positionKey(file, position.view), {
-        at: options.now(),
-        value: position,
-        order: ++captured,
-      });
+      const entry = { at: options.now(), value: position, order: ++captured };
+      keepOwn(file, entry);
+      write(positions, positionKey(file, position.view), entry);
     },
     /** Holds a sample captured now; the newest sample of a file's view wins, held or stored. */
     holdPosition(file: FileReadingKey, position: ReadingPosition): HeldPosition {
       const key = positionKey(file, position.view);
       const entry = { at: options.now(), value: position, order: ++captured };
+      keepOwn(file, entry);
       positions.held.set(key, entry);
       return {
         position,
@@ -319,14 +336,22 @@ export function createFileReadingStore(options: {
     },
     /** The view among `views` whose saved entry is newest. */
     newestView(file: FileReadingKey, views: ReadonlyArray<ReadingView>): ReadingView | null {
+      const places = own(file);
+      // A view that saved a place of its own was last in its own newest view.
+      const owned = views.some((view) => places?.has(positionKey(file, view)) === true);
       let newest: Entry<ReadingPosition> | undefined;
       for (const view of views) {
-        const entry = read(positions, positionKey(file, view));
+        const entry = owned
+          ? places?.get(positionKey(file, view))
+          : read(positions, positionKey(file, view));
         if (entry?.value.view === view && (newest === undefined || later(entry, newest))) {
           newest = entry;
         }
       }
       return newest?.value.view ?? null;
+    },
+    forgetScope(scope: string): void {
+      scoped.delete(scope);
     },
     readReceipt(threadKey: string, relativePath: string): RevealReceipt | null {
       return read(receipts, receiptKey(threadKey, relativePath))?.value ?? null;

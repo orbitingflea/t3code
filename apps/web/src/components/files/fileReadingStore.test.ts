@@ -120,6 +120,37 @@ describe("file reading positions", () => {
     expect(readings.newestView(file, ["source", "rendered"])).toBe("rendered");
   });
 
+  it("keeps a place for each view of a file, which starts from the file's place", () => {
+    const { items, storage } = memoryStorage();
+    const { clock, readings } = setup(storage);
+    const left = { ...file, scope: "left" };
+    const right = { ...file, scope: "right" };
+    readings.writePosition(file, { view: "source", line: 4, offset: 0 });
+    expect(readings.readPosition(left, "source")?.line).toBe(4);
+
+    clock.now += 1;
+    readings.writePosition(right, { view: "source", line: 200, offset: 0 });
+    clock.now += 1;
+    readings.holdPosition(left, { view: "source", line: 50, offset: 0 });
+    expect(readings.readPosition(right, "source")?.line).toBe(200);
+    expect(readings.readPosition(left, "source")?.line).toBe(50);
+    // The file's place is the newest any view saved, as a page with one view saves it.
+    expect(readings.readPosition(file, "source")?.line).toBe(50);
+    expect(setup(storage).readings.readPosition(file, "source")?.line).toBe(200);
+    // A view without a rendered place of its own reads the file's, but its newest is its own.
+    readings.writePosition(file, { view: "rendered", block: 2, fraction: 0 });
+    expect(readings.readPosition(right, "rendered")?.block).toBe(2);
+    expect(readings.newestView(right, ["source", "rendered"])).toBe("source");
+    expect(readings.newestView({ ...file, scope: "new" }, ["source", "rendered"])).toBe("rendered");
+    expect([...items.keys()].every((key) => !key.includes("right") && !key.includes("left"))).toBe(
+      true,
+    );
+
+    readings.forgetScope("right");
+    expect(readings.readPosition(right, "source")?.line).toBe(50);
+    expect(readings.readPosition(left, "source")?.line).toBe(50);
+  });
+
   it("expires an entry 30 days after it was written, and reads do not renew it", () => {
     const { items, storage } = memoryStorage();
     const { clock, readings } = setup(storage);
