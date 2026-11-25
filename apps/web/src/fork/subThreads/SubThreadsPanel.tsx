@@ -25,7 +25,7 @@ import {
 } from "../workArea/chatFileOpener";
 import { replyPanelLink } from "../workArea/linkSources";
 import { panelDragProps } from "../workArea/panelLinkDrag";
-import { ReplyTabContext } from "../workArea/tabStrip";
+import { ReplyTabContext, useRightPanelPane } from "../workArea/tabStrip";
 import { useThreadGone } from "../workArea/useThreadGone";
 import { type ReplyEntry, surfaceTabId } from "../workArea/workArea.logic";
 import { registerReplyBox } from "./subThreadCite";
@@ -303,12 +303,13 @@ function SubThreadView(props: {
   const composer = useRef<ChatComposerHandle | null>(null);
   const threadKey = scopedThreadKey(threadRef);
   const box = useRef<ReturnType<typeof registerReplyBox> | null>(null);
+  const pane = useRightPanelPane()?.id ?? null;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- tells a Cite in the main list which reply boxes are on screen
   useEffect(() => {
-    const registered = registerReplyBox(entry, threadKey, first, composer);
+    const registered = registerReplyBox(entry, threadKey, first, composer, pane);
     box.current = registered;
     return () => registered[Symbol.dispose]();
-  }, [entry, threadKey, first]);
+  }, [entry, threadKey, first, pane]);
   return (
     <div
       data-side-chat-pane

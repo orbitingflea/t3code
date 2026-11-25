@@ -7,6 +7,7 @@ import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelec
 import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import { chatFileTarget } from "../workArea/chatFileOpener";
 import {
+  asPaneId,
   holders,
   isReplyEntry,
   PRIMARY_CHAT,
@@ -202,6 +203,27 @@ describe("a Cite in the main list of a Chat mode thread", () => {
     expect(view.cite()).toBe(true);
     expect(boxC.cite).toHaveBeenCalledOnce();
     expect(boxA.cite).not.toHaveBeenCalled();
+  });
+
+  it("goes into the view of a reply open in two panes whose box was focused last", () => {
+    using view = mainView();
+    openReply("first-a");
+    const left = fakeBox("draft a");
+    const right = fakeBox("draft a");
+    const entry = entryOf("first-a");
+    const inLeft = registerReplyBox(entry, threadKey, "first-a", left.ref, asPaneId("p1"));
+    const inRight = registerReplyBox(entry, threadKey, "first-a", right.ref, asPaneId("p2"));
+    try {
+      inRight.focused();
+      inLeft.focused();
+
+      expect(view.cite()).toBe(true);
+      expect(left.cite).toHaveBeenCalledOnce();
+      expect(right.cite).not.toHaveBeenCalled();
+    } finally {
+      inLeft[Symbol.dispose]();
+      inRight[Symbol.dispose]();
+    }
   });
 
   it("forgets the focus of a reply tab that was closed and opened again", () => {

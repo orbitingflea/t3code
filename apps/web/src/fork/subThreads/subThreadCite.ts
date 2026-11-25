@@ -10,7 +10,7 @@ import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelec
 import type { CiteAssistantText } from "../dashboard/dashboardCitation";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
 import { chatFileTarget } from "../workArea/chatFileOpener";
-import { PRIMARY_CHAT, type ReplyEntry } from "../workArea/workArea.logic";
+import { type PaneId, PRIMARY_CHAT, type ReplyEntry } from "../workArea/workArea.logic";
 import { type SubThreadSummary, useSubThreadSummaries } from "./subThreadsState";
 
 type CiteComposer = RefObject<Pick<
@@ -23,25 +23,33 @@ interface ReplyBox {
   readonly first: string;
   /** The reply tab's strip entry: one per tab from its open until its close. */
   readonly tab: ReplyEntry;
+  /** The pane of the tab's view; a tab open in two panes has a box in each. */
+  readonly pane: PaneId | null;
   readonly composer: CiteComposer;
 }
 
 /** The reply boxes on screen: a tab's body mounts only while it is drawn. */
 const mountedBoxes = new Set<ReplyBox>();
-/** When each reply tab's box last took focus; a closed and reopened tab starts fresh. */
-const focusedAt = new WeakMap<ReplyEntry, number>();
+/** When each reply tab's box last took focus, per pane; a closed and reopened tab starts fresh. */
+const focusedAt = new WeakMap<ReplyEntry, Map<PaneId | null, number>>();
 let focusCount = 0;
+
+const lastFocus = (box: ReplyBox) => focusedAt.get(box.tab)?.get(box.pane) ?? 0;
 
 export function registerReplyBox(
   tab: ReplyEntry,
   threadKey: string,
   first: string,
   composer: CiteComposer,
+  pane: PaneId | null = null,
 ): { readonly focused: () => void; readonly [Symbol.dispose]: () => void } {
-  const box: ReplyBox = { threadKey, first, tab, composer };
+  const box: ReplyBox = { threadKey, first, tab, pane, composer };
   mountedBoxes.add(box);
   return {
-    focused: () => focusedAt.set(tab, (focusCount += 1)),
+    focused: () => {
+      const times = focusedAt.get(tab) ?? new Map<PaneId | null, number>();
+      focusedAt.set(tab, times.set(pane, (focusCount += 1)));
+    },
     [Symbol.dispose]: () => mountedBoxes.delete(box),
   };
 }
@@ -81,8 +89,7 @@ export function citeInThread(
   let drafted: ReplyBox | undefined;
   for (const box of mountedBoxes) {
     if (box.threadKey !== threadKey || !hasText(box.composer)) continue;
-    if (drafted === undefined || (focusedAt.get(box.tab) ?? 0) >= (focusedAt.get(drafted.tab) ?? 0))
-      drafted = box;
+    if (drafted === undefined || lastFocus(box) >= lastFocus(drafted)) drafted = box;
   }
   if (drafted) return citeInto(drafted.composer, citation, sourceAnchor);
   // A user open, so a waiting automatic Diff cannot replace it. A sync commit runs its passive
