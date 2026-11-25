@@ -11,6 +11,7 @@ import {
 } from "@t3tools/shared/paletteSearch";
 import { create } from "zustand";
 import { openingThreadPage } from "~/fork/workArea/findOpensThread";
+import { useFindInView } from "~/fork/workArea/findView";
 import type { ThemeAppearance } from "~/themePalette";
 import { rightPanelHostRef } from "../../rightPanelStore";
 import type { ThreadFindPositionReader, ThreadFindStart } from "./threadFind";
@@ -178,7 +179,9 @@ export function retainThreadFindForRoute(route: {
 /** Whether find is open in `thread`, as long as find is available there. */
 export function useThreadFindOpen(thread: ScopedThreadRef | null, enabled: boolean): boolean {
   const openThreadKey = useThreadFindStore((state) => state.threadKey);
-  return enabled && thread !== null && openThreadKey === scopedThreadKey(thread);
+  const request = useThreadFindStore((state) => state.focusRequestId);
+  const open = enabled && thread !== null && openThreadKey === scopedThreadKey(thread);
+  return useFindInView(open, request);
 }
 
 /**
