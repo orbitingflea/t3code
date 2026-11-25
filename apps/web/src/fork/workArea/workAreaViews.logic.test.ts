@@ -29,6 +29,7 @@ import {
   viewKey,
   type WorkAreaLayout,
 } from "./workArea.logic";
+import { followViewScopes, viewScope } from "./viewReading";
 import { closeFocusedTab, closeTab, closeViews } from "./workAreaCommands";
 import { drawWorkArea, NO_VIEW } from "./workAreaGeometry.logic";
 import { applyWorkAreaChange, reconcileWorkArea, repairWorkArea } from "./workAreaPlacement.logic";
@@ -632,6 +633,51 @@ describe("a Find reveal from a Chat open in two panes", () => {
       p2: { tabs: [PRIMARY_CHAT, reply], active: reply },
     });
     expect(next.focused).toBe("p0");
+  });
+});
+
+describe("a file view's own reading place", () => {
+  const scope = (paneId: string, id: string) => viewScope(scopedThreadKey(ref), view(paneId, id));
+  function followScopes() {
+    const calls: string[] = [];
+    const stop = followViewScopes(
+      {
+        forgetScope: (ended) => calls.push(`forget ${ended}`),
+        moveScope: (from, to) => calls.push(`move ${from} to ${to}`),
+      },
+      useRightPanelStore,
+    );
+    return { calls, [Symbol.dispose]: stop };
+  }
+
+  it("moves with its view to another pane and ends when the view closes", () => {
+    seat(
+      [file("a")],
+      row(pane("p0", ["chat"]), column(pane("p1", ["file:a"]), pane("p2", ["file:a"]))),
+    );
+    using scopes = followScopes();
+    change({
+      type: "place",
+      source: { view: view("p1", "file:a") },
+      at: { kind: "join", pane: asPaneId("p0") },
+    });
+    expect(scopes.calls).toEqual([`move ${scope("p1", "file:a")} to ${scope("p0", "file:a")}`]);
+
+    scopes.calls.length = 0;
+    change({ type: "close-view", view: view("p2", "file:a") });
+    expect(scopes.calls).toEqual([`forget ${scope("p2", "file:a")}`]);
+  });
+
+  it("gives a copy no place of its own", () => {
+    seat([file("a"), file("b")], row(pane("p0", ["chat", "file:a"]), pane("p1", ["file:b"])));
+    using scopes = followScopes();
+    change({
+      type: "place",
+      source: { view: view("p0", "file:a"), copy: true },
+      at: { kind: "join", pane: asPaneId("p1") },
+    });
+    expect(holders(layout().root, tab("file:a")).map((node) => node.id)).toEqual(["p0", "p1"]);
+    expect(scopes.calls).toEqual([]);
   });
 });
 

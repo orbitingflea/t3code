@@ -370,6 +370,11 @@ export function createFileReadingStore(options: {
     forgetScope(scope: string): void {
       scoped.delete(scope);
     },
+    moveScope(from: string, to: string): void {
+      const places = scoped.get(from);
+      scoped.delete(from);
+      if (places !== undefined) scoped.set(to, places);
+    },
     readReceipt(threadKey: string, relativePath: string): RevealReceipt | null {
       return read(receipts, receiptKey(threadKey, relativePath))?.value ?? null;
     },

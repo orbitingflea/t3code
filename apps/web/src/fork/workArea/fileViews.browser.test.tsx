@@ -425,6 +425,36 @@ describe("one file open in two panes", () => {
       }
     });
   });
+
+  it("keeps a moved view where it was read, not where the other view was read", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    await using _app = await openOwner(chatBeside("file:h.ts", "file:h.ts"));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      top.expectLineInView(1, "theta_1");
+      bottom.expectLineInView(1, "theta_1");
+    });
+    await userEvent.wheel(top.scroller(), { delta: { y: 800 } });
+    await vi.waitFor(() => expect(savedLine("h.ts")).toBeGreaterThan(20));
+    const topTop = scrolledTo(top);
+    // The other view reads last, far down, so the file's place is the other view's.
+    await userEvent.wheel(bottom.scroller(), { delta: { y: 4000 } });
+    await vi.waitFor(() => expect(savedLine("h.ts")).toBeGreaterThan(150));
+
+    // The tab menu's Move left: the top view joins the Chat's pane.
+    await act(() =>
+      useRightPanelStore.getState().updateWorkArea(owner, {
+        type: "place",
+        source: { view: { pane: asPaneId("p1"), tab: surfaceTabId("file:h.ts") } },
+        at: { kind: "join", pane: asPaneId("p0") },
+      }),
+    );
+    await vi.waitFor(() => expect(stripOf("p0")).toEqual(["chat", "file:h.ts"]));
+    const moved = sourceView(paneById("p0"));
+
+    await vi.waitFor(() => expectScrolledTo(moved, topTop));
+  });
 });
 
 describe("one file open in two panes, then the one strip", () => {
