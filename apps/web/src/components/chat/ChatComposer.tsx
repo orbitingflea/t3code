@@ -15,6 +15,7 @@ import {
 import { isLocalEnvironmentDisabled } from "../../localEnvironment";
 import { usePrimaryEnvironmentId } from "../../state/environments";
 import { fromChatOrigin, useChatFileOpener } from "~/fork/workArea/chatFileOpener";
+import { focusContextInsertion } from "~/fork/workArea/contextInsertion";
 import { importPastedComposerText, readPastedComposerContext } from "../composerInlineTokenPaste";
 import {
   questionAttachmentDraftId,
@@ -3666,6 +3667,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
           activeElement.closest('[data-testid="composer-editor"]')
         ) {
           onTypingGuardFocus();
+          focusContextInsertion(insertContextReferencesAtCaretStable);
         }
         if (composerControlsCollapsed && isInsideRestingComposerControlScope(activeElement)) {
           return;

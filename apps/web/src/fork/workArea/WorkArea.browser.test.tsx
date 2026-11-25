@@ -1287,4 +1287,75 @@ describe("views of one tab in several panes", () => {
     await vi.waitFor(() => expect(surfaceKinds(owner)).toEqual([]));
     expect(strips()).toEqual([["chat"]]);
   });
+
+  // V6: a review comment goes to the caret of the composer the user focused last.
+  it("inserts context at the caret of the last-focused of two composers of one chat", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(
+      restoredRecord({
+        isOpen: false,
+        activeSurfaceId: null,
+        surfaces: [],
+        workArea: restoreWorkArea({
+          root: {
+            kind: "split",
+            id: "s2",
+            axis: "row",
+            ratio: 0.5,
+            first: { kind: "pane", id: "p0", tabs: ["chat"], active: "chat" },
+            second: {
+              kind: "split",
+              id: "s3",
+              axis: "column",
+              ratio: 0.5,
+              first: { kind: "pane", id: "p1", tabs: [otherChat], active: otherChat },
+              second: { kind: "pane", id: "p2", tabs: [otherChat], active: otherChat },
+            },
+          },
+          tabs: {
+            chat: { kind: "primary-chat" },
+            [otherChat]: { kind: "secondary-chat", thread: other, placement: 1 },
+          },
+          focused: "p0",
+          seq: 4,
+        })!,
+      }),
+    );
+    const draft = useComposerDraftStore.getState();
+    draft.setPrompt(other, "alpha beta");
+    try {
+      await using _app = await openOwner();
+      await vi.waitFor(() => expect(panes()).toHaveLength(3));
+      const composerIn = (id: string) =>
+        page
+          .elementLocator(paneById(id))
+          .getByRole("textbox", { name: `Message ${otherThread.title}` });
+      await expect.element(composerIn("p1")).toBeVisible();
+      await expect.element(composerIn("p2")).toBeVisible();
+      await composerIn("p2").click();
+      await userEvent.keyboard("{End}");
+      await composerIn("p1").click();
+      await userEvent.keyboard("{Home}");
+      await expect.element(composerIn("p1")).toHaveFocus();
+
+      await act(() => {
+        draft.addReviewComment(other, {
+          id: "multiview",
+          sectionId: "file:a/b.ts",
+          sectionTitle: "File comment",
+          filePath: "a/b.ts",
+          startIndex: 3,
+          endIndex: 3,
+          rangeLabel: "L4",
+          text: "Why?",
+          diff: "const x = 1;",
+        });
+      });
+
+      expect(draft.getComposerDraft(other)?.prompt).toMatch(/^\[b\.ts L4\].* alpha beta$/);
+    } finally {
+      draft.removeReviewComment(other, "multiview");
+      draft.setPrompt(other, "");
+    }
+  });
 });

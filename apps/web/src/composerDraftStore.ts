@@ -101,6 +101,7 @@ import {
 import { create } from "zustand";
 import { persist, type PersistStorage, type StorageValue } from "zustand/middleware";
 import { useShallow } from "zustand/react/shallow";
+import { contextInsertionHandlers, mountContextInsertion } from "./fork/workArea/contextInsertion";
 import { draftModelSelectionApplies } from "./lib/chatThreadActions";
 import { createDeferredStorage, createMemoryStorage } from "./lib/storage";
 import { getDefaultServerModel } from "./providerModels";
@@ -467,7 +468,6 @@ export interface ComposerContextAddOptions {
 export type ComposerContextInsertionHandler = (
   references: ReadonlyArray<ComposerContextReference>,
 ) => boolean;
-const contextInsertionHandlers = new Map<string, ComposerContextInsertionHandler>();
 
 export interface ComposerThreadDraftState {
   prompt: string;
@@ -4190,13 +4190,9 @@ const composerDraftStore = create<ComposerDraftStoreState>()(
         setContextInsertionHandler: (threadRef, handler) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
           if (!threadKey) return;
-          if (handler) contextInsertionHandlers.set(threadKey, handler);
-          else contextInsertionHandlers.delete(threadKey);
-          return () => {
-            if (contextInsertionHandlers.get(threadKey) === handler) {
-              contextInsertionHandlers.delete(threadKey);
-            }
-          };
+          if (handler) return mountContextInsertion(threadKey, handler);
+          contextInsertionHandlers.delete(threadKey);
+          return undefined;
         },
         setReviewComments: (threadRef, comments) => {
           const threadKey = resolveComposerDraftKey(get(), threadRef);
