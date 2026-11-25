@@ -72,7 +72,7 @@ import {
 import { dragShieldProps, registerThreadDragFallback } from "./threadDragFallback";
 import { useLinkDrops } from "./useLinkDrops";
 import { followFindRequests } from "./useWorkAreaChat";
-import { shownBy, viewIdOf } from "./viewIdentity";
+import { knownViewId, shownBy, viewIdOf } from "./viewIdentity";
 import {
   type ArmKind,
   type Edge,
@@ -730,8 +730,9 @@ function WorkAreaPane(props: {
   // The one strip lists tabs, not views: its file reads the file's place and saves to every view.
   const reading = props.strip
     ? {
-        alsoScopes: holders(layout.root, pane.active).map((holder) =>
-          viewIdOf(ownerKey, { pane: holder.id, tab: pane.active }),
+        // A view never shown keeps no place of its own, so it starts from the file's.
+        alsoScopes: holders(layout.root, pane.active).flatMap(
+          (holder) => knownViewId(ownerKey, { pane: holder.id, tab: pane.active }) ?? [],
         ),
       }
     : { scope: viewId };

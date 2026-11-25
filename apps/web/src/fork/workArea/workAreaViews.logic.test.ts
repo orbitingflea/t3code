@@ -37,6 +37,7 @@ import { restoredRecord } from "./workAreaStorage.logic";
 import {
   actives,
   change,
+  fromChat,
   focusedIndex,
   layout,
   other,
@@ -785,6 +786,27 @@ describe("a line reveal in a file with two views", () => {
     const top = idOf("p1", "file:a");
     reveal("p1", 40);
     expect([lineIn(top), lineIn(idOf("p2", "file:a"))]).toEqual([40, 40]);
+  });
+
+  it("goes to the pane the open focuses when closing the Files tab uncovers another view", () => {
+    const files: RightPanelSurface = { id: "files", kind: "files" };
+    seat(
+      [file("a"), files],
+      row(pane("p0", ["file:a", "files"]), pane("p1", ["file:a", "chat"])),
+      "p0",
+    );
+    const left = idOf("p0", "file:a");
+    const right = idOf("p1", "file:a");
+    store().openFile(ref, "a", 40, { keepExplorer: true });
+    expect([lineIn(left), lineIn(right)]).toEqual([40, null]);
+    change({ type: "activate", view: view("p0", "files") });
+    change({ type: "activate", view: view("p1", "chat") });
+
+    // A citation in p1's Chat closes the Files tab, which uncovers p0's view of the file.
+    fromChat(() => store().openFile(ref, "a", 200));
+    expect(actives()).toEqual(["file:a", "file:a"]);
+    expect(layout().focused).toBe("p1");
+    expect([lineIn(left), lineIn(right)]).toEqual([40, 200]);
   });
 });
 

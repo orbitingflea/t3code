@@ -48,6 +48,10 @@ export function viewIdOf(owner: string, view: ViewRef): ViewId {
 }
 
 /** Calls `listener` when a tracked work-area view ends; returns the unsubscribe function. */
+export function knownViewId(owner: string, view: ViewRef): ViewId | undefined {
+  return ids.get(owner)?.get(viewKey(view));
+}
+
 export function onViewEnd(listener: (id: ViewId) => void): () => void {
   endListeners.add(listener);
   return () => endListeners.delete(listener);
@@ -148,8 +152,9 @@ function revealsIn(
   return [...files, ...linked];
 }
 
-// A reveal belongs to the view its write targets: the pane the write shows the tab in, else the
-// reveal pick. Every other view the user has seen, hidden ones too, keeps what it showed.
+// A reveal belongs to the view its write targets: the focused pane when it shows the tab, else the
+// pane the write shows the tab in, else the reveal pick. Every other view the user has seen,
+// hidden ones too, keeps what it showed.
 function holdReveals(
   byView: ReadonlyMap<ViewKey, ViewId>,
   before: ThreadRightPanelState,
@@ -160,6 +165,7 @@ function holdReveals(
   for (const [tab, prior] of revealsIn(before, after, was, layout)) {
     const holding = holders(layout.root, tab);
     const target =
+      holding.find((pane) => pane.active === tab && pane.id === layout.focused) ??
       holding.find((pane) => pane.active === tab && findPane(was.root, pane.id)?.active !== tab) ??
       preferredView(layout, tab, layout.focused, "reveal");
     for (const pane of holding) {
