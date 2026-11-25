@@ -13,7 +13,7 @@ import "~/components/ChatView";
 import { closeThreadFind, openThreadFind } from "~/components/chat/threadFindStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 import {
   ENVIRONMENT_ID,
   installFakeEnvironment,
@@ -21,7 +21,14 @@ import {
   type FakeDriver,
 } from "../../../test/fakeEnvironment";
 import { act, render } from "../../../test/render";
-import { asPaneId, secondaryChatTabId } from "./workArea.logic";
+import {
+  asPaneId,
+  holders,
+  PRIMARY_CHAT,
+  resolveLayout,
+  secondaryChatTabId,
+} from "./workArea.logic";
+import { moveToward } from "./workAreaPlacement.logic";
 import { restoredRecord, restoreWorkArea } from "./workAreaStorage.logic";
 
 vi.mock(
@@ -46,9 +53,18 @@ const otherThread = threadWithHistory("find-other", 1);
 const owner = scopeThreadRef(ENVIRONMENT_ID, ownerThread.id);
 const other = scopeThreadRef(ENVIRONMENT_ID, otherThread.id);
 const otherChat = secondaryChatTabId(other);
+const THREADS = [ownerThread, otherThread];
 
-// The owner's Chat in p0 beside the other thread's Chat in p1 and in p2 below it.
-const otherChatTwice = () =>
+type PaneSpec = { readonly id: string; readonly tabs: readonly [string, ...string[]] };
+const paneSpec = (spec: PaneSpec) => ({
+  kind: "pane" as const,
+  id: spec.id,
+  tabs: spec.tabs,
+  active: spec.tabs[0],
+});
+
+// The owner's Chat in p0 beside the given panes, stacked in a column.
+const chatBeside = (right: readonly [PaneSpec] | readonly [PaneSpec, PaneSpec]) =>
   restoredRecord({
     isOpen: false,
     activeSurfaceId: null,
@@ -60,14 +76,17 @@ const otherChatTwice = () =>
         axis: "row",
         ratio: 0.5,
         first: { kind: "pane", id: "p0", tabs: ["chat"], active: "chat" },
-        second: {
-          kind: "split",
-          id: "s3",
-          axis: "column",
-          ratio: 0.5,
-          first: { kind: "pane", id: "p1", tabs: [otherChat], active: otherChat },
-          second: { kind: "pane", id: "p2", tabs: [otherChat], active: otherChat },
-        },
+        second:
+          right.length === 1
+            ? paneSpec(right[0])
+            : {
+                kind: "split",
+                id: "s3",
+                axis: "column",
+                ratio: 0.5,
+                first: paneSpec(right[0]),
+                second: paneSpec(right[1]),
+              },
       },
       tabs: {
         chat: { kind: "primary-chat" },
@@ -78,8 +97,15 @@ const otherChatTwice = () =>
     })!,
   });
 
-async function openOwner() {
-  useRightPanelStore.setState({ byThreadKey: { [scopedThreadKey(owner)]: otherChatTwice() } });
+// The other thread's Chat in p1 and in p2 below it.
+const otherChatTwice = () =>
+  chatBeside([
+    { id: "p1", tabs: [otherChat] },
+    { id: "p2", tabs: [otherChat] },
+  ]);
+
+async function openOwner(record: ReturnType<typeof chatBeside>, panes: number) {
+  useRightPanelStore.setState({ byThreadKey: { [scopedThreadKey(owner)]: record } });
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
@@ -97,7 +123,7 @@ async function openOwner() {
     .element(page.getByRole("textbox", { name: `Message ${ownerThread.title}` }))
     .toBeVisible();
   await vi.waitFor(() =>
-    expect(document.querySelectorAll("[data-work-area-pane]")).toHaveLength(3),
+    expect(document.querySelectorAll("[data-work-area-pane]")).toHaveLength(panes),
   );
   return stack.move();
 }
@@ -107,7 +133,16 @@ const paneById = (id: string) =>
 const findIn = (id: string) =>
   page.elementLocator(paneById(id)).getByRole("searchbox", { name: "Find in thread" });
 const barIn = (id: string) => paneById(id).querySelector("[data-thread-find-bar]");
+const composerIn = (id: string) =>
+  page.elementLocator(paneById(id)).getByRole("textbox", { name: `Message ${otherThread.title}` });
+const layoutNow = () =>
+  resolveLayout(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, owner));
+const holdersOfOther = () => holders(layoutNow().root, otherChat).map((pane) => pane.id);
 
+const focusPane = (pane: string) =>
+  act(() =>
+    useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) }),
+  );
 const openFindFrom = (pane: string) =>
   act(() => {
     useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) });
@@ -115,31 +150,82 @@ const openFindFrom = (pane: string) =>
   });
 
 it("opens Find only in the view of a Chat open in two panes that it is opened from", async () => {
-  using _environment = installFakeEnvironment([ownerThread, otherThread], { threadFind: true });
-  await using _app = await openOwner();
-  for (const id of ["p1", "p2"]) {
-    await expect
-      .element(
-        page
-          .elementLocator(paneById(id))
-          .getByRole("textbox", { name: `Message ${otherThread.title}` }),
-      )
-      .toBeVisible();
-  }
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(otherChatTwice(), 3);
+  for (const id of ["p1", "p2"]) await expect.element(composerIn(id)).toBeVisible();
 
   await openFindFrom("p2");
   await expect.element(findIn("p2")).toHaveFocus();
   expect(barIn("p1")).toBeNull();
 
-  // A later focus on the other view leaves Find where it was opened.
-  await act(() =>
-    useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId("p1") }),
-  );
-  await expect.element(findIn("p2")).toBeVisible();
-  expect(barIn("p1")).toBeNull();
+  // Find shows in the view the user turns to.
+  await focusPane("p1");
+  await expect.element(findIn("p1")).toBeVisible();
+  await vi.waitFor(() => expect(barIn("p2")).toBeNull());
 
-  // Opening it again from that view moves it there.
+  // Opening it again from the other view moves it back there.
+  await openFindFrom("p2");
+  await expect.element(findIn("p2")).toHaveFocus();
+  await vi.waitFor(() => expect(barIn("p1")).toBeNull());
+});
+
+it("keeps Find open in a Chat shown once after its one view moves to another pane", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(chatBeside([{ id: "p1", tabs: [otherChat] }]), 2);
+  await expect.element(composerIn("p1")).toBeVisible();
   await openFindFrom("p1");
   await expect.element(findIn("p1")).toHaveFocus();
-  await vi.waitFor(() => expect(barIn("p2")).toBeNull());
+
+  // The tab menu's Move left: the Chat's one view joins p0.
+  const move = moveToward(layoutNow(), { pane: asPaneId("p1"), tab: otherChat }, "left")!;
+  await act(() => useRightPanelStore.getState().updateWorkArea(owner, move));
+  await vi.waitFor(() => expect(holdersOfOther()).toEqual(["p0"]));
+  await expect.element(composerIn("p0")).toBeVisible();
+
+  await expect.element(findIn("p0")).toBeVisible();
+});
+
+it("shows Find in the view left after the view it was opened in closes", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(otherChatTwice(), 3);
+  await openFindFrom("p2");
+  await expect.element(findIn("p2")).toHaveFocus();
+  expect(barIn("p1")).toBeNull();
+
+  // Close p2's view of the Chat, as its tab's X does: the other view stays.
+  await act(() =>
+    useRightPanelStore.getState().updateWorkArea(owner, {
+      type: "close-view",
+      view: { pane: asPaneId("p2"), tab: otherChat },
+    }),
+  );
+  await vi.waitFor(() => expect(holdersOfOther()).toEqual(["p1"]));
+
+  await expect.element(findIn("p1")).toBeVisible();
+});
+
+it("keeps Find open in the one strip when a drop moves its Chat to another pane", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(chatBeside([{ id: "p1", tabs: [otherChat] }]), 2);
+  await focusPane("p1");
+  await page.viewport(940, 900);
+  await vi.waitFor(() =>
+    expect(document.querySelectorAll("[data-work-area-pane]")).toHaveLength(1),
+  );
+  await expect.element(composerIn("p1")).toBeVisible();
+  await openFindFrom("p1");
+  await expect.element(findIn("p1")).toHaveFocus();
+
+  // A drop in the strip before the main Chat's tab puts the other Chat's view in p0.
+  await act(() =>
+    useRightPanelStore.getState().updateWorkArea(owner, {
+      type: "place",
+      source: { view: { pane: asPaneId("p1"), tab: otherChat } },
+      at: { kind: "strip", pane: asPaneId("p0"), before: PRIMARY_CHAT },
+    }),
+  );
+  await vi.waitFor(() => expect(holdersOfOther()).toEqual(["p0"]));
+  await expect.element(composerIn("p0")).toBeVisible();
+
+  await expect.element(findIn("p0")).toBeVisible();
 });

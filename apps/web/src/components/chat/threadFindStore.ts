@@ -11,7 +11,7 @@ import {
 } from "@t3tools/shared/paletteSearch";
 import { create } from "zustand";
 import { openingThreadPage } from "~/fork/workArea/findOpensThread";
-import { useFindInView } from "~/fork/workArea/findView";
+import { useLeadsFind } from "~/fork/workArea/findView";
 import type { ThemeAppearance } from "~/themePalette";
 import { rightPanelHostRef } from "../../rightPanelStore";
 import type { ThreadFindPositionReader, ThreadFindStart } from "./threadFind";
@@ -176,15 +176,11 @@ export function retainThreadFindForRoute(route: {
   if (threadKey !== shownKey && hostKey !== shownKey) closeThreadFind();
 }
 
-/**
- * Whether find is open in `thread` when enabled. Inside a work-area view, returns true only for
- * the view that led the Find request.
- */
+/** Whether find is open in `thread` when enabled. */
 export function useThreadFindOpen(thread: ScopedThreadRef | null, enabled: boolean): boolean {
   const openThreadKey = useThreadFindStore((state) => state.threadKey);
-  const request = useThreadFindStore((state) => state.focusRequestId);
-  const open = enabled && thread !== null && openThreadKey === scopedThreadKey(thread);
-  return useFindInView(open, request);
+  const leads = useLeadsFind();
+  return leads && enabled && thread !== null && openThreadKey === scopedThreadKey(thread);
 }
 
 /**
