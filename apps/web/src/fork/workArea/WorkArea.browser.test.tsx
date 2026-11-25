@@ -13,6 +13,7 @@ import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily, and its first transform takes seconds; see ChatView.browser.test.tsx.
 import "~/components/ChatView";
 import { COMPOSER_MENTION_DRAG_TYPE } from "~/components/chat/composerMentionDrag";
+import { openThreadFind, useThreadFindStore } from "~/components/chat/threadFindStore";
 import {
   dropThreadContext,
   endThreadContextDrag,
@@ -22,7 +23,9 @@ import { useComposerDraftStore } from "~/composerDraftStore";
 import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
 import {
+  hostRightPanel,
   rightPanelHostRef,
+  selectThreadRightPanelState,
   type ThreadRightPanelState,
   useRightPanelStore,
 } from "~/rightPanelStore";
@@ -854,6 +857,94 @@ describe("WorkArea", () => {
 
     store.updateWorkArea(owner, { type: "close", tab: otherChat });
     await vi.waitFor(() => expect(rightPanelHostRef(other)).toEqual(other));
+  });
+
+  it.each([
+    ["", false],
+    [" while a reply tab still hosts its thread", true],
+  ])("closes Find in a secondary Chat when its tab closes%s", async (_name, replyHost) => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(ownerBesideOther());
+    await using _app = await openOwner();
+    await vi.waitFor(() => expect(rightPanelHostRef(other)).toEqual(owner));
+    using _reply = { [Symbol.dispose]: replyHost ? hostRightPanel(other, owner) : () => {} };
+    // The app keeps the first test's server config, which offers no Find, so open it directly.
+    await act(() => openThreadFind(scopedThreadKey(other)));
+    expect(useThreadFindStore.getState().threadKey).toBe(scopedThreadKey(other));
+
+    await act(() =>
+      useRightPanelStore.getState().updateWorkArea(owner, { type: "close", tab: otherChat }),
+    );
+    await vi.waitFor(() => expect(useThreadFindStore.getState().threadKey).toBeNull());
+  });
+
+  it("keeps Find open when a secondary Chat's thread opens on its own page", async () => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup(ownerBesideOther());
+    await using app = await openOwner();
+    await vi.waitFor(() => expect(rightPanelHostRef(other)).toEqual(owner));
+    await act(() => openThreadFind(scopedThreadKey(other)));
+
+    await act(() =>
+      app.router.navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: ENVIRONMENT_ID, threadId: other.threadId },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(document.querySelector(`[data-side-chat-pane="${other.threadId}"]`)).toBeNull(),
+    );
+    await act(() => Promise.resolve());
+    expect(useThreadFindStore.getState().threadKey).toBe(scopedThreadKey(other));
+  });
+
+  it.each([
+    ["closes Find when its tab closes", "close"],
+    ["keeps Find open when its thread opens on its own page", "navigate"],
+  ] as const)("in a side-chat tab, %s", async (_name, leave) => {
+    using _environment = installFakeEnvironment([ownerThread, otherThread]);
+    setup();
+    await using app = await openOwner();
+    await act(() => useRightPanelStore.getState().openThread(owner, other.threadId));
+    await vi.waitFor(() => expect(rightPanelHostRef(other)).toEqual(owner));
+    await act(() => openThreadFind(scopedThreadKey(other)));
+
+    if (leave === "close") {
+      const surface = selectThreadRightPanelState(
+        useRightPanelStore.getState().byThreadKey,
+        owner,
+      ).surfaces.find((entry) => entry.kind === "thread")!;
+      await act(() => useRightPanelStore.getState().closeSurface(owner, surface.id));
+    } else {
+      await act(() =>
+        app.router.navigate({
+          to: "/$environmentId/$threadId",
+          params: { environmentId: ENVIRONMENT_ID, threadId: other.threadId },
+        }),
+      );
+    }
+    await vi.waitFor(() =>
+      expect(document.querySelector(`[data-side-chat-pane="${other.threadId}"]`)).toBeNull(),
+    );
+    await act(() => Promise.resolve());
+    expect(useThreadFindStore.getState().threadKey).toBe(
+      leave === "close" ? null : scopedThreadKey(other),
+    );
+  });
+
+  it("starts the timeline minimap at the top of a pane's chat header", async () => {
+    const thread = threadWithHistory("owner", 24);
+    using _environment = installFakeEnvironment([thread, otherThread]);
+    setup(twoPanes());
+    await using _app = await openOwner(thread);
+
+    const minimap = page.getByTestId("timeline-minimap");
+    await expect.element(minimap).toBeVisible();
+    const header = primaryColumn().querySelector("[data-chat-header]")!;
+    expect(minimap.element().getBoundingClientRect().top).toBeCloseTo(
+      header.getBoundingClientRect().top,
+      0,
+    );
   });
 
   it("still adds a thread dropped on the composer as context while the work area shields the page", async () => {

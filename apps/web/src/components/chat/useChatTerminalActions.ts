@@ -35,6 +35,7 @@ import { openUrlInPreview } from "../../browser/openFileInPreview";
 import { isPreviewAvailableFor } from "../../browser/previewRuntime";
 import { resolveDiscoveredServerUrl } from "../../browser/browserTargetResolver";
 import { stackedThreadToast, toastManager } from "../ui/toast";
+import { cycleThreadTerminal } from "../../lib/cycleThreadTerminal";
 import { confirmTerminalClose } from "../../lib/terminalCloseConfirm";
 import { closingTerminalIds } from "../terminal/closingTerminals";
 import { type TerminalContextSelection } from "../../lib/terminalContext";
@@ -408,6 +409,14 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   };
   const requestClosePanelTerminalStable = useStableCallback(requestClosePanelTerminal);
   const shortcuts = {
+    "terminal.previous": ({ terminalFocusOwner }) => {
+      if (!activeThreadRef || !terminalFocusOwner) return false;
+      return cycleThreadTerminal(activeThreadRef, terminalFocusOwner, "previous");
+    },
+    "terminal.next": ({ terminalFocusOwner }) => {
+      if (!activeThreadRef || !terminalFocusOwner) return false;
+      return cycleThreadTerminal(activeThreadRef, terminalFocusOwner, "next");
+    },
     "terminal.split": () =>
       hasTerminalWriteAccess() && activeRightPanelSurface?.kind === "terminal"
         ? void splitPanelTerminal()

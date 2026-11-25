@@ -25,7 +25,5 @@ export const withAntigravityAccountEmail =
       return email ? { credentialFingerprint, credentialEmail: email } : { credentialFingerprint };
     });
 
-export const antigravityAccountFields = (
-  account: AntigravityAccount,
-): AntigravityAccountIdentity =>
+export const antigravityAccountFields = (account: AntigravityAccount): AntigravityAccountIdentity =>
   typeof account === "string" ? { credentialFingerprint: account } : account;

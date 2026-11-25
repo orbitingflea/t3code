@@ -9,11 +9,13 @@ import {
   type OrchestrationV2ThreadProjection,
 } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
+import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as CommandReceiptStore from "../../orchestration-v2/CommandReceiptStore.ts";
 import * as Orchestrator from "../../orchestration-v2/Orchestrator.ts";
@@ -59,6 +61,7 @@ it.effect("settleAfterRun settles after a notification run that carried an FYI",
                 ({
                   thread: { id: threadId, projectId, deletedAt: null },
                   runs: raced ? [...runs, nextRun] : runs,
+                  turnItems: [],
                   messages: [
                     { id: MessageId.make("original"), runId, role: "user" as const },
                     {
@@ -117,6 +120,58 @@ it.effect("settleAfterRun settles after a notification run that carried an FYI",
       event: { type: "run.updated", threadId, payload: nextRun },
     } as unknown as OrchestrationV2StoredEvent);
     yield* Fiber.join(fiber);
+    expect(dispatched).toEqual(["thread.settle"]);
+  }),
+);
+
+it.effect("settleAfterRun settles after an FYI read once the settle was requested", () =>
+  Effect.gen(function* () {
+    const projectId = ProjectId.make("project:thread-management:settle-after-fyi");
+    const threadId = ThreadId.make("thread:thread-management:settle-after-fyi");
+    const runId = RunId.make("run:thread-management:settle-after-fyi");
+    yield* TestClock.adjust(Duration.millis(60_000));
+    const dispatched: Array<string> = [];
+    const layerTest = ThreadManagementService.layer.pipe(
+      Layer.provide(Layer.mock(ProviderSessionManager.ProviderSessionManagerV2)({})),
+      Layer.provide(
+        Layer.mock(Orchestrator.OrchestratorV2)({
+          getThreadEventSequence: () => Effect.succeed(0),
+          restartContinuationPending: () => Effect.succeed(false),
+          streamStoredEventsFrom: () => Stream.empty,
+          getThreadRecords: () =>
+            Effect.succeed({
+              thread: { id: threadId, projectId, deletedAt: null },
+              runs: [{ id: runId, ordinal: 1, status: "completed", userMessageId: "original" }],
+              messages: [
+                { id: "original", runId, role: "user" },
+                { id: "fyi", runId, role: "user", fyi: true },
+              ],
+              turnItems: [
+                {
+                  runId,
+                  type: "user_message",
+                  inputIntent: "steer",
+                  fyi: true,
+                  status: "completed",
+                  createdAt: "1970-01-01T00:01:30.000Z",
+                  completedAt: "1970-01-01T00:01:30.000Z",
+                },
+              ],
+            } as unknown as OrchestrationV2ThreadProjection),
+          dispatch: (command) =>
+            Effect.sync(() => {
+              dispatched.push(command.type);
+              return { sequence: 1, storedEvents: [] } as never;
+            }),
+        }),
+      ),
+      Layer.provide(ServerSettings.layerTest()),
+      Layer.provide(CommandReceiptStore.layer.pipe(Layer.provide(SqlitePersistence.layerMemory))),
+    );
+    const service = yield* ThreadManagementService.ThreadManagementService.pipe(
+      Effect.provide(layerTest),
+    );
+    yield* service.settleAfterRun({ projectId, threadId, runId });
     expect(dispatched).toEqual(["thread.settle"]);
   }),
 );

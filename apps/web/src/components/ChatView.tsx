@@ -98,6 +98,7 @@ import {
   deriveRunlessWorkStartedAt,
   deriveThreadActivityRun,
   deriveLatestThreadRun,
+  presentProviderStarting,
   deriveThreadStructureRuntime,
   limitRecoveryOwnsSnooze,
 } from "@t3tools/client-runtime/state/thread-execution";
@@ -106,7 +107,6 @@ import {
   workflowOpeningParentThreadId,
 } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
-  getUserQueuedThreadRuns,
   threadCanSteer,
   threadSupportsProviderHandoff,
 } from "@t3tools/client-runtime/state/thread-workflows";
@@ -133,6 +133,7 @@ import { resolveThreadReferenceCopyTarget } from "@t3tools/client-runtime/thread
 import { resolveTerminalSessionLabel } from "@t3tools/shared/terminalLabelsCopy";
 import { useAtomValue } from "@effect/atom-react";
 import {
+  type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type SetStateAction,
   use,
@@ -395,12 +396,19 @@ import { useWorkAreaChat } from "../fork/workArea/useWorkAreaChat";
 import { terminalTabShown } from "../fork/workArea/drawerTerminals";
 import { closeFocusedTab } from "../fork/workArea/workAreaCommands";
 import { useChatViewOpener } from "../fork/workArea/chatFileOpener";
+import { findHasNoBar, registerFindBar } from "../fork/workArea/hostedChatFind";
 import { ChatOpenScope } from "../fork/workArea/ChatOpenScope";
 import { openThreadTab } from "../fork/workArea/chatOpenerContext";
 import { useModeSurfaceActions } from "../fork/dashboard/dashboardSurface";
-import { REPLY_BOX_QUEUE_EDIT_BLOCKED, subThreadDraftId } from "../fork/subThreads/subThreadReply";
+import { subThreadDraftId } from "../fork/subThreads/subThreadReply";
 import { useSubThreadCite } from "../fork/subThreads/subThreadCite";
 import { SubThreadViewContext } from "../fork/subThreads/subThreadsState";
+import {
+  QUEUE_EDIT_OPEN_ELSEWHERE,
+  useGuestMessagesInView,
+  useQueuedRunsInView,
+  useQueueShortcutLabels,
+} from "../fork/subThreads/queuedRunsScope";
 import { useThreadShownView } from "../fork/displayMode/threadView";
 import { ChatWorkingIndicator } from "../fork/displayMode/ChatWorkingIndicator";
 import {
@@ -428,6 +436,13 @@ import {
 } from "./ChatView.logic";
 
 const EMPTY_PROVIDERS: ServerProvider[] = [];
+const ACTIVE_RUN_STATUSES: ReadonlySet<string> = new Set([
+  "preparing",
+  "queued",
+  "starting",
+  "running",
+  "waiting",
+]);
 const EMPTY_PROVIDER_MODELS: ServerProvider["models"] = [];
 const EMPTY_USAGE_LIMIT_SOURCES: UsageLimitSourceSnapshots = [];
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
@@ -556,12 +571,14 @@ export default function ChatView(props: ChatViewProps) {
   const promptRef = useRef("");
   const localComposerRef = useRef<ChatComposerHandle | null>(null);
   const composerRef = useComposerHandleContext() ?? localComposerRef;
+  const queuedRunsInView = useQueuedRunsInView(routeThreadDetailRef, serverProjection);
   const queuedRunEdit = useQueuedRunEdit({
     environmentId,
     routeThreadRef,
     threadDraftTarget: baseComposerDraftTarget,
-    activeThreadId:
-      (serverThread !== null || draftThread !== null) && subThreadDraft === null ? threadId : null,
+    activeThreadId: serverThread !== null || draftThread !== null ? threadId : null,
+    ownsEdit: queuedRunsInView.ownsEdit,
+    recoveryTarget: queuedRunsInView.recoveryTarget,
     serverProjection,
     promptRef,
     composerRef,
@@ -864,7 +881,14 @@ export default function ChatView(props: ChatViewProps) {
   const serverLatestRun =
     serverProjection === null ? null : deriveLatestThreadRun(serverProjection);
   const serverActivityRun =
-    serverProjection === null ? null : deriveThreadActivityRun(serverProjection);
+    serverProjection === null
+      ? null
+      : deriveThreadActivityRun(
+          serverProjection,
+          serverThread === null
+            ? undefined
+            : providersByEnvironment.get(serverThread.environmentId),
+        );
   const serverRuntime =
     serverProjection === null ? null : deriveThreadStructureRuntime(serverProjection);
   const runlessWorkStartedAt =
@@ -1573,6 +1597,18 @@ export default function ChatView(props: ChatViewProps) {
   const activeWorkStartedAt =
     deriveActiveWorkStartedAt(activeActivityRun, activeRuntime, localDispatchStartedAt) ??
     runlessWorkStartedAt;
+  // Until the server has the run, a send shows the provider it is starting, not the thinking brain.
+  const providerStartingRun =
+    activeActivityRun?.providerStartingLabelMsg !== undefined
+      ? activeActivityRun
+      : isSendBusy &&
+          selectedProviderEntry !== undefined &&
+          (activeActivityRun === null || !ACTIVE_RUN_STATUSES.has(activeActivityRun.status))
+        ? presentProviderStarting({
+            instanceId: selectedProviderEntry.instanceId,
+            driver: selectedProviderEntry.driverKind,
+          })
+        : null;
   const activeRunPreparing = activeActivityRun?.status === "preparing";
   const sendQueuesBehindSetup =
     isServerThread && (activeRunPreparing || activeActivityRun?.status === "starting");
@@ -2878,6 +2914,14 @@ export default function ChatView(props: ChatViewProps) {
   const threadFindEnabled = isServerThread && serverConfig?.threadFind === true;
   const isThreadFindActive =
     useThreadFindOpen(activeThreadRef, threadFindEnabled) && subThreadDraft === null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- counts the chats that show this thread's Find bar, so Find closes with the last one
+  useEffect(
+    () =>
+      subThreadDraft === null && activeThreadKey !== null
+        ? registerFindBar(activeThreadKey)
+        : undefined,
+    [subThreadDraft, activeThreadKey],
+  );
   const openThreadFindStable = useStableCallback((threadRef: ScopedThreadRef) => {
     if (threadFindEnabled && scopedThreadKey(threadRef) === activeThreadKey) {
       openThreadFind(activeThreadKey);
@@ -2908,6 +2952,7 @@ export default function ChatView(props: ChatViewProps) {
       "chat.find": () => {
         if (!isServerThread || serverConfig?.threadFind !== true || activeThreadKey === null)
           return false;
+        if (subThreadDraft !== null && findHasNoBar(activeThreadKey)) return false;
         openThreadFind(activeThreadKey);
       },
       "composer.cycleHost": ({ event }) => {
@@ -3175,7 +3220,7 @@ export default function ChatView(props: ChatViewProps) {
   const onComposerCompactContextStable = useStableCallback(onCompactContext);
   // Read from the projection the footer renders, so the scroll below sees the new message.
   const pendingGuestMessageIds =
-    serverProjection?.thread.guestShare?.messages.flatMap((message) =>
+    useGuestMessagesInView(serverProjection?.thread.guestShare?.messages)?.flatMap((message) =>
       message.status === "pending" ? [message.id] : [],
     ) ?? [];
   const pendingGuestMessageCount = pendingGuestMessageIds.length;
@@ -3206,28 +3251,25 @@ export default function ChatView(props: ChatViewProps) {
     openExpandedImagePreview(routeThreadKey, preview);
   };
   const onExpandTimelineImageStable = useStableCallback(onExpandTimelineImage);
+  const queueShortcutLabels = useQueueShortcutLabels(keybindings);
   const queuedRunsControl =
     isServerThread && activeThread ? (
       <>
         <QueuedRunsControl
           ref={queuedRunsControlRef}
-          steerShortcutLabel={shortcutLabelForCommand(keybindings, "thread.steerQueuedMessage", {
-            context: { terminalFocus: false },
-          })}
-          editShortcutLabel={shortcutLabelForCommand(keybindings, "thread.editQueuedMessage", {
-            context: { composerFocus: true },
-          })}
+          steerShortcutLabel={queueShortcutLabels.steer}
+          editShortcutLabel={queueShortcutLabels.edit}
           environmentId={activeThread.environmentId}
           threadId={activeThread.id}
           optimisticMessages={optimisticUserMessages}
           editingRunId={queuedRunEdit.editingRunId}
           editBlockedReason={
-            subThreadDraft === null
-              ? queuedRunEditBlockedReason(
+            queuedRunEdit.isEditingElsewhere
+              ? QUEUE_EDIT_OPEN_ELSEWHERE
+              : queuedRunEditBlockedReason(
                   { openQuestionCount: pendingUserInputs.length },
                   messages,
                 )
-              : REPLY_BOX_QUEUE_EDIT_BLOCKED
           }
           onEditQueuedRun={queuedRunEdit.beginEdit}
           onCancelEdit={queuedRunEdit.cancelEdit}
@@ -3282,7 +3324,7 @@ export default function ChatView(props: ChatViewProps) {
   const shownThreadSyncPhase = activeEnvironmentUnavailable ? null : delayedThreadSyncPhase;
   const hasThreadNow =
     attentionNow !== null || workNow !== null || goalNow !== null || shownThreadSyncPhase !== null;
-  const queuedRunCount = serverProjection ? getUserQueuedThreadRuns(serverProjection).length : 0;
+  const queuedRunCount = queuedRunsInView.count;
   // The queue control is mounted for every server thread but joins the footer only while it shows
   // something, by its own rule: an optimistic message stops counting once the server has it.
   const hasQueuedTurns =
@@ -3488,7 +3530,12 @@ export default function ChatView(props: ChatViewProps) {
           "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
           workAreaChat.column.className,
         )}
-        style={workAreaChat.column.style}
+        style={
+          {
+            ...workAreaChat.column.style,
+            "--chat-header-height": embedded ? "0px" : "var(--workspace-topbar-height)",
+          } as CSSProperties
+        }
         data-chat-column-maximized-away={workAreaChat.column.away ? "true" : "false"}
         data-chat-column
         inert={workAreaChat.column.inert}
@@ -3605,13 +3652,13 @@ export default function ChatView(props: ChatViewProps) {
                   }
                   activeTurnStartedAt={activeWorkStartedAt}
                   providerStartingLabel={
-                    activeActivityRun?.providerStartingLabelMsg
-                      ? messages(activeActivityRun.providerStartingLabelMsg)
+                    providerStartingRun?.providerStartingLabelMsg
+                      ? messages(providerStartingRun.providerStartingLabelMsg)
                       : null
                   }
                   providerStarting={
-                    activeActivityRun?.providerStartingLabelMsg
-                      ? (activeActivityRun.providerStarting ?? null)
+                    providerStartingRun?.providerStartingLabelMsg
+                      ? (providerStartingRun.providerStarting ?? null)
                       : null
                   }
                   worktreeSetup={worktreeSetup}
