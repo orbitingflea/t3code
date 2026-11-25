@@ -426,3 +426,47 @@ describe("one file open in two panes", () => {
     });
   });
 });
+
+describe("one file open in two panes, then the one strip", () => {
+  it("brings the strip's file back where it was read in the strip after a switch to another tab", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    await using _app = await openOwner(chatBeside("file:g.ts", ["file:g.ts", "file:c.ts"]));
+    const theStrip = () => document.querySelector<HTMLElement>("[data-work-area-pane]")!;
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      top.expectLineInView(1, "eta_1");
+      bottom.expectLineInView(1, "eta_1");
+    });
+    // Wide: the bottom view reads far down, then the top view reads a little.
+    await userEvent.wheel(bottom.scroller(), { delta: { y: 4000 } });
+    await vi.waitFor(() => expect(savedLine("g.ts")).toBeGreaterThan(150));
+    const bottomPlace = bottom.topLine();
+    await userEvent.wheel(top.scroller(), { delta: { y: 800 } });
+    await vi.waitFor(() => expect(savedLine("g.ts")).toBeLessThan(bottomPlace.line - 50));
+    const topPlace = top.topLine();
+
+    // Narrow with the top pane focused: the one strip draws g.ts where it was read last.
+    await act(() =>
+      useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId("p1") }),
+    );
+    await page.viewport(940, 900);
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll("[data-work-area-pane]")).toHaveLength(1),
+    );
+    const strip = sourceView(theStrip());
+    await vi.waitFor(() => expect(strip.topLine().line).toBe(topPlace.line));
+    await userEvent.wheel(strip.scroller(), { delta: { y: 1200 } });
+    await vi.waitFor(() => expect(savedLine("g.ts")).toBeGreaterThan(topPlace.line + 30));
+    const stripTop = scrolledTo(strip);
+
+    // Another tab of the strip, whose view is in the other pane, then g.ts again.
+    const stripTab = (tab: string) =>
+      theStrip().querySelector<HTMLElement>(`[data-right-panel-tab-id="${tab}"]`)!;
+    await userEvent.click(stripTab("file:c.ts"));
+    await vi.waitFor(() => sourceView(theStrip()).expectLineInView(1, "gamma_1"));
+    await userEvent.click(stripTab("file:g.ts"));
+
+    await vi.waitFor(() => expectScrolledTo(sourceView(theStrip()), stripTop));
+  });
+});

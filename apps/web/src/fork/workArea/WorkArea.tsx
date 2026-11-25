@@ -829,8 +829,8 @@ function WorkAreaPane(props: {
           notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
           leads,
-          owner: threadRef,
-          view: viewOf(pane.active),
+          // The one strip lists tabs, not views, so its file keeps the file's own place.
+          readingScope: props.strip ? undefined : viewId,
         }}
       >
         <RightPanelTabs

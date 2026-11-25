@@ -9,7 +9,7 @@ import { isBrowserPreviewFile } from "~/browser/openFileInPreview";
 import { useClosedViewStore } from "~/closedViewStore";
 import type { FileSurface } from "~/fork/workArea/workArea.logic";
 import { useRightPanelPane } from "~/fork/workArea/tabStrip";
-import { forgetEndedViews, viewScope } from "~/fork/workArea/viewReading";
+import { forgetEndedViews } from "~/fork/workArea/viewReading";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import {
@@ -160,9 +160,9 @@ export function useFileReadingPosition(input: {
   const threadKey = scopedThreadKey(input.threadRef);
   // This view's code container: two views of one file each keep their own reading place.
   const sourceContainer = useRef<HTMLElement | null>(null);
-  const pane = useRightPanelPane();
   // Each work-area view of a file keeps its own place.
-  const scope = pane === null ? {} : { scope: viewScope(scopedThreadKey(pane.owner), pane.view) };
+  const readingScope = useRightPanelPane()?.readingScope;
+  const scope = readingScope === undefined ? {} : { scope: readingScope };
   const surface = useRightPanelStore(
     (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );

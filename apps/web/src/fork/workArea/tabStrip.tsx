@@ -6,7 +6,7 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
-import type { ContextMenuItem, ScopedThreadRef } from "@t3tools/contracts";
+import type { ContextMenuItem } from "@t3tools/contracts";
 import {
   type ComponentProps,
   createContext,
@@ -22,14 +22,7 @@ import type { PreviewPanelShell } from "~/components/preview/PreviewPanelShell";
 import { workspaceAreaProps } from "~/lib/workspaceFocus";
 
 import { modeSurfaceLabel } from "../dashboard/dashboardSurface";
-import type {
-  DisplayEntry,
-  Edge,
-  PaneId,
-  ReplyEntry,
-  ViewRef,
-  WorkAreaEntry,
-} from "./workArea.logic";
+import type { DisplayEntry, Edge, PaneId, ReplyEntry, WorkAreaEntry } from "./workArea.logic";
 import type { PaneEdges } from "./workAreaGeometry.logic";
 
 export { isDisplayEntry, type WorkAreaEntry } from "./workArea.logic";
@@ -63,10 +56,7 @@ interface RightPanelPane {
   readonly dragId: (surfaceId: string) => string;
   /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
-  /** The thread that owns this work area. */
-  readonly owner: ScopedThreadRef;
-  /** The `(pane, tab)` pair for this pane's active tab. */
-  readonly view: ViewRef;
+  readonly readingScope: string | undefined;
 }
 
 export const RightPanelPaneContext = createContext<RightPanelPane | null>(null);
