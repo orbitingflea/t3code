@@ -2,6 +2,7 @@ import type { ThreadRightPanelState, useRightPanelStore } from "~/rightPanelStor
 
 import { leaves, resolveLayout, viewKey, type ViewRef } from "./workArea.logic";
 
+/** Builds the reading-position scope key for a work-area `view` in `threadKey`. */
 export const viewScope = (threadKey: string, view: ViewRef): string =>
   `${threadKey} ${viewKey(view)}`;
 
@@ -14,6 +15,10 @@ function viewScopes(threadKey: string, record: ThreadRightPanelState | undefined
   );
 }
 
+/**
+ * Subscribes to `panel` and calls `forget` when a pane no longer holds a tab, so a later view
+ * starts from the file-level reading place.
+ */
 export function forgetEndedViews(
   forget: (scope: string) => void,
   panel: Pick<typeof useRightPanelStore, "subscribe">,

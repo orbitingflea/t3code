@@ -176,7 +176,10 @@ export function retainThreadFindForRoute(route: {
   if (threadKey !== shownKey && hostKey !== shownKey) closeThreadFind();
 }
 
-/** Whether find is open in `thread`, as long as find is available there. */
+/**
+ * Whether find is open in `thread` when enabled. Inside a work-area view, returns true only for
+ * the view that led the Find request.
+ */
 export function useThreadFindOpen(thread: ScopedThreadRef | null, enabled: boolean): boolean {
   const openThreadKey = useThreadFindStore((state) => state.threadKey);
   const request = useThreadFindStore((state) => state.focusRequestId);

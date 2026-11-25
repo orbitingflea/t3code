@@ -166,6 +166,7 @@ interface FilePreviewPanelProps {
   openInShortcutEnabled: boolean;
   revealLine: number | null;
   revealRequestId: number;
+  /** The file tab whose object keys the line reveal, passed for workspace and linked files. */
   revealSurface?: FileSurface | undefined;
   revealShown?: boolean | undefined;
   onRevealShown?: (() => void) | undefined;

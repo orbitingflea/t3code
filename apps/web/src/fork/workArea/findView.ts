@@ -11,6 +11,10 @@ let requested: {
   readonly byThreadKey: Readonly<Record<string, ThreadRightPanelState>>;
 } | null = null;
 
+/**
+ * Records the work-area layouts at the moment Find `request` starts, so `useFindInView` keeps
+ * Find in the view that led the request.
+ */
 export function noteFindRequest(
   request: number,
   byThreadKey: Readonly<Record<string, ThreadRightPanelState>>,
@@ -18,6 +22,11 @@ export function noteFindRequest(
   requested = { request, byThreadKey };
 }
 
+/**
+ * Gates thread Find `open` to the work-area view that led `request`. Uses the snapshot from
+ * `noteFindRequest` when it matches `request`, else falls back to `pane.leads`. Returns `open`
+ * outside a work-area pane.
+ */
 export function useFindInView(open: boolean, request: number): boolean {
   const pane = useRightPanelPane();
   if (!open || pane === null) return open;

@@ -24,8 +24,9 @@ function choose(key: string): void {
 }
 
 /**
- * Registers a mounted composer's insertion `handler` for `key` and selects it if none has higher
- * focus priority. Returns a cleanup that removes only this handler and falls back to the next.
+ * Registers a composer insertion `handler` for `key` and returns a cleanup that removes only it.
+ * Selects the last-focused mounted handler, else the last-mounted one. Passing `null` drops the
+ * chosen handler and every registration for `key`, and returns `undefined`.
  */
 export function setContextInsertion(
   key: string,

@@ -63,7 +63,9 @@ interface RightPanelPane {
   readonly dragId: (surfaceId: string) => string;
   /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
+  /** The thread that owns this work area. */
   readonly owner: ScopedThreadRef;
+  /** The `(pane, tab)` pair for this pane's active tab. */
   readonly view: ViewRef;
 }
 
