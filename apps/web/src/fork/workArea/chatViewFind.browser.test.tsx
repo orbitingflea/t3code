@@ -2,10 +2,18 @@ import "~/index.css";
 
 import { createMemoryHistory } from "@tanstack/react-router";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  ORCHESTRATION_V2_WS_METHODS,
+  type OrchestrationV2SearchThreadInput,
+  type OrchestrationV2SearchThreadResult,
+  type ScopedThreadRef,
+} from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import type * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
 import { expect, it, vi } from "vite-plus/test";
-import { page } from "vite-plus/test/browser";
+import { page, userEvent } from "vite-plus/test/browser";
 
 import { AppRoot } from "~/AppRoot";
 // The route loads ChatView lazily, and its first transform takes seconds; see ChatView.browser.test.tsx.
@@ -15,6 +23,7 @@ import { __setClientSettingsForTests } from "~/hooks/useSettings";
 import { getRouter } from "~/router";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 import {
+  answerRpc,
   ENVIRONMENT_ID,
   installFakeEnvironment,
   threadWithHistory,
@@ -53,7 +62,12 @@ const otherThread = threadWithHistory("find-other", 1);
 const owner = scopeThreadRef(ENVIRONMENT_ID, ownerThread.id);
 const other = scopeThreadRef(ENVIRONMENT_ID, otherThread.id);
 const otherChat = secondaryChatTabId(other);
-const THREADS = [ownerThread, otherThread];
+// Long enough that a view scrolled to its first turns shows none of the newest.
+const longThread = threadWithHistory("find-long", 28);
+const long = scopeThreadRef(ENVIRONMENT_ID, longThread.id);
+const longChat = secondaryChatTabId(long);
+// Every test serves the same threads, so a thread first shown in a later test still loads.
+const THREADS = [ownerThread, otherThread, longThread];
 
 type PaneSpec = { readonly id: string; readonly tabs: readonly [string, ...string[]] };
 const paneSpec = (spec: PaneSpec) => ({
@@ -63,8 +77,11 @@ const paneSpec = (spec: PaneSpec) => ({
   active: spec.tabs[0],
 });
 
-// The owner's Chat in p0 beside the given panes, stacked in a column.
-const chatBeside = (right: readonly [PaneSpec] | readonly [PaneSpec, PaneSpec]) =>
+// The owner's Chat in p0 beside the given panes, stacked in a column, with `thread`'s Chat.
+const chatBeside = (
+  right: readonly [PaneSpec] | readonly [PaneSpec, PaneSpec],
+  thread: ScopedThreadRef = other,
+) =>
   restoredRecord({
     isOpen: false,
     activeSurfaceId: null,
@@ -90,7 +107,7 @@ const chatBeside = (right: readonly [PaneSpec] | readonly [PaneSpec, PaneSpec]) 
       },
       tabs: {
         chat: { kind: "primary-chat" },
-        [otherChat]: { kind: "secondary-chat", thread: other, placement: 1 },
+        [secondaryChatTabId(thread)]: { kind: "secondary-chat", thread, placement: 1 },
       },
       focused: "p0",
       seq: 4,
@@ -133,8 +150,21 @@ const paneById = (id: string) =>
 const findIn = (id: string) =>
   page.elementLocator(paneById(id)).getByRole("searchbox", { name: "Find in thread" });
 const barIn = (id: string) => paneById(id).querySelector("[data-thread-find-bar]");
-const composerIn = (id: string) =>
-  page.elementLocator(paneById(id)).getByRole("textbox", { name: `Message ${otherThread.title}` });
+const composerIn = (id: string, title = otherThread.title) =>
+  page.elementLocator(paneById(id)).getByRole("textbox", { name: `Message ${title}` });
+const scrollIn = (id: string) =>
+  paneById(id).querySelector<HTMLElement>(".messages-timeline-scroll")!;
+// The message rows a view's timeline shows on screen.
+function visibleMessages(id: string) {
+  const viewport = paneById(id).querySelector<HTMLElement>("[data-assistant-citation-viewport]")!;
+  const bounds = viewport.getBoundingClientRect();
+  return [...viewport.querySelectorAll<HTMLElement>('[data-timeline-row-kind="message"]')]
+    .filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom > bounds.top && rect.top < bounds.bottom;
+    })
+    .flatMap((row) => row.dataset.timelineRowId ?? []);
+}
 const layoutNow = () =>
   resolveLayout(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, owner));
 const holdersOfOther = () => holders(layoutNow().root, otherChat).map((pane) => pane.id);
@@ -228,4 +258,61 @@ it("keeps Find open in the one strip when a drop moves its Chat to another pane"
   await expect.element(composerIn("p0")).toBeVisible();
 
   await expect.element(findIn("p0")).toBeVisible();
+});
+
+it("starts a search from the viewport of the view that shows Find", async () => {
+  using _environment = installFakeEnvironment(THREADS, {
+    threadFind: true,
+    keybindings: compileResolvedKeybindingsConfig([{ key: "ctrl+f", command: "chat.find" }]),
+  });
+  const searches: OrchestrationV2SearchThreadInput[] = [];
+  using _search = answerRpc(
+    ORCHESTRATION_V2_WS_METHODS.searchThread,
+    (input: OrchestrationV2SearchThreadInput) => {
+      searches.push(input);
+      return Effect.succeed({
+        totalMatches: 0,
+        activeIndex: 0,
+        snapshotSequence: 0,
+        match: null,
+      } satisfies OrchestrationV2SearchThreadResult);
+    },
+  );
+  await using _app = await openOwner(
+    chatBeside(
+      [
+        { id: "p1", tabs: [longChat] },
+        { id: "p2", tabs: [longChat] },
+      ],
+      long,
+    ),
+    3,
+  );
+  for (const id of ["p1", "p2"])
+    await expect.element(composerIn(id, longThread.title)).toBeVisible();
+  // Both views open at the newest turns; p1 goes back to the first ones.
+  await vi.waitFor(
+    () => {
+      expect(scrollIn("p1").scrollTop).toBeGreaterThan(1200);
+      expect(scrollIn("p2").scrollTop).toBeGreaterThan(1200);
+    },
+    { timeout: 5000 },
+  );
+  await userEvent.wheel(scrollIn("p1"), { delta: { y: -10000 } });
+  await vi.waitFor(() => {
+    expect(scrollIn("p1").scrollTop).toBeLessThan(100);
+    expect(visibleMessages("p1").length).toBeGreaterThan(0);
+    expect(visibleMessages("p2").length).toBeGreaterThan(0);
+  });
+  scrollIn("p1").focus();
+  await userEvent.keyboard("{Control>}f{/Control}");
+  await expect.element(findIn("p1")).toHaveFocus();
+  expect(barIn("p2")).toBeNull();
+  const shown = visibleMessages("p1");
+  expect(shown.filter((id) => visibleMessages("p2").includes(id))).toEqual([]);
+
+  await findIn("p1").fill("question");
+
+  await vi.waitFor(() => expect(searches.length).toBeGreaterThan(0));
+  expect(shown).toContain(searches.at(-1)?.start?.entryId);
 });
