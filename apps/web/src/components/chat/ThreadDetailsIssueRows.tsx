@@ -6,7 +6,7 @@ import { useState, type MouseEvent } from "react";
 
 import { useIssueRowDrag } from "~/fork/workArea/chatAnchorLink";
 import { cn } from "~/lib/utils";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 import { useServerConfigs } from "~/state/entities";
 import { useLinkedIssueDetail } from "~/state/issues";
 
@@ -55,7 +55,7 @@ function LinkedIssueRow({
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       if (configs.get(threadRef.environmentId)?.environment.capabilities.issues !== true) return;
       event.preventDefault();
-      useRightPanelStore.getState().openIssue(threadRef, link);
+      userTabActions().openIssue(threadRef, link);
       onOpen?.();
     },
     onDragStart,

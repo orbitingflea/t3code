@@ -13,6 +13,8 @@ import type { ToolCallDiffTarget } from "../diffPanelStore";
 import type { LinkedThreadTarget } from "@t3tools/client-runtime/linked-thread";
 import type { useNavigate } from "@tanstack/react-router";
 
+import { userTabMove } from "../fork/workArea/tabMoveScope";
+import { userTabActions } from "../fork/workArea/userTabActions";
 import { getClientSettings } from "../hooks/useSettings";
 import { linkedThreadRouteParams } from "../linkedThreadSurface";
 import { rightPanelHostRef, useRightPanelStore } from "../rightPanelStore";
@@ -80,7 +82,9 @@ export function openSideThread(input: {
     panelAvailable: canOpenThreadInPanel(threadRef, panelRef),
   });
   if (target === "panel" && panelRef !== null) {
-    useRightPanelStore.getState().openThread(panelRef, threadRef.threadId);
+    userTabMove(panelRef, () =>
+      useRightPanelStore.getState().openThread(panelRef, threadRef.threadId),
+    );
   } else {
     input.navigate(threadRef);
   }
@@ -104,7 +108,7 @@ export function openLinkedThreadRead(input: {
     panelAvailable: panelRef !== null,
   });
   if (place === "panel" && panelRef !== null) {
-    useRightPanelStore.getState().openLinkedThread(panelRef, target);
+    userTabActions().openLinkedThread(panelRef, target);
     return;
   }
   void input.navigate({

@@ -399,6 +399,7 @@ import { useChatViewOpener } from "../fork/workArea/chatFileOpener";
 import { findHasNoBar, registerFindBar } from "../fork/workArea/hostedChatFind";
 import { ChatOpenScope } from "../fork/workArea/ChatOpenScope";
 import { openThreadTab } from "../fork/workArea/chatOpenerContext";
+import { tabHistoryOwnsLocation } from "../fork/workArea/tabHistory";
 import { useModeSurfaceActions } from "../fork/dashboard/dashboardSurface";
 import { subThreadDraftId } from "../fork/subThreads/subThreadReply";
 import { useSubThreadCite } from "../fork/subThreads/subThreadCite";
@@ -647,7 +648,10 @@ export default function ChatView(props: ChatViewProps) {
   const navigate = useNavigate();
   // Selects primitives: an object here is new on every router store update, which
   // re-renders ChatView on unrelated navigation state changes.
-  const citationHref = useLocation({ select: (location) => location.href });
+  const citationHref = useLocation({
+    // A narrow window's tab entry shows the tab it names, so its quote does not reveal again.
+    select: (location) => (tabHistoryOwnsLocation(location) ? "" : location.href),
+  });
   const citationKey = useLocation({
     select: (location) => location.state.assistantCitationActivation ?? location.state.__TSR_key,
   });

@@ -18,6 +18,7 @@ import { ThreadDashboardPanel } from "../../fork/dashboard/ThreadDashboardPanel"
 import type { CiteAssistantText } from "../../fork/dashboard/dashboardCitation";
 import { SubThreadsPanel } from "../../fork/subThreads/SubThreadsPanel";
 import { WhiteboardPanel } from "../../fork/whiteboard/WhiteboardPanel";
+import { userTabActions } from "../../fork/workArea/userTabActions";
 import type { ComposerImageAttachment, DraftId } from "../../composerDraftStore";
 import type { ShortcutMatchContext } from "../../keybindings";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
@@ -151,7 +152,7 @@ export function RightPanelSurfaceContent(props: {
             (surface.environmentId as EnvironmentId | undefined) ?? props.environmentId
           }
           onSelectPullRequest={(reference) => {
-            useRightPanelStore.getState().openPullRequest(threadRef, {
+            userTabActions().openPullRequest(threadRef, {
               ...(surface.environmentId === undefined
                 ? {}
                 : { environmentId: surface.environmentId }),
@@ -215,7 +216,7 @@ export function RightPanelSurfaceContent(props: {
           }}
           threadRef={threadRef}
           onSelectPullRequest={(reference) => {
-            useRightPanelStore.getState().openPullRequest(threadRef, {
+            userTabActions().openPullRequest(threadRef, {
               ...(surface.environmentId === undefined
                 ? {}
                 : { environmentId: surface.environmentId }),
@@ -226,7 +227,7 @@ export function RightPanelSurfaceContent(props: {
             });
           }}
           onSelectIssue={({ host, ...reference }) => {
-            useRightPanelStore.getState().openIssue(threadRef, {
+            userTabActions().openIssue(threadRef, {
               ...(surface.environmentId === undefined
                 ? {}
                 : { environmentId: surface.environmentId }),
@@ -319,9 +320,13 @@ export function RightPanelSurfaceContent(props: {
             revealRequestId={surface.kind === "file" ? surface.revealRequestId : 0}
             onOpenFile={files.onOpenFile}
             onNavigateFolder={(relativePath, folderTrail, keepSource) =>
-              useRightPanelStore
-                .getState()
-                .navigateFolder(threadRef, surface.id, relativePath, folderTrail, keepSource)
+              userTabActions().navigateFolder(
+                threadRef,
+                surface.id,
+                relativePath,
+                folderTrail,
+                keepSource,
+              )
             }
             folderTrail={surface.folderTrail}
             onPendingChange={files.onPendingChange}

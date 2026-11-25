@@ -7,7 +7,7 @@ import { useState, type ReactNode } from "react";
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useRenderedAppearance, useTheme } from "~/hooks/useTheme";
 import { cn } from "~/lib/utils";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 import { useProjectContentSearch } from "~/state/queries";
 import { readEnvironmentScope } from "~/state/session";
 
@@ -161,7 +161,7 @@ function OpenContentSearchDialog(props: {
       return;
     }
     props.onOpenChange(false);
-    useRightPanelStore.getState().openFile(target.threadRef, match.path, match.lineNumber);
+    userTabActions().openFile(target.threadRef, match.path, match.lineNumber);
   };
   const fileCount = new Set(matches.map((match) => match.path)).size;
   const showSearchStatus =

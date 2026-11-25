@@ -14,6 +14,7 @@ import { threadEnvironment } from "../../state/threads";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { vcsEnvironment } from "../../state/vcs";
 import { useTerminalUiStateStore } from "../../terminalUiStateStore";
+import { userTabMove } from "../../fork/workArea/tabMoveScope";
 import type { Thread } from "../../types";
 import { focusTerminal } from "../../lib/terminalFocus";
 import { resolveVisibleWorktreeSetup, resolveWorktreeSetupProgress } from "../ChatView.logic";
@@ -152,7 +153,9 @@ export function useWorktreeSetup(input: {
     worktreeSetup && threadRef && worktreeSetup.threadId === threadRef.threadId ? threadRef : null;
   const openSetupTerminal = setupThreadRef
     ? (terminalId: string) => {
-        storeEnsureTerminal(setupThreadRef, terminalId, { open: true, active: true });
+        userTabMove(setupThreadRef, () =>
+          storeEnsureTerminal(setupThreadRef, terminalId, { open: true, active: true }),
+        );
         focusTerminal(setupThreadRef, terminalId);
       }
     : null;

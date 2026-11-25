@@ -26,6 +26,7 @@ import {
   surfaceTabId,
   type TabId,
 } from "./workArea.logic";
+import { userTabMove } from "./tabMoveScope";
 import { tabShown } from "./workAreaGeometry.logic";
 import type { WorkAreaChange } from "./workAreaPlacement.logic";
 import { runOpen } from "./workAreaCommands";
@@ -177,31 +178,35 @@ export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRe
             open,
           ),
     );
-  const update = (change: WorkAreaChange) =>
-    from(() => useRightPanelStore.getState().updateWorkArea(record(), change));
+  // The user's own open; Find and quote reveals stay on `from`.
+  const user = <T>(open: () => T): T => userTabMove(record(), () => from(open));
+  const write = (change: WorkAreaChange) => () =>
+    useRightPanelStore.getState().updateWorkArea(record(), change);
   const tabs = {
     // With no origin, a thread link stays a navigation.
     openThread: (target: ScopedThreadRef) => {
       if (origin === null) return false;
-      update({ type: "open-thread", thread: target });
+      user(write({ type: "open-thread", thread: target }));
       return true;
     },
     openSubThread: (first: string, options?: { readonly reveal?: "find" | "quote" }) => {
       if (options?.reveal === undefined) {
-        update({ type: "open-reply", thread, first });
+        user(write({ type: "open-reply", thread, first }));
         focusReplyBox(replyTabId(thread, first));
         return;
       }
       const revealed = revealedReply(record());
       const keep =
         revealed !== null && replyHasDraft(scopedThreadKey(revealed.thread), revealed.first);
-      update({
-        type: "open-reply",
-        thread,
-        first,
-        reveal: options.reveal,
-        ...(keep ? { keepRevealed: true } : {}),
-      });
+      from(
+        write({
+          type: "open-reply",
+          thread,
+          first,
+          reveal: options.reveal,
+          ...(keep ? { keepRevealed: true } : {}),
+        }),
+      );
     },
     showOrigin: () => {
       if (origin === null) return;
@@ -210,25 +215,25 @@ export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRe
         record(),
       );
       if (!tabShown(resolveLayout(state), currentWorkAreaView(), origin.tab)) {
-        update({ type: "activate", tab: origin.tab });
+        from(write({ type: "activate", tab: origin.tab }));
       }
     },
     panel: record,
-    run: from,
+    run: user,
   };
   if (shown === null) {
     const store = useRightPanelStore.getState();
     return withMention({
       ...tabs,
-      openFile: (...args) => from(() => store.openFile(thread, ...args)),
-      openAttachment: (attachment) => from(() => store.openAttachment(thread, attachment)),
-      openBoardRef: (href) => from(() => showBoardRef(href, thread)),
+      openFile: (...args) => user(() => store.openFile(thread, ...args)),
+      openAttachment: (attachment) => user(() => store.openAttachment(thread, attachment)),
+      openBoardRef: (href) => user(() => showBoardRef(href, thread)),
     });
   }
   const { owner, tab, placement } = shown;
   const placed = placement === undefined ? {} : { from: { tab, placement } };
   const link = (change: Pick<LinkFile, "path" | "line" | "attachment">) =>
-    update({ type: "link-file", source: thread, ...placed, ...change });
+    user(write({ type: "link-file", source: thread, ...placed, ...change }));
   return withMention({
     ...tabs,
     openFile: (path, line) => link({ path, line: normalizedLine(line) }),
@@ -239,7 +244,9 @@ export function chatFileTarget(origin: OpenOrigin | null, thread: ScopedThreadRe
         toastManager.add({ type: "info", title: WORK_AREA_COPY.boardInOtherProject });
         return;
       }
-      runOpen({ record: rightPanelHostRef(owner), tab }, () => showBoardRef(href, owner));
+      userTabMove(owner, () =>
+        runOpen({ record: rightPanelHostRef(owner), tab }, () => showBoardRef(href, owner)),
+      );
     },
   });
 }
@@ -255,8 +262,10 @@ export function openLinkedFolder(
   folderTrail: string,
 ): void {
   const store = useRightPanelStore.getState();
-  runOpen({ record: owner, tab }, () => store.openFile(owner, "."));
-  store.navigateFolder(owner, "files", relativePath, folderTrail);
+  userTabMove(owner, () => {
+    runOpen({ record: owner, tab }, () => store.openFile(owner, "."));
+    store.navigateFolder(owner, "files", relativePath, folderTrail);
+  });
 }
 
 export const fromChatOrigin = <T>(opener: ChatFileOpener | null, open: () => T): T =>

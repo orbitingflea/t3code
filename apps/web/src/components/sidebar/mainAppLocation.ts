@@ -1,4 +1,4 @@
-import { useNavigate, useRouter, type AnyRouter } from "@tanstack/react-router";
+import { useNavigate, useRouter, type AnyRouter, type HistoryState } from "@tanstack/react-router";
 
 import { GUEST_PAGE_PATH } from "../../guestPage";
 import { withoutAssistantCitationHash } from "../../lib/assistantCitationNavigation";
@@ -27,6 +27,7 @@ let mainAppHref: string | null = null;
 let appModalReturnHref: string | null = null;
 let appModalReturnHistoryIndex: number | null = null;
 let appModalReturnThreadTarget: ThreadRouteTarget | null = null;
+let appModalReturnState: HistoryState = {};
 let initialHistoryIndex = 0;
 
 /** Remembers where Settings, Usage, and the utility pages lead back to. */
@@ -43,6 +44,8 @@ export function startMainAppLocationTracking(router: AnyRouter): () => void {
     appModalReturnThreadTarget = resolveThreadRouteTarget(
       router.state.matches.at(-1)?.params ?? {},
     );
+    const { workAreaTab } = router.state.location.state;
+    appModalReturnState = workAreaTab ? { workAreaTab } : {};
     if (!isSidebarUtilityPage(pathname)) mainAppHref = href;
   };
   record();
@@ -69,12 +72,13 @@ export function useCloseAppModal() {
     const steps = router.state.location.state.__TSR_index - returnIndex;
     // Stepping back past this document's first entry reloads the page. Written as a negated
     // comparison so a missing (NaN) history index also falls back to client navigation.
-    if (!(returnIndex > initialHistoryIndex && steps > 0)) return navigate({ href, replace: true });
+    if (!(returnIndex > initialHistoryIndex && steps > 0))
+      return navigate({ href, replace: true, state: appModalReturnState });
     // Go back to the entry before the return page and push it again: only a push drops the
     // modal's entries from forward history, and reusing the old entry avoids a duplicate stop.
     const unsubscribe = router.history.subscribe(() => {
       unsubscribe();
-      void navigate({ href });
+      void navigate({ href, state: appModalReturnState });
     });
     router.history.go(-(steps + 1));
   };

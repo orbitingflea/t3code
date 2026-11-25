@@ -1,8 +1,9 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
 import { panelHostedElsewhere } from "../fork/workArea/chatFileOpener";
+import { userTabMove } from "../fork/workArea/tabMoveScope";
+import { userTerminalActions } from "../fork/workArea/userTabActions";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
-import { useTerminalUiStateStore } from "../terminalUiStateStore";
 import { focusTerminalOnNavigation } from "./terminalFocus";
 
 export function revealThreadTerminal(threadRef: ScopedThreadRef, terminalId: string) {
@@ -12,12 +13,14 @@ export function revealThreadTerminal(threadRef: ScopedThreadRef, terminalId: str
   );
   // A hosted thread's activations route to its host; the drawer follower writes its own record.
   if (surface && !panelHostedElsewhere(threadRef)) {
-    panels.activateTerminal(threadRef, surface.id, terminalId);
-    panels.activateSurface(threadRef, surface.id);
+    userTabMove(threadRef, () => {
+      panels.activateTerminal(threadRef, surface.id, terminalId);
+      panels.activateSurface(threadRef, surface.id);
+    });
     focusTerminalOnNavigation(threadRef, terminalId);
     return;
   }
-  useTerminalUiStateStore.getState().ensureTerminal(threadRef, terminalId, {
+  userTerminalActions().ensureTerminal(threadRef, terminalId, {
     open: true,
     active: true,
   });

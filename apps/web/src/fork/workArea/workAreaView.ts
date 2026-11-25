@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 
 import type { RightPanelSurface, ThreadRightPanelState } from "~/rightPanelStore";
 
+import { captureTabMove } from "./tabMoveScope";
 import { focusedTab, resolveLayout, type WorkAreaLayout } from "./workArea.logic";
 import { isStripView, NO_VIEW, shownSurfaces, type WorkAreaView } from "./workAreaGeometry.logic";
 import type { OpenFrom, Placement } from "./workAreaPlacement.logic";
@@ -94,7 +95,8 @@ export function runWithOpenOrigin<T>(
  */
 export function captureOpenOrigin(): <T>(run: () => T) => T {
   const captured = openOrigin;
-  return (run) => (captured === null ? run() : runIn(captured, run));
+  const move = captureTabMove();
+  return (run) => move(() => (captured === null ? run() : runIn(captured, run)));
 }
 
 export function publishWorkAreaView(next: WorkAreaView): () => void {

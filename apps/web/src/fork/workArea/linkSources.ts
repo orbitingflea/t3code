@@ -10,6 +10,7 @@ import { readThreadShell } from "~/state/entities";
 import { type ChatFileOpener, fromChatOrigin } from "./chatFileOpener";
 import { openThreadTab, threadTabPanel } from "./chatOpenerContext";
 import type { PanelLink, PanelLinkOwner } from "./panelLinkDrag";
+import { userTabMove } from "./tabMoveScope";
 
 /** The `event` a click opener takes, for a drop: a plain primary click with nothing held. */
 export const PLAIN_CLICK = {
@@ -26,7 +27,9 @@ export const PLAIN_CLICK = {
 export const filesTreeOwner = (owner: ScopedThreadRef): PanelLinkOwner => ({
   ref: owner,
   openFile: (path) =>
-    useRightPanelStore.getState().openFile(owner, path, undefined, { keepExplorer: true }),
+    userTabMove(owner, () =>
+      useRightPanelStore.getState().openFile(owner, path, undefined, { keepExplorer: true }),
+    ),
 });
 
 // A linked file's Files tree reads `source`'s workspace, so a row opens as `source`'s linked file.
@@ -36,9 +39,11 @@ export const linkedTreeOwner = (
 ): PanelLinkOwner => ({
   ref: owner,
   openFile: (path) =>
-    useRightPanelStore
-      .getState()
-      .updateWorkArea(owner, { type: "link-file", source, path, line: null }),
+    userTabMove(owner, () =>
+      useRightPanelStore
+        .getState()
+        .updateWorkArea(owner, { type: "link-file", source, path, line: null }),
+    ),
 });
 
 /** A file row in a panel's Files tree. `owner` opens it as a panel file or a linked file. */

@@ -86,6 +86,7 @@ import { type SideThreadOpenIntent, sideThreadKindOf } from "@t3tools/client-run
 import { openSideThread, resolveThreadOpenRoute } from "../../lib/sideChatPane";
 import type { ChatFileOpener } from "../../fork/workArea/chatFileOpener";
 import { openThreadTab } from "../../fork/workArea/chatOpenerContext";
+import { sameRouteVisit } from "../../fork/workArea/tabHistory";
 import type { useLocalDispatchState } from "./useLocalDispatchState";
 const RELATED_THREAD_SHELL_WAIT_MS = 1_000;
 
@@ -502,7 +503,7 @@ export function useThreadLifecycle(input: ThreadLifecycleInput) {
       if (
         generation !== openRelatedThreadGenerationRef.current ||
         currentRouteThreadKeyRef.current !== routeThreadKey ||
-        router.latestLocation !== location
+        !sameRouteVisit(router.latestLocation, location)
       ) {
         return;
       }

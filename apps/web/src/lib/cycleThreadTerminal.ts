@@ -1,5 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
+import { userTabMove } from "../fork/workArea/tabMoveScope";
 import { surfacesInTabOrder } from "../fork/workArea/workArea.logic";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
@@ -47,8 +48,10 @@ export function cycleThreadTerminal(
       (surface) => surface.kind === "terminal" && surface.terminalIds.includes(terminalId),
     );
     if (!surface) return false;
-    panels.activateTerminal(threadRef, surface.id, terminalId);
-    panels.activateSurface(threadRef, surface.id);
+    userTabMove(threadRef, () => {
+      panels.activateTerminal(threadRef, surface.id, terminalId);
+      panels.activateSurface(threadRef, surface.id);
+    });
   }
   focusTerminal(threadRef, terminalId);
   return true;

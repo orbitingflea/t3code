@@ -17,7 +17,7 @@ import {
 import { useAssetUrlRefresh, useAssetUrlState } from "../../assets/assetUrls";
 import type { MessageResolver } from "../../i18n/messages";
 import { cn } from "../../lib/utils";
-import { useRightPanelStore } from "../../rightPanelStore";
+import { userTabActions } from "../../fork/workArea/userTabActions";
 import { type ChatFileOpener, useChatFileOpener } from "../../fork/workArea/chatFileOpener";
 import { MediaActions, type MediaActionSource } from "../media/MediaActions";
 import { MediaVideoPlayer } from "../media/MediaVideoPlayer";
@@ -394,7 +394,7 @@ export function assetMediaActionsSource(input: {
           onOpenFile: () => {
             const thread = scopeThreadRef(environmentId, resource.threadId);
             if (input.fileOpener) input.fileOpener(thread).openFile(relativePath);
-            else useRightPanelStore.getState().openFile(thread, relativePath);
+            else userTabActions().openFile(thread, relativePath);
           },
         }
       : {}),

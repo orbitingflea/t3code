@@ -8,7 +8,7 @@ import type { OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { isPreviewAvailableFor, previewRuntimeFor } from "~/browser/previewRuntime";
 import { recordVisitForThread } from "~/browserHistoryStore";
 import { applyPreviewServerSnapshot } from "~/previewStateStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 
 const terminalLinkErrorContext = {
   environmentId: Schema.String,
@@ -84,5 +84,5 @@ export async function openTerminalLinkInPreview<E>(
   }
   recordVisitForThread(input.threadRef, input.url);
   applyPreviewServerSnapshot(input.threadRef, result.value);
-  useRightPanelStore.getState().openBrowser(input.threadRef, result.value.tabId);
+  userTabActions().openBrowser(input.threadRef, result.value.tabId);
 }

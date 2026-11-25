@@ -16,6 +16,7 @@ import {
   useRightPanelStore,
   type RightPanelSurface,
 } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 import { Button } from "~/components/ui/button";
 import { DiscoveryList } from "~/components/ui/discovery-list";
 import { Dialog } from "~/components/ui/dialog";
@@ -123,7 +124,7 @@ export function DevicePanel(props: {
     if (result._tag === "Failure") settleOperation(formatEnvironmentQueryError(result.cause));
     else {
       // The server opened the device for the starting thread, so its tab opens there.
-      useRightPanelStore.getState().openDevice(props.threadRef, {
+      userTabActions().openDevice(props.threadRef, {
         hostId: result.value.hostId,
         deviceId: result.value.deviceId,
         platform: device.platform,

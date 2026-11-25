@@ -16,6 +16,7 @@ import { sourceControlClients } from "@t3tools/client-runtime/source-control-cli
 import { canOpenLinksInApp } from "../browser/browserLinkTarget";
 import { useOpenLink } from "../browser/useOpenLink";
 import { panelHostedElsewhere } from "../fork/workArea/chatFileOpener";
+import { userTabActions } from "../fork/workArea/userTabActions";
 import { captureOpenOrigin } from "../fork/workArea/workAreaView";
 import { useClientSettings } from "../hooks/useSettings";
 import { stackedThreadToast, toastManager } from "../components/ui/toast";
@@ -119,7 +120,7 @@ export function useOpenChangeRequestLink(
         selectedEnvironmentId: project.environmentId,
       };
       if (resolvedPanelRef) {
-        useRightPanelStore.getState().openPullRequest(resolvedPanelRef, {
+        userTabActions().openPullRequest(resolvedPanelRef, {
           // The standalone PR panel has a synthetic ref; each tab keeps its real environment.
           ...(resolvedPanelRef.environmentId === project.environmentId
             ? {}

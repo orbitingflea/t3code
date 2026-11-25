@@ -1,7 +1,7 @@
 import { ThreadDetailsControl } from "./chat/ThreadDetailsControl";
 import { contextMenuSourceOf } from "../contextMenuSource";
 import { ComposerContextLabel } from "./ComposerContextLabel";
-import { useRightPanelStore } from "../rightPanelStore";
+import { userTabActions } from "../fork/workArea/userTabActions";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   isAtomCommandInterrupted,
@@ -879,7 +879,7 @@ export function BranchToolbarBranchSelector({
             number={prNumber}
             url={prUrl}
             status={prStatus}
-            onOpenList={() => useRightPanelStore.getState().open(threadRef, "pull-requests")}
+            onOpenList={() => userTabActions().open(threadRef, "pull-requests")}
             onOpenPullRequest={(event, targetUrl = prUrl) => {
               if (targetUrl) openPrLink(event, targetUrl);
             }}

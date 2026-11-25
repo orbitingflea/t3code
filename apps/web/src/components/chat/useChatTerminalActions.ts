@@ -56,6 +56,7 @@ import { readEnvironmentScope } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { reusableTerminalTab } from "../../fork/workArea/drawerTerminals";
+import { userTabActions, userTerminalActions } from "../../fork/workArea/userTabActions";
 const SCRIPT_TERMINAL_COLS = 120;
 const SCRIPT_TERMINAL_ROWS = 30;
 
@@ -248,8 +249,8 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
       // DEFAULT_THREAD_TERMINAL_ID, which a right-panel terminal may already own.
       place: (terminalId) =>
         reusableTerminalId === null
-          ? storeNewTerminal(activeThreadRef, terminalId)
-          : storeEnsureTerminal(activeThreadRef, terminalId, { open: true }),
+          ? userTerminalActions().newTerminal(activeThreadRef, terminalId)
+          : userTerminalActions().ensureTerminal(activeThreadRef, terminalId, { open: true }),
       ...(reusableTerminalId === null
         ? { size: { cols: SCRIPT_TERMINAL_COLS, rows: SCRIPT_TERMINAL_ROWS } }
         : { terminalId: reusableTerminalId }),
@@ -331,8 +332,7 @@ export function useChatTerminalActions(input: ChatTerminalActionsInput) {
   const addTerminalSurface = () => {
     if (!activeThreadRef) return;
     const launched = terminalActions.launchTerminal({
-      place: (terminalId) =>
-        useRightPanelStore.getState().openTerminal(activeThreadRef, terminalId),
+      place: (terminalId) => userTabActions().openTerminal(activeThreadRef, terminalId),
     });
     if (!launched) return;
     focusTerminal(activeThreadRef, launched.terminalId);

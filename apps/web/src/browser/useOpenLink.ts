@@ -4,6 +4,7 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { recordVisitForThread } from "~/browserHistoryStore";
+import { userTabMove } from "~/fork/workArea/tabMoveScope";
 import { captureOpenOrigin } from "~/fork/workArea/workAreaView";
 import { readLocalApi } from "~/localApi";
 import { previewEnvironment } from "~/state/preview";
@@ -35,7 +36,10 @@ export function useOpenLink(threadRef: ScopedThreadRef | null | undefined): (
   const openPreview = useAtomCommand(previewEnvironment.open, { reportFailure: false });
   return async (url, options = {}) => {
     const targetThreadRef = options.threadRef ?? threadRef;
-    const fromOrigin = captureOpenOrigin();
+    // Every caller is a user's link click, so its open is one tab move, continued after the awaits.
+    const fromOrigin = targetThreadRef
+      ? userTabMove(targetThreadRef, captureOpenOrigin)
+      : captureOpenOrigin();
     const target = resolveLinkTarget({
       url,
       event: options.event ?? NO_MODIFIER,

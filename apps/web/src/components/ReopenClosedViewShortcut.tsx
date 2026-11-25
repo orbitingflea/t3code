@@ -13,6 +13,7 @@ import { useEffect, useEffectEvent, useRef } from "react";
 
 import { isCommandPaletteOpen } from "../commandPaletteBus";
 import { partitionOpenLinkedFiles } from "../fork/workArea/closedLinkedFiles";
+import { sameRouteVisit } from "../fork/workArea/tabHistory";
 import { useClosedViewStore } from "../closedViewStore";
 import { useComposerDraftStore } from "../composerDraftStore";
 import { environmentCatalog } from "../connection/catalog";
@@ -157,7 +158,7 @@ export function ReopenClosedViewShortcut() {
       return;
     }
     useClosedViewStore.getState().remove(restore.id);
-    if (router.history.location !== request.location) return;
+    if (!sameRouteVisit(router.history.location, request.location)) return;
 
     let destination;
     if (globalPullRequests) {
@@ -188,7 +189,7 @@ export function ReopenClosedViewShortcut() {
 
     // An allowing blocker can defer the commit. Only the reopen's first history hop extends the queue.
     const unsubscribe = history.subscribe(({ location, action }) => {
-      if (location === request.location) return;
+      if (sameRouteVisit(location, request.location)) return;
       unsubscribe();
       if (action.type === "PUSH" && location.state.reopenedViewId === restore.id) {
         request.location = location;
@@ -206,7 +207,8 @@ export function ReopenClosedViewShortcut() {
   const enqueueReopen = useEffectEvent(() => {
     const location = router.history.location;
     const previous = reopenNavigation.current;
-    const request = previous?.location === location ? previous : { location };
+    const request =
+      previous && sameRouteVisit(previous.location, location) ? previous : { location };
     reopenNavigation.current = request;
     pending.current = pending.current
       .then(() => reopenNext(request))

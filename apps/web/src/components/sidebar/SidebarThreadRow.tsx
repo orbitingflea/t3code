@@ -73,7 +73,7 @@ import { msg, T, useGT, useMessages, Var } from "gt-react";
 
 import type { MessageResolver } from "../../i18n/messages";
 
-import { useRightPanelStore } from "../../rightPanelStore";
+import { userTabActions } from "../../fork/workArea/userTabActions";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
 import { useUiStateStore } from "../../uiStateStore";
 import { useThreadSelectionStore } from "../../threadSelectionStore";
@@ -1146,7 +1146,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     ? resolveThreadPullRequestBadge(thread.pullRequests)
     : null;
   const openLinkedItems = () => {
-    useRightPanelStore.getState().open(threadRef, "pull-requests");
+    userTabActions().open(threadRef, "pull-requests");
     if (!props.isRouteThread) onThreadActivate(threadRef);
   };
   const prBadge =

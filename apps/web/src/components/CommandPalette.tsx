@@ -182,6 +182,7 @@ import {
   selectActiveRightPanel,
   useRightPanelStore,
 } from "../rightPanelStore";
+import { userTabActions } from "../fork/workArea/userTabActions";
 import { getLatestThreadForProject, sortThreads } from "@t3tools/client-runtime/state/thread-sort";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import {
@@ -1536,7 +1537,7 @@ function OpenCommandPaletteDialog(props: {
         !activeThread.issues?.length,
       icon: <PullRequestGlyph.link className={ITEM_ICON_CLASS} />,
       run: async () => {
-        useRightPanelStore.getState().open(threadRef, "pull-requests");
+        userTabActions().open(threadRef, "pull-requests");
       },
     });
   }

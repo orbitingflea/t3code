@@ -118,6 +118,7 @@ export type WorkAreaChange =
     }
   | { readonly type: "close"; readonly tab: TabId }
   | { readonly type: "activate"; readonly tab: TabId }
+  | { readonly type: "show"; readonly tab: TabId }
   | { readonly type: "unfloat"; readonly tab: TabId }
   | { readonly type: "focus"; readonly pane: PaneId }
   | { readonly type: "ratio"; readonly split: SplitId; readonly ratio: number }
@@ -156,6 +157,7 @@ const CHANGE_KINDS: Record<WorkAreaChange["type"], LayoutWriteKind> = {
   place: "user",
   close: "close",
   activate: "activate",
+  show: "automatic",
   unfloat: "automatic",
   focus: "automatic",
   ratio: "automatic",
@@ -978,6 +980,7 @@ function changedLayout(
       if (tabTraits(layout, change.tab).chat && chatTabs(layout).length <= 1) return layout;
       return removeTabs(layout, new Set([change.tab]));
     }
+    case "show":
     case "activate": {
       const pane = paneHolding(layout.root, change.tab);
       if (!pane) return layout;

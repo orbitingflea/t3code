@@ -12,7 +12,7 @@ import { T, Var } from "gt-react";
 import { Atom } from "effect/reactivity";
 
 import { appAtomRegistry } from "~/rpc/atomRegistry";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 import { DeviceSetup } from "../device/DeviceSetup";
 import { PullRequestThreadDialog } from "../PullRequestThreadDialog";
 import {
@@ -128,7 +128,7 @@ export function DeviceSetupDialogHost(props: {
             environmentId={threadRef.environmentId}
             state={props.state}
             onComplete={() => {
-              useRightPanelStore.getState().open(threadRef, "device");
+              userTabActions().open(threadRef, "device");
               closeThreadOverlay(deviceSetupDialogAtom);
             }}
           />

@@ -41,6 +41,8 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import type { ChatShortcutCommands } from "./useChatShortcuts";
 import { closeFocusedTab, toggleDiff, togglePreview } from "../../fork/workArea/workAreaCommands";
 import { fromPrimaryChat } from "../../fork/workArea/chatFileOpener";
+import { userTabMove } from "../../fork/workArea/tabMoveScope";
+import { userTabActions } from "../../fork/workArea/userTabActions";
 interface RightPanelActionsInput {
   readonly activeThreadRef: ScopedThreadRef | null;
   readonly activeProject: EnvironmentProject | null;
@@ -144,7 +146,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const addDiffSurface = () => {
     if (!activeThreadRef || !isServerThread || !diffAvailable) return;
     useDiffPanelStore.getState().selectGitScope(activeThreadRef, "branch");
-    useRightPanelStore.getState().open(activeThreadRef, "diff");
+    userTabMove(activeThreadRef, () => useRightPanelStore.getState().open(activeThreadRef, "diff"));
     onDiffPanelOpen?.();
   };
   const addDiffSurfaceStable = useStableCallback(addDiffSurface);
@@ -159,7 +161,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const addFilesSurfaceStable = useStableCallback(addFilesSurface);
   const addPullRequestsSurface = () => {
     if (!activeThreadRef || !pullRequestsSurfaceAvailable) return;
-    useRightPanelStore.getState().open(activeThreadRef, "pull-requests");
+    userTabActions().open(activeThreadRef, "pull-requests");
   };
   const addPullRequestsSurfaceStable = useStableCallback(addPullRequestsSurface);
   const addDeviceSurface = () => {
@@ -173,7 +175,9 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const addDeviceSurfaceStable = useStableCallback(addDeviceSurface);
   const openFileSurface = (relativePath: string) => {
     if (!activeThreadRef || !activeProject) return;
-    useRightPanelStore.getState().openFile(activeThreadRef, relativePath);
+    userTabMove(activeThreadRef, () =>
+      useRightPanelStore.getState().openFile(activeThreadRef, relativePath),
+    );
   };
   const openFileSurfaceStable = useStableCallback(openFileSurface);
   const closePreviewPanel = () => {
@@ -204,9 +208,11 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
     if (!canOperatePreview) return;
     const activeTabId = activePreviewState.activeTabId;
     if (activeTabId) {
-      useRightPanelStore.getState().openBrowser(activeThreadRef, activeTabId);
+      userTabMove(activeThreadRef, () =>
+        useRightPanelStore.getState().openBrowser(activeThreadRef, activeTabId),
+      );
     } else {
-      createBrowserSurface();
+      userTabMove(activeThreadRef, () => createBrowserSurface());
     }
   };
   const togglePreviewPanelStable = useStableCallback(togglePreviewPanel);
@@ -311,8 +317,10 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const onOpenToolDiffStable = useStableCallback((target: ToolCallDiffTarget) => {
     if (!isServerThread || !activeThreadRef) return;
     useDiffPanelStore.getState().selectToolCall(activeThreadRef, target);
-    fromPrimaryChat(activeThreadRef, () =>
-      useRightPanelStore.getState().open(activeThreadRef, "diff"),
+    userTabMove(activeThreadRef, () =>
+      fromPrimaryChat(activeThreadRef, () =>
+        useRightPanelStore.getState().open(activeThreadRef, "diff"),
+      ),
     );
     onDiffPanelOpen?.();
   });

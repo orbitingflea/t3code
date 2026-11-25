@@ -44,6 +44,7 @@ import type { PdfViewState } from "./PdfViewer";
 
 import { useOpenLink } from "~/browser/useOpenLink";
 import { ExpandedImageDialog } from "~/components/chat/ExpandedImageDialog";
+import { userTabMove } from "~/fork/workArea/tabMoveScope";
 import type { ExpandedImagePreview } from "~/components/chat/ExpandedImagePreview";
 import { useHtmlRenderTheme } from "~/hooks/useHtmlRenderTheme";
 import { shortcutConflictKey } from "~/keybindings";
@@ -411,10 +412,15 @@ export function HtmlRenderDocument(props: {
       preventDefault: () => undefined,
       stopPropagation: () => undefined,
     };
+    const { threadRef } = props;
     if (
-      props.threadRef !== undefined &&
-      (openChangeRequestLink(event, url, undefined, props.threadRef.environmentId) ||
-        openIssueLink(event, url, props.threadRef.environmentId))
+      threadRef !== undefined &&
+      userTabMove(
+        threadRef,
+        () =>
+          openChangeRequestLink(event, url, undefined, threadRef.environmentId) ||
+          openIssueLink(event, url, threadRef.environmentId),
+      )
     ) {
       return;
     }

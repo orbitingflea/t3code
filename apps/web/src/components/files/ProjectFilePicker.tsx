@@ -6,7 +6,7 @@ import type { MessageResolver } from "~/i18n/messages";
 
 import { useActiveProjectTarget, type ActiveProjectTarget } from "~/hooks/useActiveProjectTarget";
 import { useTheme } from "~/hooks/useTheme";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 import { primaryServerKeybindingsAtom } from "~/state/server";
 
 import { PierreEntryIcon } from "../chat/PierreEntryIcon";
@@ -118,7 +118,7 @@ function OpenProjectFilePicker(props: ProjectFilePickerProps & { target: ActiveP
     ),
     icon: <PierreEntryIcon pathValue={match.path} kind="file" theme={resolvedTheme} />,
     run: async () => {
-      useRightPanelStore.getState().openFile(target.threadRef, match.path);
+      userTabActions().openFile(target.threadRef, match.path);
     },
   }));
 

@@ -7,7 +7,7 @@ import {
 import { resolveDiscoveredServerUrl } from "~/browser/browserTargetResolver";
 import type { BrowserSettingsReadError, OpenPreviewMutation } from "~/browser/openFileInPreview";
 import { recordVisitForThread } from "~/browserHistoryStore";
-import { useRightPanelStore } from "~/rightPanelStore";
+import { userTabActions } from "~/fork/workArea/userTabActions";
 import { openPreviewSession } from "./openPreviewSession";
 import { previewRuntimeFor } from "~/browser/previewRuntime";
 
@@ -27,6 +27,6 @@ export async function openDiscoveredPort<E>(input: {
   });
   return mapAtomCommandResult(result, (snapshot) => {
     recordVisitForThread(input.threadRef, input.port.url);
-    useRightPanelStore.getState().openBrowser(input.threadRef, snapshot.tabId);
+    userTabActions().openBrowser(input.threadRef, snapshot.tabId);
   });
 }

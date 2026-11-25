@@ -8,6 +8,7 @@ import { useNavigate } from "@tanstack/react-router";
 import type { MouseEvent } from "react";
 
 import { readIssueListPreferences } from "../components/issue/issueListPreferences";
+import { userTabActions } from "../fork/workArea/userTabActions";
 import { ISSUES_PANEL_REF, PULL_REQUESTS_PANEL_REF, useRightPanelStore } from "../rightPanelStore";
 import { useProjects, useServerConfigs } from "../state/entities";
 
@@ -98,7 +99,7 @@ export function useOpenIssueLink(
       }
       return true;
     }
-    useRightPanelStore.getState().openIssue(resolvedPanelRef, {
+    userTabActions().openIssue(resolvedPanelRef, {
       ...(resolvedPanelRef.environmentId === environmentId ? {} : { environmentId }),
       ...surface,
     });

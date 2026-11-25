@@ -11,11 +11,13 @@ import {
   type RightPanelKind,
   type RightPanelSurface,
   rightPanelHostRef,
+  selectActiveRightPanelSurface,
   selectThreadRightPanelState,
   useRightPanelStore,
 } from "~/rightPanelStore";
 
 import { miniPlayerDraws } from "./miniPlayerFollow";
+import { userTabMove } from "./tabMoveScope";
 import {
   type ArmKind,
   focusedTab,
@@ -28,6 +30,20 @@ import { currentDropAt, runWithOpenOrigin, shownSurfaceOf } from "./workAreaView
 
 const readRecord = (threadRef: ScopedThreadRef) =>
   selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
+
+/**
+ * When `threadRef`'s shown tab is a browser tab, sets its session as the preview store's active
+ * preview tab.
+ */
+export function activateShownPreview(threadRef: ScopedThreadRef): void {
+  const focused = selectActiveRightPanelSurface(
+    useRightPanelStore.getState().byThreadKey,
+    threadRef,
+  );
+  if (focused?.kind === "preview" && focused.resourceId) {
+    setActivePreviewTab(threadRef, focused.resourceId);
+  }
+}
 
 /**
  * Runs `run` as an open from `origin`, recording the record's current surface tabs as `existing`.
@@ -109,8 +125,11 @@ export function togglePreview(threadRef: ScopedThreadRef): boolean {
     floated?.source.kind === "browser" &&
     resolveLayout(record).floating?.tab === surfaceTabId(previewMiniPlayerSourceKey(floated.source))
   ) {
-    player.close(threadRef);
-    useRightPanelStore.getState().openBrowser(threadRef, floated.source.tabId);
+    const { tabId } = floated.source;
+    userTabMove(threadRef, () => {
+      player.close(threadRef);
+      useRightPanelStore.getState().openBrowser(threadRef, tabId);
+    });
     return true;
   }
   const browser = shownSurfaceOf(record, "preview");
@@ -131,6 +150,7 @@ export function togglePreview(threadRef: ScopedThreadRef): boolean {
 export function toggleDiff(threadRef: ScopedThreadRef): void {
   const host = rightPanelHostRef(threadRef);
   const diff = shownSurfaceOf(readRecord(host), "diff");
-  if (diff === undefined) useRightPanelStore.getState().open(threadRef, "diff");
+  if (diff === undefined)
+    userTabMove(threadRef, () => useRightPanelStore.getState().open(threadRef, "diff"));
   else useRightPanelStore.getState().closeSurface(host, diff.id);
 }

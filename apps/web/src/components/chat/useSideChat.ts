@@ -11,6 +11,7 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { useRef } from "react";
 
+import { userTabMove } from "~/fork/workArea/tabMoveScope";
 import { captureOpenOrigin } from "~/fork/workArea/workAreaView";
 import { newMessageId, newThreadId } from "~/lib/utils";
 import { useComposerDraftStore } from "../../composerDraftStore";
@@ -59,7 +60,8 @@ export function useSideChat(input: {
   };
   const start = async (threadRef: ScopedThreadRef, message: SideChatMessage | undefined) => {
     const { runtimeMode, modelSelection } = input.readSettings();
-    const fromOrigin = captureOpenOrigin();
+    // Both callers, the + menu and the composer's /side, are the user's, so the tab is one move.
+    const fromOrigin = userTabMove(threadRef, captureOpenOrigin);
     const targetThreadId = newThreadId();
     const fork = await forkSideChat({
       environmentId: threadRef.environmentId,

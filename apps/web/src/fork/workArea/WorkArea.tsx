@@ -32,11 +32,9 @@ import { useStableCallback } from "~/hooks/useStableCallback";
 import { observeResize } from "~/lib/observeResize";
 import { cn } from "~/lib/utils";
 import { requestWorkspaceFocus } from "~/lib/workspaceFocus";
-import { setActivePreviewTab } from "~/previewStateStore";
 import { RIGHT_PANEL_INLINE_LAYOUT_MEDIA_QUERY } from "~/rightPanelLayout";
 import {
   type RightPanelSurface,
-  selectActiveRightPanelSurface,
   selectThreadRightPanelState,
   type ThreadRightPanelState,
   useRightPanelStore,
@@ -62,6 +60,7 @@ import { LINK_PROBE, probeLayout } from "./linkDrop.logic";
 import { filesTreeOwner } from "./linkSources";
 import { PanelLinkOwnerContext } from "./panelLinkDrag";
 import { SecondaryChat } from "./SecondaryChat";
+import { userTabMove } from "./tabMoveScope";
 import {
   ReplyTabContext,
   RightPanelPaneContext,
@@ -102,7 +101,7 @@ import {
   splitVariable,
   splitVariables,
 } from "./workAreaGeometry.logic";
-import { openFromPaneMenu, runOpen } from "./workAreaCommands";
+import { activateShownPreview, openFromPaneMenu, runOpen } from "./workAreaCommands";
 import {
   landingRect,
   moveToward,
@@ -239,16 +238,9 @@ export function WorkArea(props: WorkAreaProps) {
     );
 
   const update = useStableCallback((change: WorkAreaChange) => {
-    const store = useRightPanelStore.getState();
-    store.updateWorkArea(threadRef, change);
+    useRightPanelStore.getState().updateWorkArea(threadRef, change);
     if (change.type === "ratio" || change.type === "arm") return;
-    const focused = selectActiveRightPanelSurface(
-      useRightPanelStore.getState().byThreadKey,
-      threadRef,
-    );
-    if (focused?.kind === "preview" && focused.resourceId) {
-      setActivePreviewTab(threadRef, focused.resourceId);
-    }
+    activateShownPreview(threadRef);
   });
 
   const notePress = useStableCallback((surfaceId: string) => {
@@ -373,7 +365,9 @@ export function WorkArea(props: WorkAreaProps) {
     const placeable = threads.filter((thread) => placeableInWorkArea(threadRef, thread));
     const plan = planAt(point, OUTSIDE, { threads: placeable });
     if (!plan || placeable.length === 0) return false;
-    update({ type: "place", source: { threads: placeable }, at: plan.at });
+    userTabMove(threadRef, () =>
+      update({ type: "place", source: { threads: placeable }, at: plan.at }),
+    );
     return true;
   });
   const endThreadDrag = useStableCallback(() => setThreadDrag(null));
@@ -389,7 +383,10 @@ export function WorkArea(props: WorkAreaProps) {
     planAt: (point, link) =>
       planAt(point, OUTSIDE, { tabs: [LINK_PROBE] }, probeLayout(readLayout(), threadRef, link)),
     show: (plan) => setLinkPlan((current) => (samePlan(current, plan) ? current : plan)),
-    open: (link, at, live) => runOpen({ record: threadRef, drop: { at, live } }, () => link.open()),
+    open: (link, at, live) =>
+      userTabMove(threadRef, () =>
+        runOpen({ record: threadRef, drop: { at, live } }, () => link.open()),
+      ),
   });
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- publishes the work area's size to store writes outside React, which place tabs by fit
@@ -480,12 +477,14 @@ export function WorkArea(props: WorkAreaProps) {
           const restore = press.current?.tab === tab ? press.current.restore : undefined;
           finishTabDrag();
           if (!plan) return;
-          update({
-            type: "place",
-            source: { tabs: [tab] },
-            at: plan.at,
-            ...(restore === undefined ? {} : { restore }),
-          });
+          userTabMove(threadRef, () =>
+            update({
+              type: "place",
+              source: { tabs: [tab] },
+              at: plan.at,
+              ...(restore === undefined ? {} : { restore }),
+            }),
+          );
         }}
         onDragCancel={finishTabDrag}
       >
@@ -590,9 +589,9 @@ function WorkAreaPane(props: {
   const armed =
     <T,>(kind: ArmKind, open: () => T) =>
     () =>
-      openFromPaneMenu(threadRef, pane.id, kind, open);
+      userTabMove(threadRef, () => openFromPaneMenu(threadRef, pane.id, kind, open));
   const openAfter = <T,>(tab: TabId, open: () => T) =>
-    runOpen({ record: threadRef, tab, adjacent: true }, open);
+    userTabMove(threadRef, () => runOpen({ record: threadRef, tab, adjacent: true }, open));
   const fromLauncher =
     <T,>(open: () => T) =>
     () =>
@@ -641,20 +640,25 @@ function WorkAreaPane(props: {
       },
       ...moves(entry).map(({ move: _move, ...item }) => item),
     ],
-    select: (action, entry) => {
-      if (action !== "split-right" && action !== "split-down") {
-        const move = moves(entry).find((item) => item.id === action);
-        if (move && !move.disabled) update(move.move);
-        return;
-      }
-      const holder = paneHolding(layout.root, tabOf(entry));
-      if (!holder) return;
-      update({
-        type: "place",
-        source: { tabs: [tabOf(entry)] },
-        at: { kind: "edge", pane: holder.id, edge: action === "split-right" ? "right" : "bottom" },
-      });
-    },
+    select: (action, entry) =>
+      userTabMove(threadRef, () => {
+        if (action !== "split-right" && action !== "split-down") {
+          const move = moves(entry).find((item) => item.id === action);
+          if (move && !move.disabled) update(move.move);
+          return;
+        }
+        const holder = paneHolding(layout.root, tabOf(entry));
+        if (!holder) return;
+        update({
+          type: "place",
+          source: { tabs: [tabOf(entry)] },
+          at: {
+            kind: "edge",
+            pane: holder.id,
+            edge: action === "split-right" ? "right" : "bottom",
+          },
+        });
+      }),
   };
   const modeSurfaceActions = [
     ...(tabs.modeSurfaceActions ?? []).map((action) => ({
@@ -691,7 +695,9 @@ function WorkAreaPane(props: {
         {lone ? (
           <SplitLauncherButton
             disabled={!canSplit}
-            onClick={() => update({ type: "split-launcher", pane: pane.id })}
+            onClick={() =>
+              userTabMove(threadRef, () => update({ type: "split-launcher", pane: pane.id }))
+            }
           />
         ) : null}
       </>
@@ -762,14 +768,16 @@ function WorkAreaPane(props: {
           layoutControls={layoutControls}
           {...(payload?.kind === "launcher" ? { launcher: { shortcuts: pane.focused } } : {})}
           onMoveSurface={ignoreMove}
-          onActivate={(entry) => {
-            if (!isDisplayEntry(entry)) {
-              tabs.onActivate(entry);
-              return;
-            }
-            update({ type: "activate", tab: tabOf(entry) });
-            focusChatComposer(layout.tabs[tabOf(entry)]);
-          }}
+          onActivate={(entry) =>
+            userTabMove(threadRef, () => {
+              if (!isDisplayEntry(entry)) {
+                tabs.onActivate(entry);
+                return;
+              }
+              update({ type: "activate", tab: tabOf(entry) });
+              focusChatComposer(layout.tabs[tabOf(entry)]);
+            })
+          }
           onCloseSurface={(entry) =>
             isDisplayEntry(entry)
               ? update({ type: "close", tab: tabOf(entry) })

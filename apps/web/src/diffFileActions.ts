@@ -6,7 +6,7 @@ import {
   workspaceRelativeFilePath,
 } from "@t3tools/shared/path";
 
-import { useRightPanelStore } from "./rightPanelStore";
+import { userTabActions } from "./fork/workArea/userTabActions";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 
 interface OpenDiffFilePrimaryActionInput {
@@ -111,7 +111,7 @@ export function openDiffFilePrimaryAction({
   if (!workspaceFilePath) return;
 
   if (threadRef) {
-    useRightPanelStore.getState().openFile(threadRef, workspaceFilePath);
+    userTabActions().openFile(threadRef, workspaceFilePath);
     return;
   }
 

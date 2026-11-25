@@ -41,6 +41,7 @@ import { useBrowserLayoutZoomFactor } from "~/browser/useBrowserLayoutZoomFactor
 import { Button } from "~/components/ui/button";
 import { toastManager } from "~/components/ui/toast";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
+import { userTabMove } from "~/fork/workArea/tabMoveScope";
 import { cn } from "~/lib/utils";
 import { useThreadPreviewState } from "~/previewStateStore";
 import {
@@ -288,7 +289,7 @@ function BrowserMiniPlayer({ threadRef, tabId, miniPlayer }: Props & { readonly 
       sourceSize={sourceSize}
       label={gt("Floating browser preview")}
       recording={recording}
-      onOpenInPanel={openInPanel}
+      onOpenInPanel={() => userTabMove(threadRef, openInPanel)}
       pillActions={
         canPopOut ? (
           <Tooltip>
@@ -413,7 +414,7 @@ function DeviceMiniPlayer({
       miniPlayer={miniPlayer}
       sourceSize={sourceSize}
       label={gt("Floating device preview")}
-      onOpenInPanel={openInPanel}
+      onOpenInPanel={() => userTabMove(threadRef, openInPanel)}
       cornerRadius={cornerRadius}
     >
       {() => (

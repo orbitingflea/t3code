@@ -26,6 +26,7 @@ import { useRouter } from "@tanstack/react-router";
 
 import { getFallbackThreadIdAfterDelete, pinOrderKeyBetween } from "../components/Sidebar.logic";
 import { useComposerDraftStore } from "../composerDraftStore";
+import { forgetTabHistoryThread, isTabHistoryWrite } from "../fork/workArea/tabHistory";
 import { environmentSession, readEnvironmentScope } from "../state/session";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { environmentServerConfigsAtom } from "../state/server";
@@ -268,6 +269,7 @@ function expireThreadUndos(target: ScopedThreadRef, kinds: readonly string[]) {
 
 function clearDeletedThreadPanelState(ref: ScopedThreadRef) {
   clearThreadPreviewState(ref);
+  forgetTabHistoryThread(ref);
   useRightPanelStore.getState().removeThread(ref);
   useDiffPanelStore.getState().removeThread(ref);
   usePreviewMiniPlayerStore.getState().removeThread(ref);
@@ -509,6 +511,7 @@ export function useThreadActions() {
         ]) {
           releaseComposerDraftUploads(ref);
           clearComposerDraftForThread(ref);
+          forgetTabHistoryThread(ref);
         }
         expireThreadUndos(target, [...LIST_PLACEMENT_UNDO_KINDS, "archive"]);
         refreshArchivedThreadsForEnvironment(target.environmentId);
@@ -632,8 +635,8 @@ export function useThreadActions() {
     let navigatedDuringDelete = false;
     // The missing-thread redirect and the index draft replace this entry; any other history
     // action while the delete is pending is the user's own choice, which must win.
-    const stopWatchingHistory = router.history.subscribe(({ action }) => {
-      if (action.type !== "REPLACE") navigatedDuringDelete = true;
+    const stopWatchingHistory = router.history.subscribe(({ action, location }) => {
+      if (action.type !== "REPLACE" && !isTabHistoryWrite(location)) navigatedDuringDelete = true;
     });
     const deleteResult = await deleteThreadMutation({
       environmentId: threadRef.environmentId,
@@ -654,6 +657,7 @@ export function useThreadActions() {
       const sideChatRef = scopeThreadRef(threadRef.environmentId, entry.id);
       releaseComposerDraftUploads(sideChatRef);
       clearComposerDraftForThread(sideChatRef);
+      forgetTabHistoryThread(sideChatRef);
     }
     clearProjectDraftThreadById(
       scopeProjectRef(threadRef.environmentId, thread.projectId),

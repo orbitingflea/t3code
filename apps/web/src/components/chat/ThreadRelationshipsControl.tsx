@@ -62,6 +62,7 @@ import { useRef, useState, type ReactNode } from "react";
 import type { MessageResolver } from "~/i18n/messages";
 
 import { useArchivedThreadSnapshots } from "../../lib/archivedThreadsState";
+import { sameRouteVisit } from "../../fork/workArea/tabHistory";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import type { SideThreadOpenIntent } from "@t3tools/client-runtime/side-thread";
 import { useLinkedThreadOpener } from "../../state/linkedThreadView";
@@ -412,7 +413,7 @@ function DelegatedFromRow(props: {
     });
     setOpening(false);
     // The read can outlast the user's stay on this thread; a late answer must not pull them back.
-    if (router.latestLocation !== location) return;
+    if (!sameRouteVisit(router.latestLocation, location)) return;
     if (result._tag === "Failure") {
       toastManager.add({ type: "error", title: gt("Could not open the parent thread") });
       return;
