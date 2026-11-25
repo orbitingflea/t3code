@@ -17,6 +17,10 @@ let requests = 0;
 // The request whose Find field took the keyboard.
 let focusedAt = -1;
 
+/**
+ * Records a Find request. Clears the view showing Find so the leading view takes it, and lets
+ * `findTakesFocus` grant focus once for this request.
+ */
 export function noteFindRequest(): void {
   requests += 1;
   useFindView.setState({ view: null });
@@ -32,6 +36,11 @@ export function useLeadsFind(): boolean {
   return useRightPanelPane()?.leads ?? true;
 }
 
+/**
+ * Whether this view shows Find when `open` is true. Outside a work-area pane or in the narrow
+ * strip, returns `open`; in split panes, the leading view claims Find and keeps it across moves
+ * and focus changes until that view ends or another Find request runs.
+ */
 export function useFindInView(open: boolean): boolean {
   const pane = useRightPanelPane();
   const taker = useFindView((state) => state.view);
@@ -46,6 +55,10 @@ export function useFindInView(open: boolean): boolean {
   return taker === null ? leads : taker === view;
 }
 
+/**
+ * Whether Find should focus `field`. Always true for `null` or outside a work-area pane; inside
+ * one, returns true once per Find request so pane moves or closes do not steal focus.
+ */
 export function findTakesFocus(field: HTMLElement | null): boolean {
   // Outside the work area there is one view. In it, a request moves the keyboard to Find once,
   // and Find showing in another view after a move or a close leaves the keyboard where it is.

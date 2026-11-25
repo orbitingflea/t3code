@@ -78,7 +78,8 @@ const decodeReceiptKey = Schema.decodeUnknownOption(Schema.Tuple([Schema.String,
 
 /**
  * A workspace or host file by absolute path, or a chat attachment by id. Optional `scope` keeps a
- * work-area view's own place in memory. Writes also update the file-level place.
+ * view's places in memory, seeded from the file on first access and isolated from other views.
+ * Writes update `scope`, any `alsoScopes`, and the file; reads use `scope` or the file.
  */
 export type FileReadingKey = (
   | { readonly kind: "path"; readonly environmentId: string; readonly absolutePath: string }
@@ -335,7 +336,10 @@ export function createFileReadingStore(options: {
   };
 
   return {
-    /** Returns the saved `view` position for `file`, or `null`. */
+    /**
+     * Returns the saved `view` position for `file`, or `null`. With `file.scope`, seeds the scope
+     * from the file on first access and reads only it; otherwise reads the file-level place.
+     */
     readPosition<V extends ReadingView>(
       file: FileReadingKey,
       view: V,
@@ -366,7 +370,10 @@ export function createFileReadingStore(options: {
         },
       };
     },
-    /** Returns the view in `views` with the newest entry. */
+    /**
+     * Returns the view in `views` with the newest entry, or `null`. With `file.scope`, compares
+     * that scope's entries (seeded from the file on first access), else file-level entries.
+     */
     newestView(file: FileReadingKey, views: ReadonlyArray<ReadingView>): ReadingView | null {
       let newest: Entry<ReadingPosition> | undefined;
       for (const view of views) {

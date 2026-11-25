@@ -9,6 +9,7 @@ import {
   viewKey,
 } from "./workArea.logic";
 
+/** In-memory identity of one work-area view; follows a view across pane moves until it ends. */
 export type ViewId = string & { readonly __viewId: unique symbol };
 
 // In memory only: a reload starts fresh ids over the stored layout. Keyed by owner thread first,
@@ -18,6 +19,10 @@ const endListeners = new Set<(id: ViewId) => void>();
 let minted = 0;
 let following = false;
 
+/**
+ * Returns the stable `ViewId` for `view` in `owner`, minting one on first lookup. Starts
+ * tracking right-panel writes so the id follows a tab moved between panes and ends on close.
+ */
 export function viewIdOf(owner: string, view: ViewRef): ViewId {
   if (!following) {
     following = true;
@@ -34,6 +39,7 @@ export function viewIdOf(owner: string, view: ViewRef): ViewId {
   return id;
 }
 
+/** Calls `listener` when a tracked work-area view ends; returns the unsubscribe function. */
 export function onViewEnd(listener: (id: ViewId) => void): () => void {
   endListeners.add(listener);
   return () => endListeners.delete(listener);

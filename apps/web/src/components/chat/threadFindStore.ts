@@ -176,7 +176,10 @@ export function retainThreadFindForRoute(route: {
   if (threadKey !== shownKey && hostKey !== shownKey) closeThreadFind();
 }
 
-/** Whether find is open in `thread` when enabled. */
+/**
+ * Whether find is open in `thread` when enabled. In split work-area panes, only the view holding
+ * Find returns true.
+ */
 export function useThreadFindOpen(thread: ScopedThreadRef | null, enabled: boolean): boolean {
   const openThreadKey = useThreadFindStore((state) => state.threadKey);
   return useFindInView(enabled && thread !== null && openThreadKey === scopedThreadKey(thread));

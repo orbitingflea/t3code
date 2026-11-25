@@ -58,8 +58,14 @@ interface RightPanelPane {
   readonly dragId: (surfaceId: string) => string;
   /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
+  /** Stable in-memory id of the active tab's view; follows the view across pane moves. */
   readonly view: ViewId;
+  /** True when the work area draws one tab strip instead of split panes. */
   readonly strip: boolean;
+  /**
+   * File reading scopes for the active tab. Split panes set `scope` to `view`; the single strip
+   * sets `alsoScopes` to every view holding the tab so reads use the file and writes update all.
+   */
   readonly reading: Pick<FileReadingKey, "scope" | "alsoScopes">;
 }
 
