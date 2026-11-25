@@ -1319,7 +1319,7 @@ describe("views of one tab in several panes", () => {
       })!,
     });
 
-  // V6: a review comment goes to the caret of the composer the user focused last.
+  // A review comment goes to the caret of the composer the user focused last.
   it("inserts context at the caret of the last-focused of two composers of one chat", async () => {
     using _environment = installFakeEnvironment([ownerThread, otherThread]);
     setup(otherChatTwice());

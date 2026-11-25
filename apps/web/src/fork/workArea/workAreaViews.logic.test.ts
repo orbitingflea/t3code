@@ -282,7 +282,7 @@ describe("a write that names only a tab", () => {
     ]);
   });
 
-  // V2: an automatic open must keep a view another pane already shows, and cover nothing.
+  // An automatic open must keep a view another pane already shows, and cover nothing.
   describe("an automatic open of a tab another pane shows", () => {
     const diffAndFile = [{ id: "diff", kind: "diff" } as const, file("a.ts"), file("b.ts")];
     const automatic = (activeSurfaceId: string) => {
@@ -378,7 +378,7 @@ describe("closing one of several views", () => {
     expect(record().surfaces.map((surface) => surface.id)).toEqual(["file:a.ts"]);
   });
 
-  // V3: in the one strip the keyboard close and the strip's X both close the tab.
+  // In the one strip the keyboard close and the strip's X both close the tab.
   it("closes the tab, every view, with rightPanel.close in the one strip", () => {
     seat(
       [file("a.ts"), file("b.ts")],
@@ -402,7 +402,7 @@ describe("closing one of several views", () => {
     expect(panesOf().map((node) => node.tabs)).toEqual([["file:b.ts"], ["chat", "file:a.ts"]]);
   });
 
-  // V1: a Chat in two panes is one Chat; its tab close stays refused while it is the last one.
+  // A Chat in two panes is one Chat; its tab close stays refused while it is the last one.
   describe("the last Chat with two views", () => {
     const lastChatTwice = () =>
       seat(
@@ -498,7 +498,7 @@ describe("pressing and dragging views", () => {
     expect(panesOf().map((node) => node.tabs)).toEqual([["chat"], ["file:a.ts", "file:b.ts"]]);
   });
 
-  // V4: the one strip draws a tab where it first occurs, so a drop before it goes there.
+  // The one strip draws a tab where it first occurs, so a drop before it goes there.
   it("drops before the drawn tab in the one strip when its tab has a second view", () => {
     const narrow = { narrow: true, size: { width: 400, height: 800 } };
     seat(
@@ -543,7 +543,7 @@ describe("pressing and dragging views", () => {
   });
 });
 
-// V5: Find keeps the search field of the Chat view it runs in.
+// Find keeps the search field of the Chat view it runs in.
 describe("a Find reveal from a Chat open in two panes", () => {
   it("keeps the searched view on its Chat and shows the reply in the other pane", () => {
     publishWorkAreaView({ narrow: false, size: { width: 1600, height: 800 } });

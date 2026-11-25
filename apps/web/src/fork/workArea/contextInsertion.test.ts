@@ -17,7 +17,7 @@ const comment = (id: string) => ({
   diff: "const x = 1;",
 });
 
-// V6: two views of one chat mount two composers of one draft.
+// Two views of one chat mount two composers of one draft.
 describe("context inserted into a draft two composers edit", () => {
   it("goes to the composer focused last, and to the other once that one unmounts", () => {
     const draft = useComposerDraftStore.getState();
