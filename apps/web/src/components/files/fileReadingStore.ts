@@ -83,7 +83,7 @@ const decodeReceiptKey = Schema.decodeUnknownOption(Schema.Tuple([Schema.String,
 export type FileReadingKey = (
   | { readonly kind: "path"; readonly environmentId: string; readonly absolutePath: string }
   | { readonly kind: "attachment"; readonly environmentId: string; readonly attachmentId: string }
-) & { readonly scope?: string };
+) & { readonly scope?: string; readonly alsoScopes?: readonly string[] };
 
 /** A sample a debounced save holds; reads see it before it is written. */
 export interface HeldPosition {
@@ -323,8 +323,10 @@ export function createFileReadingStore(options: {
     return places;
   };
   const keepOwn = (file: FileReadingKey, entry: Entry<ReadingPosition>) => {
-    if (file.scope !== undefined)
-      own(file, file.scope).set(positionKey(file, entry.value.view), entry);
+    const scopes = file.scope === undefined ? [] : [file.scope];
+    for (const scope of [...scopes, ...(file.alsoScopes ?? [])]) {
+      own(file, scope).set(positionKey(file, entry.value.view), entry);
+    }
   };
   const readEntry = (file: FileReadingKey, view: ReadingView) => {
     if (file.scope === undefined) return read(positions, positionKey(file, view));

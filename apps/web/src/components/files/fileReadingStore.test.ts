@@ -162,6 +162,23 @@ describe("file reading positions", () => {
     expect(readings.newestView(unread, ["source", "rendered"])).toBeNull();
   });
 
+  it("saves a place to every view a write names, and reads the file's place without a scope", () => {
+    const { clock, readings } = setup();
+    const left = { ...file, scope: "left" };
+    const right = { ...file, scope: "right" };
+    readings.writePosition(left, { view: "source", line: 10, offset: 0 });
+    clock.now += 1;
+    readings.writePosition(right, { view: "source", line: 20, offset: 0 });
+    const tab = { ...file, alsoScopes: ["left", "right"] };
+    expect(readings.readPosition(tab, "source")?.line).toBe(20);
+
+    clock.now += 1;
+    readings.holdPosition(tab, { view: "source", line: 90, offset: 0 });
+    expect(readings.readPosition(left, "source")?.line).toBe(90);
+    expect(readings.readPosition(right, "source")?.line).toBe(90);
+    expect(readings.readPosition(file, "source")?.line).toBe(90);
+  });
+
   it("expires an entry 30 days after it was written, and reads do not renew it", () => {
     const { items, storage } = memoryStorage();
     const { clock, readings } = setup(storage);

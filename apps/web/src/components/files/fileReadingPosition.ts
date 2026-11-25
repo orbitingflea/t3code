@@ -161,8 +161,7 @@ export function useFileReadingPosition(input: {
   // This view's code container: two views of one file each keep their own reading place.
   const sourceContainer = useRef<HTMLElement | null>(null);
   // Each work-area view of a file keeps its own place.
-  const readingScope = useRightPanelPane()?.readingScope;
-  const scope = readingScope === undefined ? {} : { scope: readingScope };
+  const scope = useRightPanelPane()?.reading ?? {};
   const surface = useRightPanelStore(
     (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );

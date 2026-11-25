@@ -18,6 +18,7 @@ import {
   useRef,
 } from "react";
 
+import type { FileReadingKey } from "~/components/files/fileReadingStore";
 import type { PreviewPanelShell } from "~/components/preview/PreviewPanelShell";
 import { workspaceAreaProps } from "~/lib/workspaceFocus";
 
@@ -56,8 +57,7 @@ interface RightPanelPane {
   readonly dragId: (surfaceId: string) => string;
   /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
-  /** View reading-place scope; undefined in the narrow strip, which uses the file's place. */
-  readonly readingScope: string | undefined;
+  readonly reading: Pick<FileReadingKey, "scope" | "alsoScopes">;
 }
 
 export const RightPanelPaneContext = createContext<RightPanelPane | null>(null);

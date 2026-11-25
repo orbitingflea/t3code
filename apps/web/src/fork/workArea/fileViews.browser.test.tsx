@@ -598,3 +598,44 @@ describe("one file open in two panes, then the one strip", () => {
     await vi.waitFor(() => expectScrolledTo(sourceView(theStrip()), stripTop));
   });
 });
+
+describe("a file with one view, read in the one strip", () => {
+  it("comes back where it was read in the strip once the window is wide again", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    await using _app = await openOwner(chatBeside(["file:m.ts", "file:c.ts"], "file:c.ts"));
+    const theStrip = () => document.querySelector<HTMLElement>("[data-work-area-pane]")!;
+    const stripTab = (tab: string) =>
+      theStrip().querySelector<HTMLElement>(`[data-right-panel-tab-id="${tab}"]`)!;
+    const top = sourceView(paneById("p1"));
+    await vi.waitFor(() => top.expectLineInView(1, "nu_1"));
+    // Wide: the file's one view reads a little.
+    await userEvent.wheel(top.scroller(), { delta: { y: 800 } });
+    await vi.waitFor(() => expect(savedLine("m.ts")).toBeGreaterThan(20));
+    const widePlace = top.topLine();
+
+    // Narrow with its pane focused: another tab and back, then read on in the strip.
+    await act(() =>
+      useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId("p1") }),
+    );
+    await page.viewport(940, 900);
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll("[data-work-area-pane]")).toHaveLength(1),
+    );
+    await userEvent.click(stripTab("file:c.ts"));
+    await vi.waitFor(() => sourceView(theStrip()).expectLineInView(1, "gamma_1"));
+    await userEvent.click(stripTab("file:m.ts"));
+    await vi.waitFor(() => expectNear(sourceView(theStrip()), widePlace.line));
+    const strip = sourceView(theStrip());
+    await userEvent.wheel(strip.scroller(), { delta: { y: 2400 } });
+    await vi.waitFor(() => expect(savedLine("m.ts")).toBeGreaterThan(widePlace.line + 60));
+    const stripPlace = strip.topLine();
+
+    // Wide again: the file's one view is in p1.
+    await page.viewport(1400, 900);
+    await vi.waitFor(() =>
+      expect(document.querySelectorAll("[data-work-area-pane]")).toHaveLength(3),
+    );
+
+    await vi.waitFor(() => expectNear(sourceView(paneById("p1")), stripPlace.line));
+  });
+});

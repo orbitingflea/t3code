@@ -78,6 +78,7 @@ import {
   type Edge,
   findPane,
   gestureViews,
+  holders,
   isDisplayEntry,
   isPlaced,
   isReplyEntry,
@@ -742,6 +743,14 @@ function WorkAreaPane(props: {
     props.strip || preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id;
   const ownerKey = scopedThreadKey(threadRef);
   const viewId = viewIdOf(ownerKey, viewOf(pane.active));
+  // The one strip lists tabs, not views: its file reads the file's place and saves to every view.
+  const reading = props.strip
+    ? {
+        alsoScopes: holders(layout.root, pane.active).map((holder) =>
+          viewIdOf(ownerKey, { pane: holder.id, tab: pane.active }),
+        ),
+      }
+    : { scope: viewId };
   // A line reveal shows in the view that leads its file; another view keeps the file as it was.
   const shown = viewShown(
     viewId,
@@ -830,8 +839,7 @@ function WorkAreaPane(props: {
           notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
           leads,
-          // The one strip lists tabs, not views, so its file keeps the file's own place.
-          readingScope: props.strip ? undefined : viewId,
+          reading,
         }}
       >
         <RightPanelTabs
