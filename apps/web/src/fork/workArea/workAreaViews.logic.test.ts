@@ -29,7 +29,7 @@ import {
   viewKey,
   type WorkAreaLayout,
 } from "./workArea.logic";
-import { onViewEnd, viewIdOf } from "./viewIdentity";
+import { onViewEnd, shownBy, viewIdOf } from "./viewIdentity";
 import { closeFocusedTab, closeTab, closeViews } from "./workAreaCommands";
 import { drawWorkArea, NO_VIEW } from "./workAreaGeometry.logic";
 import { applyWorkAreaChange, reconcileWorkArea, repairWorkArea } from "./workAreaPlacement.logic";
@@ -733,6 +733,58 @@ describe("a view's identity", () => {
   it("is never shared between threads whose panes have the same ids", () => {
     seat([file("a")], row(pane("p0", ["chat"]), pane("p1", ["file:a"])));
     expect(idOf("p1", "file:a", other)).not.toBe(idOf("p1", "file:a"));
+  });
+});
+
+describe("a line reveal in a file with two views", () => {
+  const idOf = (paneId: string, id: string) => viewIdOf(scopedThreadKey(ref), view(paneId, id));
+  const live = () => record().surfaces.find((surface) => surface.id === "file:a")!;
+  const lineIn = (id: ReturnType<typeof idOf>) =>
+    (shownBy(id, live()) as Extract<RightPanelSurface, { kind: "file" }>).revealLine;
+  const reveal = (paneId: string, line: number) => {
+    change({ type: "focus", pane: asPaneId(paneId) });
+    store().openFile(ref, "a", line);
+  };
+
+  it("shows in the view the write targets, and a hidden view keeps the line it showed", () => {
+    seat(
+      [file("a"), file("c")],
+      row(pane("p0", ["chat"]), column(pane("p1", ["file:a"]), pane("p2", ["file:a", "file:c"]))),
+    );
+    const top = idOf("p1", "file:a");
+    const bottom = idOf("p2", "file:a");
+    reveal("p2", 40);
+    expect([lineIn(top), lineIn(bottom)]).toEqual([null, 40]);
+
+    // p2 shows another tab while p1 reveals a line.
+    change({ type: "activate", view: view("p2", "file:c") });
+    reveal("p1", 200);
+    expect([lineIn(top), lineIn(bottom)]).toEqual([200, 40]);
+  });
+
+  it("goes to the pane where an open from another tab there shows the file", () => {
+    seat(
+      [file("a"), file("c")],
+      row(pane("p0", ["chat"]), column(pane("p1", ["file:a"]), pane("p2", ["file:c", "file:a"]))),
+    );
+    const top = idOf("p1", "file:a");
+    const bottom = idOf("p2", "file:a");
+    // The open names p2, which shows the file only once the write activates it there.
+    runWithOpenOrigin({ record: ref, tab: tab("file:c"), pane: asPaneId("p2") }, () =>
+      store().openFile(ref, "a", 40),
+    );
+    expect(layout().focused).toBe("p2");
+    expect([lineIn(top), lineIn(bottom)]).toEqual([null, 40]);
+  });
+
+  it("starts a view that was never shown on the file's latest line", () => {
+    seat(
+      [file("a"), file("c")],
+      row(pane("p0", ["chat"]), column(pane("p1", ["file:a"]), pane("p2", ["file:c", "file:a"]))),
+    );
+    const top = idOf("p1", "file:a");
+    reveal("p1", 40);
+    expect([lineIn(top), lineIn(idOf("p2", "file:a"))]).toEqual([40, 40]);
   });
 });
 

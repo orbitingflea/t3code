@@ -1,12 +1,18 @@
 import { type ThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
 import {
+  findPane,
+  holders,
   leaves,
   parseViewKey,
+  preferredView,
   resolveLayout,
+  surfaceTabId,
+  type TabId,
   type ViewKey,
   type ViewRef,
   viewKey,
+  type WorkAreaLayout,
 } from "./workArea.logic";
 
 /** In-memory identity of one work-area view; follows a view across pane moves until it ends. */
@@ -16,6 +22,8 @@ export type ViewId = string & { readonly __viewId: unique symbol };
 // so a thread switch never shares ids, then by the view's current pane and tab.
 const ids = new Map<string, Map<ViewKey, ViewId>>();
 const endListeners = new Set<(id: ViewId) => void>();
+// What a view of a file tab keeps showing after another view took a later line reveal.
+const held = new Map<ViewId, unknown>();
 let minted = 0;
 let following = false;
 
@@ -44,6 +52,8 @@ export function onViewEnd(listener: (id: ViewId) => void): () => void {
   endListeners.add(listener);
   return () => endListeners.delete(listener);
 }
+
+export const shownBy = <T>(id: ViewId, live: T): T => (held.get(id) as T | undefined) ?? live;
 
 const viewsIn = (record: ThreadRightPanelState | undefined): ViewKey[] =>
   record === undefined
@@ -84,5 +94,65 @@ function followWrite(
     }
     if (byView.size === 0) ids.delete(owner);
   }
-  for (const id of ended) for (const listener of endListeners) listener(id);
+  for (const id of ended) {
+    held.delete(id);
+    for (const listener of endListeners) listener(id);
+  }
+  for (const [owner, byView] of ids) {
+    const before = previous[owner];
+    const after = next[owner];
+    if (before !== undefined && after !== undefined && after !== before)
+      holdReveals(byView, before, after);
+  }
+}
+
+// File tabs this write gave a new line reveal, each with the surface or payload it had before.
+function revealsIn(
+  before: ThreadRightPanelState,
+  after: ThreadRightPanelState,
+  was: WorkAreaLayout,
+  layout: WorkAreaLayout,
+): [TabId, unknown][] {
+  const files = after.surfaces.flatMap((surface): [TabId, unknown][] => {
+    const prior = before.surfaces.find((entry) => entry.id === surface.id);
+    return surface.kind === "file" &&
+      prior?.kind === "file" &&
+      prior.revealRequestId !== surface.revealRequestId
+      ? [[surfaceTabId(surface.id), prior]]
+      : [];
+  });
+  const linked = Object.entries(layout.tabs).flatMap(([key, payload]): [TabId, unknown][] => {
+    const tab = key as TabId;
+    const prior = was.tabs[tab];
+    return payload.kind === "linked-file" &&
+      prior?.kind === "linked-file" &&
+      prior.reveal !== payload.reveal
+      ? [[tab, prior]]
+      : [];
+  });
+  return [...files, ...linked];
+}
+
+// A reveal belongs to the view its write targets: the pane the write shows the tab in, else the
+// reveal pick. Every other view the user has seen, hidden ones too, keeps what it showed.
+function holdReveals(
+  byView: ReadonlyMap<ViewKey, ViewId>,
+  before: ThreadRightPanelState,
+  after: ThreadRightPanelState,
+) {
+  const was = resolveLayout(before);
+  const layout = resolveLayout(after);
+  for (const [tab, prior] of revealsIn(before, after, was, layout)) {
+    const holding = holders(layout.root, tab);
+    const target =
+      holding.find((pane) => pane.active === tab && findPane(was.root, pane.id)?.active !== tab) ??
+      preferredView(layout, tab, layout.focused, "reveal");
+    for (const pane of holding) {
+      // A view never shown has no id; it opens on the live surface.
+      const id = byView.get(viewKey({ pane: pane.id, tab }));
+      if (id === undefined) continue;
+      if (pane.id === target?.id) held.delete(id);
+      else if (!held.has(id)) held.set(id, prior);
+    }
+  }
 }

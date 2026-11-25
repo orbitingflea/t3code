@@ -183,6 +183,7 @@ async function openOwner(
     "k.ts": sourceFile("k.ts", "lambda", 300),
     "l.ts": sourceFile("l.ts", "mu", 300),
     "m.ts": sourceFile("m.ts", "nu", 300),
+    "n.ts": sourceFile("n.ts", "xi", 300),
   };
   // The last test's views end with its layouts, so what they showed does not carry over.
   useRightPanelStore.setState({ byThreadKey: {} });
@@ -552,6 +553,38 @@ describe("one file open in two panes", () => {
       expect(citedIn("p0")).toEqual([60]);
       expect(Math.abs(moved.topLine().line - 60)).toBeLessThanOrEqual(30);
     });
+  });
+});
+
+describe("one file open in two panes, one of them hidden", () => {
+  it("keeps a view's own cited line when it comes back from another tab", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    await using _app = await openOwner(chatBeside("file:n.ts", ["file:n.ts", "file:c.ts"]));
+    await vi.waitFor(() => {
+      sourceView(paneById("p1")).expectLineInView(1, "xi_1");
+      sourceView(paneById("p2")).expectLineInView(1, "xi_1");
+    });
+    const reveal = (pane: string, line: number) =>
+      act(() => {
+        const store = useRightPanelStore.getState();
+        store.updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) });
+        store.openFile(owner, "n.ts", line);
+      });
+    await reveal("p2", 60);
+    await vi.waitFor(() => expect(citedIn("p2")).toEqual([60]));
+
+    // p2 shows another tab while p1, the only view shown, cites a nearby line.
+    await userEvent.click(tabIn("p2", "file:c.ts"));
+    await vi.waitFor(() => sourceView(paneById("p2")).expectLineInView(1, "gamma_1"));
+    await reveal("p1", 64);
+    await vi.waitFor(() => expect(citedIn("p1")).toEqual([64]));
+
+    await userEvent.click(tabIn("p2", "file:n.ts"));
+    await vi.waitFor(() => {
+      sourceView(paneById("p2")).expectLineInView(60, "xi_60");
+      expect(citedIn("p2")).toEqual([60]);
+    });
+    expect(citedIn("p1")).toEqual([64]);
   });
 });
 

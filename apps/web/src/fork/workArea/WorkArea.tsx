@@ -72,7 +72,7 @@ import {
 import { dragShieldProps, registerThreadDragFallback } from "./threadDragFallback";
 import { useLinkDrops } from "./useLinkDrops";
 import { followFindRequests } from "./useWorkAreaChat";
-import { onViewEnd, type ViewId, viewIdOf } from "./viewIdentity";
+import { shownBy, viewIdOf } from "./viewIdentity";
 import {
   type ArmKind,
   type Edge,
@@ -603,19 +603,6 @@ export function WorkArea(props: WorkAreaProps) {
   );
 }
 
-// What each view last showed of its tab, kept by the view's id across remounts and moves.
-const shownByView = new Map<ViewId, { readonly live: unknown; readonly shown: unknown }>();
-onViewEnd((id) => shownByView.delete(id));
-
-// What `view` shows of `live`: a change lands in the view that leads the tab, and another view
-// keeps what it showed, then and once it leads. A view with nothing shown yet shows `live`.
-function viewShown<T>(view: ViewId, live: T, leads: boolean): T {
-  const seen = shownByView.get(view);
-  const shown = seen === undefined || (seen.live !== live && leads) ? live : (seen.shown as T);
-  shownByView.set(view, { live, shown });
-  return shown;
-}
-
 function WorkAreaPane(props: {
   readonly pane: DrawnPane;
   readonly layout: WorkAreaLayout;
@@ -751,15 +738,13 @@ function WorkAreaPane(props: {
         ),
       }
     : { scope: viewId };
-  // A line reveal shows in the view that leads its file; another view keeps the file as it was.
-  const shown = viewShown(
+  const shown = shownBy(
     viewId,
     payload?.kind === "linked-file"
       ? payload
       : activeEntry !== undefined && !isDisplayEntry(activeEntry) && activeEntry.kind === "file"
         ? activeEntry
         : null,
-    leads,
   );
   const lone = !props.strip && layout.root.kind === "pane" && !pane.tabs.includes(LAUNCHER);
   const canSplit = useWorkAreaViewCheck(
