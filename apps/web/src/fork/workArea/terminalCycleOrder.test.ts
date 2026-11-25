@@ -5,7 +5,7 @@ import { expect, it } from "vite-plus/test";
 import { cycleThreadTerminal } from "~/lib/cycleThreadTerminal";
 import { selectThreadRightPanelState, useRightPanelStore } from "~/rightPanelStore";
 
-import { asTabId, paneHolding, resolveLayout } from "./workArea.logic";
+import { asTabId, holders, resolveLayout } from "./workArea.logic";
 
 it("cycles terminal tabs in the order their strip shows after a drag", () => {
   const ref = scopeThreadRef(EnvironmentId.make("local"), ThreadId.make("cycle-order"));
@@ -19,16 +19,18 @@ it("cycles terminal tabs in the order their strip shows after a drag", () => {
   const a = open("a");
   const b = open("b");
   const c = open("c");
-  const pane = paneHolding(resolveLayout(state()).root, a)!;
+  const pane = holders(resolveLayout(state()).root, a)[0]!;
   panel.updateWorkArea(ref, {
     type: "place",
-    source: { tabs: [c] },
+    source: { view: { pane: pane.id, tab: c } },
     at: { kind: "strip", pane: pane.id, before: b },
   });
-  panel.updateWorkArea(ref, { type: "activate", tab: a });
-  expect(paneHolding(resolveLayout(state()).root, a)!.tabs.filter((tab) => tab !== "chat")).toEqual(
-    [a, c, b],
-  );
+  panel.updateWorkArea(ref, { type: "activate", view: { pane: pane.id, tab: a } });
+  expect(holders(resolveLayout(state()).root, a)[0]!.tabs.filter((tab) => tab !== "chat")).toEqual([
+    a,
+    c,
+    b,
+  ]);
 
   const activeTerminal = () => {
     const active = state().surfaces.find((surface) => surface.id === state().activeSurfaceId);
