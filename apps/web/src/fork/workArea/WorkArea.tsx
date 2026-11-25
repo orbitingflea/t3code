@@ -725,9 +725,6 @@ function WorkAreaPane(props: {
   ];
   const payload = layout.tabs[pane.active];
   const activeEntry = entries.find((entry) => entry.id === pane.active);
-  // Of the views showing this tab, the focused one, else the first, takes its reveals.
-  const leads =
-    props.strip || preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id;
   const ownerKey = scopedThreadKey(threadRef);
   const viewId = viewIdOf(ownerKey, viewOf(pane.active));
   // The one strip lists tabs, not views: its file reads the file's place and saves to every view.
@@ -823,7 +820,6 @@ function WorkAreaPane(props: {
           tabMenu,
           notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
-          leads,
           view: viewId,
           strip: props.strip,
           reading,

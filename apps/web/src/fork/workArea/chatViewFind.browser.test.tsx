@@ -169,6 +169,14 @@ const layoutNow = () =>
   resolveLayout(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, owner));
 const holdersOfOther = () => holders(layoutNow().root, otherChat).map((pane) => pane.id);
 
+const FIND_KEYS = compileResolvedKeybindingsConfig([{ key: "ctrl+f", command: "chat.find" }]);
+const NO_MATCHES = {
+  totalMatches: 0,
+  activeIndex: 0,
+  snapshotSequence: 0,
+  match: null,
+} satisfies OrchestrationV2SearchThreadResult;
+
 const focusPane = (pane: string) =>
   act(() =>
     useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) }),
@@ -194,10 +202,39 @@ it("opens Find only in the view of a Chat open in two panes that it is opened fr
   expect(barIn("p1")).toBeNull();
   expect(barIn("p2")).not.toBeNull();
 
-  // Opening it from the other view moves it there.
+  // Opening it from the other view, with the keyboard there, moves it there.
+  const target = composerIn("p1").element();
+  if (!(target instanceof HTMLElement)) throw new Error("Expected a message box");
+  await act(() => target.focus());
   await openFindFrom("p1");
   await expect.element(findIn("p1")).toHaveFocus();
   await vi.waitFor(() => expect(barIn("p2")).toBeNull());
+});
+
+it("keeps Find in the view whose keyboard asks for it again after a write focused another pane", async () => {
+  using _environment = installFakeEnvironment(THREADS, {
+    threadFind: true,
+    keybindings: FIND_KEYS,
+  });
+  using _search = answerRpc(ORCHESTRATION_V2_WS_METHODS.searchThread, () =>
+    Effect.succeed(NO_MATCHES),
+  );
+  await using _app = await openOwner(otherChatTwice(), 3);
+  for (const id of ["p1", "p2"]) await expect.element(composerIn(id)).toBeVisible();
+  await openFindFrom("p2");
+  await findIn("p2").fill("question");
+  await focusPane("p0");
+  await expect.element(findIn("p2")).toHaveFocus();
+
+  // The keyboard is still in p2's Find field: Ctrl+F there selects its query again.
+  await userEvent.keyboard("{Control>}f{/Control}");
+
+  await vi.waitFor(() => {
+    const field = findIn("p2").element() as HTMLInputElement;
+    expect(document.activeElement).toBe(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([0, "question".length]);
+  });
+  expect(barIn("p1")).toBeNull();
 });
 
 it("keeps Find in its view and the keyboard in the main Chat's message box the user clicks", async () => {
@@ -312,22 +349,17 @@ it("keeps Find open in the one strip when a drop moves its Chat to another pane"
   await expect.element(findIn("p0")).toBeVisible();
 });
 
-it("starts a search from the viewport of the view that shows Find", async () => {
+it("starts a search from the viewport of the view that shows Find after another view gets focus", async () => {
   using _environment = installFakeEnvironment(THREADS, {
     threadFind: true,
-    keybindings: compileResolvedKeybindingsConfig([{ key: "ctrl+f", command: "chat.find" }]),
+    keybindings: FIND_KEYS,
   });
   const searches: OrchestrationV2SearchThreadInput[] = [];
   using _search = answerRpc(
     ORCHESTRATION_V2_WS_METHODS.searchThread,
     (input: OrchestrationV2SearchThreadInput) => {
       searches.push(input);
-      return Effect.succeed({
-        totalMatches: 0,
-        activeIndex: 0,
-        snapshotSequence: 0,
-        match: null,
-      } satisfies OrchestrationV2SearchThreadResult);
+      return Effect.succeed(NO_MATCHES);
     },
   );
   await using _app = await openOwner(
@@ -362,6 +394,9 @@ it("starts a search from the viewport of the view that shows Find", async () => 
   expect(barIn("p2")).toBeNull();
   const shown = visibleMessages("p1");
   expect(shown.filter((id) => visibleMessages("p2").includes(id))).toEqual([]);
+  // A write focuses p2's pane; Find stays in p1.
+  await focusPane("p2");
+  expect(barIn("p1")).not.toBeNull();
 
   await findIn("p1").fill("question");
 

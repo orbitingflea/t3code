@@ -53,6 +53,16 @@ export function onViewEnd(listener: (id: ViewId) => void): () => void {
   return () => endListeners.delete(listener);
 }
 
+export function viewAt(id: ViewId): { readonly owner: string; readonly view: ViewRef } | undefined {
+  for (const [owner, byView] of ids) {
+    for (const [key, value] of byView) {
+      const view = value === id ? parseViewKey(key) : null;
+      if (view !== null) return { owner, view };
+    }
+  }
+  return undefined;
+}
+
 export const shownBy = <T>(id: ViewId, live: T): T => (held.get(id) as T | undefined) ?? live;
 
 const viewsIn = (record: ThreadRightPanelState | undefined): ViewKey[] =>

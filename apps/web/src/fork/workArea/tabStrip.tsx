@@ -56,8 +56,6 @@ interface RightPanelPane {
   readonly notePress: (surfaceId: string) => void;
   /** Per-view drag id for `surfaceId` in this pane, unique across panes in the shared drag context. */
   readonly dragId: (surfaceId: string) => string;
-  /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
-  readonly leads: boolean;
   /** Stable in-memory id of the active tab's view; follows the view across pane moves. */
   readonly view: ViewId;
   /** True when the work area draws one tab strip instead of split panes. */

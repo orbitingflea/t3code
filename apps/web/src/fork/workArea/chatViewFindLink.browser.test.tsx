@@ -4,6 +4,7 @@ import { DEFAULT_THEMES, preloadHighlighter } from "@pierre/diffs";
 import { createMemoryHistory } from "@tanstack/react-router";
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
+import { compileResolvedKeybindingsConfig } from "@t3tools/shared/keybindings";
 import type * as Context from "effect/Context";
 import { expect, it, vi } from "vite-plus/test";
 import { page, userEvent } from "vite-plus/test/browser";
@@ -109,8 +110,12 @@ const barIn = (id: string) => paneById(id)?.querySelector("[data-thread-find-bar
 const layoutNow = () =>
   resolveLayout(selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, owner));
 
-it("keeps Find in its view when a link there opens a file in another pane", async () => {
-  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+const findIn = (id: string) =>
+  page.elementLocator(paneById(id)).getByRole("searchbox", { name: "Find in thread" });
+
+// Opens the owner's thread with Find open in p2's view of the other Chat, then clicks the file
+// link in that view; the file opens in another pane, which takes the focus.
+async function clickLinkUnderFind() {
   await preloadHighlighter({ themes: Object.values(DEFAULT_THEMES), langs: ["typescript"] });
   resetState();
   state.files = { "k.ts": sourceFile("k.ts", "kappa", 300) };
@@ -150,8 +155,32 @@ it("keeps Find in its view when a link there opens a file in another pane", asyn
     leaves(layoutNow().root).find((node) => node.tabs.some((tab) => tab.endsWith("k.ts")))?.id;
   await vi.waitFor(() => expect(fileHolder()).toBeDefined());
 
-  // The opened file's pane keeps the focus, and Find stays in the view the link was clicked in.
   await vi.waitFor(() => expect(layoutNow().focused).toBe(fileHolder()));
+  return stack.move();
+}
+
+it("keeps Find in its view when a link there opens a file in another pane", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await clickLinkUnderFind();
+
+  // The opened file's pane keeps the focus, and Find stays in the view the link was clicked in.
   expect(barIn("p1")).toBeNull();
   expect(barIn("p2")).not.toBeNull();
+});
+
+it("keeps Find in the view where Ctrl+F is pressed after a link there opened a file", async () => {
+  using _environment = installFakeEnvironment(THREADS, {
+    threadFind: true,
+    keybindings: compileResolvedKeybindingsConfig([{ key: "ctrl+f", command: "chat.find" }]),
+  });
+  await using _app = await clickLinkUnderFind();
+  const pane = (element: Element | null) =>
+    element?.closest("[data-work-area-pane]")?.getAttribute("data-work-area-pane");
+  expect(pane(document.activeElement)).toBe("p2");
+
+  // The keyboard is still on the link in p2's view: Ctrl+F there asks for Find again.
+  await userEvent.keyboard("{Control>}f{/Control}");
+
+  await expect.element(findIn("p2")).toHaveFocus();
+  expect(barIn("p1")).toBeNull();
 });
