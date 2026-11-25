@@ -69,6 +69,7 @@ function RepliesList(props: { readonly threadRef: ScopedThreadRef }) {
   const hasSubThreads = useThreadDisplayMode(props.threadRef).subThreads;
   const summaries = useSubThreadSummaries(hasSubThreads ? props.threadRef : null);
   const states = useSubThreadStates(props.threadRef);
+  const pane = useRightPanelPane()?.id;
   // Another device may switch the mode while this tab is open; no reply box works then.
   if (!hasSubThreads) {
     return <p className="p-3 text-muted-foreground text-xs">{WORK_AREA_COPY.notChatMode}</p>;
@@ -78,7 +79,7 @@ function RepliesList(props: { readonly threadRef: ScopedThreadRef }) {
       threadRef={props.threadRef}
       summaries={summaries}
       states={states}
-      opener={() => chatFileTarget(LIST_ORIGIN, props.threadRef)}
+      opener={() => chatFileTarget(LIST_ORIGIN, props.threadRef, pane)}
     />
   );
 }

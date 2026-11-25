@@ -1,5 +1,5 @@
 import { createMemoryHistory } from "@tanstack/react-router";
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { MessageId, TurnItemId } from "@t3tools/contracts";
 import { DEFAULT_CLIENT_SETTINGS } from "@t3tools/contracts/settings";
 import { CHAT_REPLIES_DISPLAY_MODE } from "@t3tools/shared/displayModes";
@@ -23,8 +23,9 @@ import {
   threadWithHistory,
   type FakeDriver,
 } from "../../../test/fakeEnvironment";
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 import { asPaneId, replyTabId } from "../workArea/workArea.logic";
+import { restoredRecord, restoreWorkArea } from "../workArea/workAreaStorage.logic";
 import { replyContextField } from "./subThreadReply";
 
 vi.mock(
@@ -245,6 +246,59 @@ it("opens a Replies list row dropped on the Chat's tab as its reply tab before t
 
   await vi.waitFor(() => expect(stripOf(paneHoldingTab("chat")!)).toEqual([repliedTab, "chat"]));
   expect(stripOf(paneHoldingTab("replies")!)).not.toContain(repliedTab);
+});
+
+it("opens a row of the second of two Replies lists beside that list, though the Chat has the focus", async () => {
+  await using _app = await openThread(replied.id, 1600);
+  const repliedRef = scopeThreadRef(ENVIRONMENT_ID, replied.id);
+  await expect.element(page.getByRole("button", { name: /1 reply/ })).toBeInTheDocument();
+  const list = (id: string) => ({ kind: "pane", id, tabs: ["replies"], active: "replies" });
+  await act(() =>
+    useRightPanelStore.setState({
+      byThreadKey: {
+        [scopedThreadKey(repliedRef)]: restoredRecord({
+          isOpen: true,
+          activeSurfaceId: null,
+          surfaces: [{ id: "replies", kind: "replies" }],
+          workArea: restoreWorkArea({
+            root: {
+              kind: "split",
+              id: "s1",
+              axis: "row",
+              ratio: 0.4,
+              first: { kind: "pane", id: "p0", tabs: ["chat"], active: "chat" },
+              second: {
+                kind: "split",
+                id: "s2",
+                axis: "column",
+                ratio: 0.5,
+                first: list("p1"),
+                second: list("p2"),
+              },
+            },
+            tabs: { chat: { kind: "primary-chat" }, replies: { kind: "surface" } },
+            focused: "p0",
+            seq: 3,
+          })!,
+        }),
+      },
+    }),
+  );
+  const paneById = (id: string) =>
+    document.querySelector<HTMLElement>(`[data-work-area-pane="${id}"]`)!;
+  const row = await vi.waitFor(() => {
+    const element = paneById("p2").querySelector<HTMLElement>(
+      "[data-sub-thread-list] button:not([aria-pressed])",
+    );
+    expect(element).not.toBeNull();
+    return element!;
+  });
+
+  // A click with no press first, as Enter on the row gives: the focus stays on the Chat's pane.
+  await act(() => row.click());
+
+  await vi.waitFor(() => expect(stripOf(paneById("p2"))).toEqual(["replies", repliedTab]));
+  expect(stripOf(paneById("p1"))).toEqual(["replies"]);
 });
 
 // [Chat | reply] at full width, then narrowed to the one-strip view with Chat shown: the reply's
