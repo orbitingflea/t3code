@@ -72,7 +72,7 @@ const ownerThread: FakeThread = {
     item.type === "assistant_message"
       ? {
           ...item,
-          text: "See [doc.md](/workspace/render/doc.md#L41).",
+          text: "See [doc.md](/workspace/render/doc.md#L41) and [later](/workspace/render/doc.md#L121).",
         }
       : item,
   ),
@@ -117,9 +117,9 @@ const stripOf = (id: string) =>
     tab.getAttribute("data-right-panel-tab-id"),
   );
 
-const fileLink = (name: string) =>
+const fileLink = (name: string, line = 41) =>
   [...document.querySelectorAll<HTMLElement>("a.chat-markdown-file-link")].find((link) =>
-    link.getAttribute("href")?.endsWith(`/${name}:41`),
+    link.getAttribute("href")?.endsWith(`/${name}:${line}`),
   )!;
 
 async function openOwner(record: ReturnType<typeof chatBeside>) {
@@ -215,4 +215,28 @@ it("a Markdown line link leaves the other live view rendered", async () => {
   const jumped = sourceView(paneById("p1"));
   await vi.waitFor(() => jumped.expectLineInView(41, "Paragraph 21."));
   expect(rendered("p2")).toBe(true);
+});
+
+it("keeps the other Markdown copy in source on a second line link", async () => {
+  using _environment = installFakeEnvironment([ownerThread]);
+  await using _app = await openOwner(chatBeside(["file:a.ts", "file:doc.md"], ["file:doc.md"]));
+  const bottom = paneById("p2");
+  await vi.waitFor(() => expect(bottom.querySelector(".chat-markdown")).not.toBeNull());
+
+  await userEvent.click(fileLink("doc.md"));
+  await vi.waitFor(() => sourceView(bottom).expectLineInView(41, "Paragraph 21."));
+
+  const top = paneById("p1");
+  const topCopy = top.querySelector('[data-right-panel-tab-id="file:doc.md"]')!;
+  await userEvent.click(page.elementLocator(topCopy));
+  await vi.waitFor(() => expect(activeIn("p1")).toBe("file:doc.md"));
+  expect(bottom.querySelector(".chat-markdown")).toBeNull();
+  const later = fileLink("doc.md", 121);
+  expect(later, "The second line link must exist").toBeDefined();
+  await userEvent.click(later);
+
+  await vi.waitFor(() => sourceView(top).expectLineInView(121, "Paragraph 61."));
+  const bottomRendered = bottom.querySelector(".chat-markdown") !== null;
+  expect(bottomRendered, "The bottom copy should stay in source").toBe(false);
+  sourceView(bottom).expectLineInView(41, "Paragraph 21.");
 });

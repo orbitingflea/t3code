@@ -93,6 +93,14 @@ class SourceGeometry {
   }
 }
 
+// What a mounted file view last showed for its surface.
+interface MountedView {
+  readonly surface: FileSurface | undefined;
+  readonly renderedAllowed: boolean;
+  readonly revealKey: number;
+  readonly revealLine: number | null;
+}
+
 interface SourceBinding {
   readonly tracker: ReadingTracker;
   readonly geometry: SourceGeometry;
@@ -181,18 +189,29 @@ export function useFileReadingPosition(input: {
     return verdict === "pending" && !leads ? "none" : verdict;
   };
   const verdict = verdictOf();
-  const viewMount = () => {
+  const viewMount = (held?: MountedView): MountedView => {
+    // A view that leaves a reveal to another view keeps the mode and reveal it showed.
+    if (held !== undefined && verdict === "none" && ledger.verdict(surface) === "pending") {
+      return {
+        ...held,
+        surface,
+        renderedAllowed: held.revealLine === null || held.renderedAllowed,
+      };
+    }
     const newest =
       verdict === "shown" && file !== null
         ? readings.newestView(file, ["source", "rendered", "offset"])
         : null;
-    // A view that leaves a reveal to another view keeps its rendered or source view.
-    const passed = verdict === "none" && ledger.verdict(surface) === "pending";
-    return { surface, renderedAllowed: passed || (newest !== null && newest !== "source") };
+    return {
+      surface,
+      renderedAllowed: newest !== null && newest !== "source",
+      revealKey: ledger.generation(surface),
+      revealLine: input.revealLine,
+    };
   };
   // A reveal that lands while this file's view is mounted must not flip it to rendered.
-  const [mounted, setMounted] = useState(viewMount);
-  if (mounted.surface !== surface) setMounted(viewMount());
+  const [mounted, setMounted] = useState(() => viewMount());
+  if (mounted.surface !== surface) setMounted(viewMount(mounted));
   const placed: FileReadingKey | undefined =
     input.attachment === undefined
       ? (file ?? undefined)
@@ -232,7 +251,7 @@ export function useFileReadingPosition(input: {
     placeRef: place.ref,
     rowLine: place.rowLine,
     scrollLine: verdict === "pending" ? input.revealLine : null,
-    revealKey: ledger.generation(surface),
+    revealKey: mounted.revealKey,
     renderedAllowed: mounted.renderedAllowed,
     /** Asked just before a reveal scrolls: a reopened tab whose citation was shown restores instead. */
     keepReveal: (fileContainer: HTMLElement) => {
