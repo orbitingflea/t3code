@@ -172,6 +172,11 @@ const stripOf = (pane: Element) =>
     tab.getAttribute("data-right-panel-tab-id"),
   );
 
+const activeIn = (pane: string) =>
+  paneById(pane)
+    .querySelector('[data-active-tab="true"][data-right-panel-tab-id]')
+    ?.getAttribute("data-right-panel-tab-id");
+
 /** A Linked items row link; the Chat's header links the same pull request, so it is found in p1. */
 const rowLink = (url: string) =>
   vi.waitFor(() => {
@@ -260,6 +265,33 @@ describe("drag a Linked items row", () => {
       expect(stripOf(paneById("p0"))).toEqual([expect.stringMatching(/^pull-request:/), "chat"]),
     );
     expect(stripOf(paneById("p1"))).toEqual(["pull-requests", "diff"]);
+    await expectDragDone();
+  });
+
+  it("shows an open pull request row's tab where it is dropped: in a pane that has it, or as a second view", async () => {
+    using _environment = installDragEnvironment([reviewedThread], withWidgets);
+    await using _app = await openReviewed();
+    await dragOnto(await rowLink(pullRequestUrl), tabIn("p0", "chat"));
+    await vi.waitFor(() =>
+      expect(stripOf(paneById("p0"))).toEqual([expect.stringMatching(/^pull-request:/), "chat"]),
+    );
+    const pullRequest = stripOf(paneById("p0"))[0]!;
+    await expectDragDone();
+    await userEvent.click(tabIn("p0", "chat"));
+    await vi.waitFor(() => expect(activeIn("p0")).toBe("chat"));
+
+    await dragOnto(await rowLink(pullRequestUrl), tabIn("p0", "chat"));
+    await vi.waitFor(() => expect(activeIn("p0")).toBe(pullRequest));
+    expect(stripOf(paneById("p0"))).toEqual([pullRequest, "chat"]);
+    expect(stripOf(paneById("p1"))).toEqual(["pull-requests", "diff"]);
+    await expectDragDone();
+
+    await dragOnto(await rowLink(pullRequestUrl), tabIn("p1", "diff"));
+    await vi.waitFor(() =>
+      expect(stripOf(paneById("p1"))).toEqual(["pull-requests", pullRequest, "diff"]),
+    );
+    expect(activeIn("p1")).toBe(pullRequest);
+    expect(stripOf(paneById("p0"))).toEqual([pullRequest, "chat"]);
     await expectDragDone();
   });
 
