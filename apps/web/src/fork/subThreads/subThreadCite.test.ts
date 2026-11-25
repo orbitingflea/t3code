@@ -226,6 +226,34 @@ describe("a Cite in the main list of a Chat mode thread", () => {
     }
   });
 
+  it("goes into the empty box of the view the open shows, of a reply open in two panes", () => {
+    using view = mainView();
+    openReply("first-b");
+    const store = useRightPanelStore.getState();
+    store.updateWorkArea(threadRef, {
+      type: "place",
+      source: { view: firstView(replyTab("first-b")), copy: true },
+      at: { kind: "edge", pane: drawWorkArea(layout(), NO_VIEW).panes[1]!.id, edge: "bottom" },
+    });
+    const [kept, copied] = holders(layout().root, replyTab("first-b")).map((pane) => pane.id);
+    store.updateWorkArea(threadRef, { type: "focus", pane: kept! });
+    const inKept = fakeBox("");
+    const inCopy = fakeBox("");
+    const entry = entryOf("first-b");
+    // The copy's box mounts last.
+    const keptBox = registerReplyBox(entry, threadKey, "first-b", inKept.ref, kept!);
+    const copyBox = registerReplyBox(entry, threadKey, "first-b", inCopy.ref, copied!);
+    try {
+      expect(view.cite()).toBe(true);
+      expect(layout().focused).toBe(kept);
+      expect(inKept.cite).toHaveBeenCalledOnce();
+      expect(inCopy.cite).not.toHaveBeenCalled();
+    } finally {
+      keptBox[Symbol.dispose]();
+      copyBox[Symbol.dispose]();
+    }
+  });
+
   it("forgets the focus of a reply tab that was closed and opened again", () => {
     using view = mainView();
     const boxA = fakeBox("draft a");

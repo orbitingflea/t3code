@@ -7,10 +7,16 @@ import type { ChatComposerHandle } from "../../components/chat/ChatComposer";
 import { toastManager } from "../../components/ui/toast";
 import { useStableCallback } from "../../hooks/useStableCallback";
 import type { AssistantCitationSourceAnchor } from "../../lib/assistantTextSelection";
+import { selectThreadRightPanelState, useRightPanelStore } from "../../rightPanelStore";
 import type { CiteAssistantText } from "../dashboard/dashboardCitation";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
 import { chatFileTarget } from "../workArea/chatFileOpener";
-import { type PaneId, PRIMARY_CHAT, type ReplyEntry } from "../workArea/workArea.logic";
+import {
+  type PaneId,
+  PRIMARY_CHAT,
+  type ReplyEntry,
+  resolveLayout,
+} from "../workArea/workArea.logic";
 import { type SubThreadSummary, useSubThreadSummaries } from "./subThreadsState";
 
 type CiteComposer = RefObject<Pick<
@@ -35,6 +41,15 @@ const focusedAt = new WeakMap<ReplyEntry, Map<PaneId | null, number>>();
 let focusCount = 0;
 
 const lastFocus = (box: ReplyBox) => focusedAt.get(box.tab)?.get(box.pane) ?? 0;
+
+// The box focused last; of boxes never focused, the one mounted last.
+function focusedLast(boxes: Iterable<ReplyBox>): ReplyBox | undefined {
+  let chosen: ReplyBox | undefined;
+  for (const box of boxes) {
+    if (chosen === undefined || lastFocus(box) >= lastFocus(chosen)) chosen = box;
+  }
+  return chosen;
+}
 
 /**
  * Registers a mounted reply tab's composer for `citeInThread`, keyed by `(tab, pane)` so multiple
@@ -90,20 +105,22 @@ export function citeInThread(
 ): boolean {
   if (hasText(own)) return citeInto(own, citation, sourceAnchor);
   const threadKey = scopedThreadKey(threadRef);
-  let drafted: ReplyBox | undefined;
-  for (const box of mountedBoxes) {
-    if (box.threadKey !== threadKey || !hasText(box.composer)) continue;
-    if (drafted === undefined || lastFocus(box) >= lastFocus(drafted)) drafted = box;
-  }
+  const drafted = focusedLast(
+    [...mountedBoxes].filter((box) => box.threadKey === threadKey && hasText(box.composer)),
+  );
   if (drafted) return citeInto(drafted.composer, citation, sourceAnchor);
   // A user open, so a waiting automatic Diff cannot replace it. A sync commit runs its passive
   // effects before returning, so the box has loaded its draft.
-  flushSync(() =>
-    chatFileTarget({ kind: "own", tab: PRIMARY_CHAT }, threadRef).openSubThread(cited),
-  );
-  const box = [...mountedBoxes].findLast(
+  const target = chatFileTarget({ kind: "own", tab: PRIMARY_CHAT }, threadRef);
+  flushSync(() => target.openSubThread(cited));
+  const cites = [...mountedBoxes].filter(
     (candidate) => candidate.threadKey === threadKey && candidate.first === cited,
   );
+  // The open focuses the pane it shows the tab in, which a tab open in two panes has a box in.
+  const shownIn = resolveLayout(
+    selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, target.panel()),
+  ).focused;
+  const box = cites.find((candidate) => candidate.pane === shownIn) ?? focusedLast(cites);
   if (!box) {
     toastManager.add({ type: "warning", title: "Could not open the reply box" });
     return false;
