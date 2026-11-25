@@ -370,6 +370,10 @@ export function createFileReadingStore(options: {
     forgetScope(scope: string): void {
       scoped.delete(scope);
     },
+    /**
+     * Moves in-memory positions kept for `from` to `to`, replacing any entries at `to`.
+     * Does nothing when `from` has no entries, and leaves stored file places intact.
+     */
     moveScope(from: string, to: string): void {
       const places = scoped.get(from);
       scoped.delete(from);

@@ -56,6 +56,7 @@ interface RightPanelPane {
   readonly dragId: (surfaceId: string) => string;
   /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
+  /** View reading-place scope; undefined in the narrow strip, which uses the file's place. */
   readonly readingScope: string | undefined;
 }
 

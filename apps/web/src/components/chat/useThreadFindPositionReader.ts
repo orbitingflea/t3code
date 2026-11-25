@@ -12,7 +12,10 @@ import type { ThreadFindPositionReader } from "./threadFind";
 import { attachThreadFindTimeline } from "./threadFindStore";
 import { readThreadFindPosition } from "./threadFindPosition";
 
-/** Hands thread find how to read the find position of this timeline's viewport. */
+/**
+ * Hands thread find how to read the find position of this timeline's viewport. Attaches only in
+ * the leading view.
+ */
 export function useThreadFindPositionReader({
   threadKey,
   navigate,

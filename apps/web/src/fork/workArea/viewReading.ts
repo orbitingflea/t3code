@@ -13,6 +13,11 @@ const viewsIn = (record: ThreadRightPanelState | undefined): ViewRef[] =>
         pane.tabs.map((tab) => ({ pane: pane.id, tab })),
       );
 
+/**
+ * Keeps view reading scopes in sync with work-area layouts in `panel`. A write that ends one view
+ * of a tab and starts one of the same tab moves its scope; other ended views are forgotten.
+ * Returns the unsubscribe function.
+ */
 export function followViewScopes(
   scopes: {
     readonly forgetScope: (scope: string) => void;
