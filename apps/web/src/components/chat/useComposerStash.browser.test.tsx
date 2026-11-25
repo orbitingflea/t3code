@@ -1,5 +1,6 @@
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { expect, it, vi } from "vite-plus/test";
+import { createRef } from "react";
 
 import { act, render } from "../../../test/render";
 import { DraftId, useComposerDraftStore } from "../../composerDraftStore";
@@ -68,6 +69,7 @@ it("keeps the draft when stashing while a pasted image is still compressing", as
     attachmentTargetKey: target,
     isComposerDraftTargetOpen: () => true,
     composerEditorRef: { current: null },
+    composerFormRef: { current: null },
     isRevertingCheckpoint: () => false,
     pendingThreadImportsRef: { current: new Map() },
     setComposerCursor: vi.fn(),
@@ -102,6 +104,7 @@ it("stashes a side chat's prompt when Mod+S is pressed inside its pane", async (
   };
   const environmentId = EnvironmentId.make("stash-env");
   const promptRef = { current: "Side chat question" };
+  const composerFormRef = createRef<HTMLFormElement>();
   const input = {
     environmentId,
     composerDraftTarget: target,
@@ -121,6 +124,7 @@ it("stashes a side chat's prompt when Mod+S is pressed inside its pane", async (
     attachmentTargetKey: target,
     isComposerDraftTargetOpen: () => true,
     composerEditorRef: { current: null },
+    composerFormRef,
     isRevertingCheckpoint: () => false,
     pendingThreadImportsRef: { current: new Map() },
     setComposerCursor: vi.fn(),
@@ -132,7 +136,9 @@ it("stashes a side chat's prompt when Mod+S is pressed inside its pane", async (
   await using screen = await render(
     <BackgroundThreadContext value>
       <div data-side-chat-pane="stash-side-thread">
-        <textarea aria-label="Side chat composer" />
+        <form ref={composerFormRef}>
+          <textarea aria-label="Side chat composer" />
+        </form>
         <Harness input={input} />
       </div>
     </BackgroundThreadContext>,

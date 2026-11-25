@@ -69,6 +69,7 @@ import {
 } from "react";
 import { BackgroundThreadContext, HiddenThreadContext } from "./backgroundThread";
 import { isInSideChatPane } from "../../lib/sideChatPane";
+import { pressedInPaneOf } from "../../fork/workArea/paneShortcut";
 import { useStableCallback } from "../../hooks/useStableCallback";
 
 /**
@@ -94,6 +95,7 @@ export function useComposerStash(input: {
   readonly attachmentTargetKey: string;
   readonly isComposerDraftTargetOpen: (targetKey: string) => boolean;
   readonly composerEditorRef: RefObject<ComposerPromptEditorHandle | null>;
+  readonly composerFormRef: RefObject<HTMLFormElement | null>;
   readonly isRevertingCheckpoint: () => boolean;
   readonly pendingThreadImportsRef: RefObject<Map<string, number>>;
   readonly setComposerCursor: Dispatch<SetStateAction<number>>;
@@ -124,6 +126,7 @@ export function useComposerStash(input: {
     attachmentTargetKey,
     isComposerDraftTargetOpen,
     composerEditorRef,
+    composerFormRef,
     isRevertingCheckpoint,
     pendingThreadImportsRef,
     setComposerCursor,
@@ -803,10 +806,13 @@ export function useComposerStash(input: {
         capture: true,
         context: readShortcutContext,
         // A side chat's composer takes the keys pressed in its pane; the main one takes the rest.
-        when: (event) => isInSideChatPane(event.target) === embedded,
+        when: (event) =>
+          embedded
+            ? pressedInPaneOf(event, composerFormRef.current)
+            : !isInSideChatPane(event.target),
       },
     );
-  }, [embedded, hiddenThread, handleStashShortcut, readShortcutContext]);
+  }, [embedded, hiddenThread, handleStashShortcut, readShortcutContext, composerFormRef]);
 
   return {
     stashQueue,

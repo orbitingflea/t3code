@@ -1,4 +1,4 @@
-import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { sideThreadKindOf } from "@t3tools/client-runtime/side-thread";
 import { formatSubagentDisplayTitle } from "@t3tools/client-runtime/state/subagent-display";
 import {
@@ -18,12 +18,7 @@ import { useClientSettings } from "../../hooks/useSettings";
 import { releaseComposerDraftUploads } from "../../lib/composerDraftUploads";
 import type { SideChatParentPanel } from "../../lib/sideChatPane";
 import { readLocalApi } from "../../localApi";
-import {
-  hostRightPanel,
-  rightPanelHostRef,
-  type ThreadSurface,
-  useRightPanelStore,
-} from "../../rightPanelStore";
+import { hostRightPanel, type ThreadSurface, useRightPanelStore } from "../../rightPanelStore";
 import { useQuietThreadProjection, useQuietThreadShell } from "../../state/entities";
 import { useEnvironmentScope } from "../../state/session";
 import { useEnvironmentShellStatus } from "../../state/shell";
@@ -41,7 +36,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { BackgroundThreadContext } from "./backgroundThread";
 import { OpenOriginContext } from "../../fork/workArea/chatFileOpener";
 import { useSideThreadEmbedding } from "../../fork/workArea/chatOpenerContext";
-import { closeThreadFindIn } from "./threadFindStore";
 
 /**
  * A side chat or a subagent as a tab: the thread's own chat, which decides its bottom, the
@@ -59,18 +53,11 @@ export default function SideThreadPane(props: {
   const { threadId } = surface;
   const gt = useGT();
   const threadRef = scopeThreadRef(parentRef.environmentId, threadId);
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the parent panel as host in the panel store, and closes this side chat's find with its pane
-  useEffect(() => {
-    const ref = scopeThreadRef(parentRef.environmentId, threadId);
-    const unhost = hostRightPanel(ref, parentRef);
-    return () => {
-      unhost();
-      // Crossing the sheet breakpoint remounts the pane in the same commit, which re-hosts it.
-      queueMicrotask(() => {
-        if (rightPanelHostRef(ref) === ref) closeThreadFindIn(scopedThreadKey(ref));
-      });
-    };
-  }, [parentRef, threadId]);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- registers the parent panel as host in the panel store
+  useEffect(
+    () => hostRightPanel(scopeThreadRef(parentRef.environmentId, threadId), parentRef),
+    [parentRef, threadId],
+  );
   const shell = useQuietThreadShell(threadRef);
   const bootstrapComplete = isThreadRouteSnapshotAuthoritative(
     useEnvironmentShellStatus(parentRef.environmentId),

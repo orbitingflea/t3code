@@ -390,6 +390,17 @@ export function resolveLayout(record: ThreadRightPanelState): WorkAreaLayout {
   return record.workArea ?? seedWorkArea(record);
 }
 
+export function surfacesInTabOrder(record: ThreadRightPanelState): RightPanelSurface[] {
+  const order = new Map(
+    leaves(resolveLayout(record).root)
+      .flatMap((pane) => pane.tabs)
+      .map((tab, index) => [tab, index]),
+  );
+  const rank = (surface: RightPanelSurface) =>
+    order.get(surfaceTabId(surface.id)) ?? Number.POSITIVE_INFINITY;
+  return record.surfaces.toSorted((left, right) => rank(left) - rank(right));
+}
+
 /** Whose title a Chat tab shows: none ("Chat") for a lone primary Chat, else its own thread's. */
 function chatTitleThread(
   layout: WorkAreaLayout,

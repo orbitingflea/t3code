@@ -2658,6 +2658,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     attachmentTargetKey,
     isComposerDraftTargetOpen: (key) => composerDraftTargetKeyRef.current === key,
     composerEditorRef,
+    composerFormRef,
     isRevertingCheckpoint: () => isRevertingCheckpointRef.current,
     pendingThreadImportsRef,
     setComposerCursor,

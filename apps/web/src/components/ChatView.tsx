@@ -396,6 +396,7 @@ import { useWorkAreaChat } from "../fork/workArea/useWorkAreaChat";
 import { terminalTabShown } from "../fork/workArea/drawerTerminals";
 import { closeFocusedTab } from "../fork/workArea/workAreaCommands";
 import { useChatViewOpener } from "../fork/workArea/chatFileOpener";
+import { findHasNoBar, registerFindBar } from "../fork/workArea/hostedChatFind";
 import { ChatOpenScope } from "../fork/workArea/ChatOpenScope";
 import { openThreadTab } from "../fork/workArea/chatOpenerContext";
 import { useModeSurfaceActions } from "../fork/dashboard/dashboardSurface";
@@ -2913,6 +2914,14 @@ export default function ChatView(props: ChatViewProps) {
   const threadFindEnabled = isServerThread && serverConfig?.threadFind === true;
   const isThreadFindActive =
     useThreadFindOpen(activeThreadRef, threadFindEnabled) && subThreadDraft === null;
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- counts the chats that show this thread's Find bar, so Find closes with the last one
+  useEffect(
+    () =>
+      subThreadDraft === null && activeThreadKey !== null
+        ? registerFindBar(activeThreadKey)
+        : undefined,
+    [subThreadDraft, activeThreadKey],
+  );
   const openThreadFindStable = useStableCallback((threadRef: ScopedThreadRef) => {
     if (threadFindEnabled && scopedThreadKey(threadRef) === activeThreadKey) {
       openThreadFind(activeThreadKey);
@@ -2943,6 +2952,7 @@ export default function ChatView(props: ChatViewProps) {
       "chat.find": () => {
         if (!isServerThread || serverConfig?.threadFind !== true || activeThreadKey === null)
           return false;
+        if (subThreadDraft !== null && findHasNoBar(activeThreadKey)) return false;
         openThreadFind(activeThreadKey);
       },
       "composer.cycleHost": ({ event }) => {

@@ -1,5 +1,6 @@
 import type { ScopedThreadRef } from "@t3tools/contracts";
 
+import { surfacesInTabOrder } from "../fork/workArea/workArea.logic";
 import { selectThreadRightPanelState, useRightPanelStore } from "../rightPanelStore";
 import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
 import { focusTerminal, type TerminalFocusOwner } from "./terminalFocus";
@@ -24,7 +25,7 @@ export function cycleThreadTerminal(
       ? drawerState.terminalGroups
           .toSorted((left, right) => groupRank(left.terminalIds) - groupRank(right.terminalIds))
           .flatMap((group) => group.terminalIds)
-      : panelState.surfaces.flatMap((surface) =>
+      : surfacesInTabOrder(panelState).flatMap((surface) =>
           surface.kind === "terminal" ? surface.terminalIds : [],
         );
   const activeTerminalId =
