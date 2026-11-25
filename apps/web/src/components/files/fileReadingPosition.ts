@@ -186,7 +186,9 @@ export function useFileReadingPosition(input: {
       verdict === "shown" && file !== null
         ? readings.newestView(file, ["source", "rendered", "offset"])
         : null;
-    return { surface, renderedAllowed: newest !== null && newest !== "source" };
+    // A view that leaves a reveal to another view keeps its rendered or source view.
+    const passed = verdict === "none" && ledger.verdict(surface) === "pending";
+    return { surface, renderedAllowed: passed || (newest !== null && newest !== "source") };
   };
   // A reveal that lands while this file's view is mounted must not flip it to rendered.
   const [mounted, setMounted] = useState(viewMount);

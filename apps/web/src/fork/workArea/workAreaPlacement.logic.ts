@@ -284,7 +284,7 @@ function withdraw(
   tabs: readonly TabId[],
   leaving: Leaving,
   keep: PaneId | undefined,
-  restore?: TabId,
+  restore?: ViewRef,
 ): WorkAreaLayout {
   const from = new Map(
     tabs.map((tab) => [tab, new Set(leavesFrom(layout, surfaces, tab, leaving))] as const),
@@ -962,7 +962,7 @@ function place(
     // A copy leaves its pane as it is; a move gives it back what it showed before the press.
     const [leaving, restore] = source.copy
       ? (["add", undefined] as const)
-      : [{ from: pane }, source.restore];
+      : [{ from: pane }, source.restore === undefined ? undefined : { pane, tab: source.restore }];
     return moveTabs(layout, layout, [tab], change.at, leaving, restore, surfaces, view);
   }
   let next = layout;
@@ -986,7 +986,7 @@ function moveTabs(
   moving: readonly TabId[],
   at: Placement,
   leaving: Leaving,
-  restore: TabId | undefined,
+  restore: ViewRef | undefined,
   surfaces: readonly RightPanelSurface[],
   view: WorkAreaView,
 ): WorkAreaLayout {
@@ -1004,8 +1004,8 @@ function moveTabs(
     if (!isNonEmpty(remaining)) return layout;
     const gone = new Set(target.tabs.filter((tab) => !remaining.includes(tab)));
     const active =
-      restore !== undefined && remaining.includes(restore)
-        ? restore
+      restore?.pane === target.id && remaining.includes(restore.tab)
+        ? restore.tab
         : nearestRemaining(target.tabs, target.active, gone)!;
     next = setPane(next, { ...target, tabs: remaining, active });
     const split = splitFitted(next, target.id, at.edge, moving, view);

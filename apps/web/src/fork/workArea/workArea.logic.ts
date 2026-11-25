@@ -396,39 +396,35 @@ export function nearestRemaining(
 }
 
 /**
- * Removes every view of `ids` from every pane except `keep`; a modified pane shows `restore` when
- * kept, else its active tab or nearest neighbour. Empty panes collapse into their sibling.
+ * Removes every view of `ids` from every pane except `keep`. A pane that loses views keeps its
+ * active tab or shows its nearest remaining neighbour; empty panes collapse into their sibling.
  */
 export function removeTabs(
   layout: WorkAreaLayout,
   ids: ReadonlySet<TabId>,
-  options: { readonly keep?: PaneId; readonly restore?: TabId } = {},
+  options: { readonly keep?: PaneId } = {},
 ): WorkAreaLayout {
   if (ids.size === 0) return layout;
-  return removeWhere(
-    layout,
-    (pane, tab) => pane.id !== options.keep && ids.has(tab),
-    options.restore,
-  );
+  return removeWhere(layout, (pane, tab) => pane.id !== options.keep && ids.has(tab));
 }
 
-/** Removes one view from its pane; restores `restore` when kept, else keeps or advances active. */
-export const removeView = (
-  layout: WorkAreaLayout,
-  view: ViewRef,
-  restore?: TabId,
-): WorkAreaLayout =>
-  removeWhere(layout, (pane, tab) => pane.id === view.pane && tab === view.tab, restore);
+/**
+ * Removes `view` from its pane. The pane keeps its active tab or shows its nearest remaining
+ * neighbour, and collapses into its sibling when empty.
+ */
+export const removeView = (layout: WorkAreaLayout, view: ViewRef): WorkAreaLayout =>
+  removeWhere(layout, (pane, tab) => pane.id === view.pane && tab === view.tab);
 
 /**
- * Removes every `(pane, tab)` pair where `removes` holds. A modified pane activates `restore`
- * when kept, else its active tab or nearest neighbour; empty panes collapse, and removing every
- * pane returns a default layout keeping `layout.tabs`.
+ * Removes every `(pane, tab)` pair where `removes` holds. A pane that loses views activates
+ * `restore.tab` only when it is `restore.pane` and still holds it; otherwise it keeps its active
+ * tab or shows its nearest remaining neighbour. Empty panes collapse into their sibling, and
+ * removing every pane returns a default layout keeping `layout.tabs`.
  */
 export function removeWhere(
   layout: WorkAreaLayout,
   removes: (pane: PaneNode, tab: TabId) => boolean,
-  restore?: TabId,
+  restore?: ViewRef,
 ): WorkAreaLayout {
   const alive = new Set<PaneId>();
   const root = mapPanes(layout.root, (pane) => {
@@ -440,8 +436,8 @@ export function removeWhere(
     const tabs = pane.tabs.filter((tab) => !gone.has(tab));
     if (!isNonEmpty(tabs)) return null;
     alive.add(pane.id);
-    const restored = restore !== undefined && tabs.includes(restore);
-    const active = restored ? restore : nearestRemaining(pane.tabs, pane.active, gone)!;
+    const restored = restore?.pane === pane.id && tabs.includes(restore.tab);
+    const active = restored ? restore.tab : nearestRemaining(pane.tabs, pane.active, gone)!;
     return { ...pane, tabs, active };
   });
   if (root === layout.root) return layout;
