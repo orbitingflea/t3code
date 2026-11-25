@@ -24,7 +24,7 @@ import {
   resolveLayout,
   surfaceTabId,
 } from "./workArea.logic";
-import { runWithOpenOrigin, shownSurfaceOf } from "./workAreaView";
+import { currentDropAt, runWithOpenOrigin, shownSurfaceOf } from "./workAreaView";
 
 const readRecord = (threadRef: ScopedThreadRef) =>
   selectThreadRightPanelState(useRightPanelStore.getState().byThreadKey, threadRef);
@@ -45,17 +45,29 @@ export const runOpen = <T>(origin: Parameters<typeof runWithOpenOrigin>[0], run:
   );
 
 /**
- * Arms `pane` for `kind` from its + menu and runs `open` inside an origin carrying that pane, so
- * a tab created after an await still lands there.
+ * Arms `pane` for `kind`, runs `open` from that pane, and returns its result, clearing the arm if
+ * an async `open` settles without its tab. Under a live drop, runs `open` directly with no arm or
+ * menu origin so the drop's place or the user's newer action decides.
  */
-export function openFromPaneMenu(
+export function openFromPaneMenu<T>(
   threadRef: ScopedThreadRef,
   pane: PaneId,
   kind: ArmKind,
-  open: () => void,
-): void {
-  useRightPanelStore.getState().updateWorkArea(threadRef, { type: "arm", pane, kind });
-  runOpen({ record: threadRef, armed: { pane, kind } }, open);
+  open: () => T,
+): T {
+  // A drop lands at its own place, or where the user's newer action put the focus.
+  if (currentDropAt(threadRef) !== null) return open();
+  const armed = { pane, kind };
+  useRightPanelStore.getState().updateWorkArea(threadRef, { type: "arm", armed });
+  const result = runOpen({ record: threadRef, armed }, open);
+  // An async open that settles without its tab must not leave its pick to the next open. A sync
+  // open keeps it: Device setup's dialog opens the Device tab later, in this pane.
+  if (result instanceof Promise) {
+    const disarm = () =>
+      useRightPanelStore.getState().updateWorkArea(threadRef, { type: "disarm", armed });
+    void result.then(disarm, disarm);
+  }
+  return result;
 }
 
 /**
@@ -84,8 +96,7 @@ export function closeFocusedTab(
 export function armFocusedPane(threadRef: ScopedThreadRef, kind: RightPanelKind): void {
   useRightPanelStore.getState().updateWorkArea(threadRef, {
     type: "arm",
-    pane: resolveLayout(readRecord(threadRef)).focused,
-    kind,
+    armed: { pane: resolveLayout(readRecord(threadRef)).focused, kind },
   });
 }
 

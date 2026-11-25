@@ -11,8 +11,8 @@ const PANEL_LINK_DRAG_TYPE = "application/x-t3code-panel-link";
 export interface PanelLink {
   readonly panelRef: ScopedThreadRef;
   readonly open: () => void | Promise<unknown>;
-  // It opens a Chat tab, whose message box needs a wider pane than other tabs.
-  readonly opensChat?: boolean;
+  /** True when the opened tab has a message box and needs a wide pane. */
+  readonly composer?: boolean;
 }
 
 // The work area a Files tree row drops into (`ref`), and how the dropped row opens there.
@@ -39,6 +39,8 @@ interface Entry {
   readonly link: PanelLink;
   /** A dragover carrying the marker reached this document, so the drag start is over. */
   armed: boolean;
+  // Runs once the drag ends, however it ends: its source may be gone by then.
+  readonly onEnd: (() => void) | undefined;
 }
 
 // The open is a closure, so it cannot ride in `dataTransfer`; one drag runs at a time.
@@ -90,34 +92,64 @@ function listen(on: boolean) {
 
 function clear(token?: number) {
   if (entry === null || (token !== undefined && entry.token !== token)) return;
+  const { onEnd } = entry;
   entry = null;
   listen(false);
   markArmed(false);
   notify();
+  onEnd?.();
 }
 
-/** Call from a source's dragstart. Keeps the data the source set, so other drop targets are unchanged. */
-export function startPanelLinkDrag(event: DragStart, link: PanelLink | null): void {
+/**
+ * Call from a source's `dragstart`. Keeps the data the source set, so other drop targets are
+ * unchanged. Optional `onEnd` runs once when the drag ends, however it ends, even if the source
+ * element is gone.
+ */
+export function startPanelLinkDrag(
+  event: DragStart,
+  link: PanelLink | null,
+  onEnd?: () => void,
+): void {
   clear();
   if (link === null || event.dataTransfer === null) return;
   event.dataTransfer.setData(PANEL_LINK_DRAG_TYPE, "1");
-  entry = { token: ++nextToken, panelKey: scopedThreadKey(link.panelRef), link, armed: false };
+  entry = {
+    token: ++nextToken,
+    panelKey: scopedThreadKey(link.panelRef),
+    link,
+    armed: false,
+    onEnd,
+  };
   listen(true);
 }
 
 /**
  * For a chip whose only drag meaning is the panel: drops the data the browser added (a router
- * link's URL) and carries only the marker. No link cancels the drag, as before it was draggable.
+ * link's URL) and carries only the marker; a null `link` cancels the drag. Optional `onEnd` runs
+ * once when the drag ends, however it ends, even if the source element is gone.
  */
-export function startPanelOnlyDrag(event: DragStart, link: PanelLink | null): void {
+export function startPanelOnlyDrag(
+  event: DragStart,
+  link: PanelLink | null,
+  onEnd?: () => void,
+): void {
   if (link === null || event.dataTransfer === null) {
     clear();
     event.preventDefault();
     return;
   }
   event.dataTransfer.clearData();
-  startPanelLinkDrag(event, link);
+  startPanelLinkDrag(event, link, onEnd);
 }
+
+/**
+ * Returns drag props for an element that drags only to the panel. Runs `build` on `dragstart`.
+ * Optional `onEnd` runs once when the drag ends, however it ends, even if the element is gone.
+ */
+export const panelDragProps = (build: () => PanelLink | null, onEnd?: () => void) => ({
+  draggable: true,
+  onDragStart: (event: DragStart) => startPanelOnlyDrag(event, build(), onEnd),
+});
 
 function subscribe(subscriber: () => void) {
   subscribers.add(subscriber);

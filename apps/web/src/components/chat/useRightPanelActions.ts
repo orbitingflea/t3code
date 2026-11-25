@@ -115,7 +115,7 @@ export function useRightPanelActions(input: RightPanelActionsInput) {
   const onToggleDiffStable = useStableCallback(onToggleDiff);
   const createBrowserSurface = (profileId?: string, duplicateFrom?: PreviewSessionSnapshot) => {
     if (!activeThreadRef || !canOperatePreview) return;
-    void addBrowserSurface({
+    return addBrowserSurface({
       threadRef: activeThreadRef,
       openPreview,
       ...(profileId === undefined ? {} : { profileId }),

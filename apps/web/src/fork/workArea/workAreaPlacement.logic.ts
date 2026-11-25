@@ -121,7 +121,8 @@ export type WorkAreaChange =
   | { readonly type: "unfloat"; readonly tab: TabId }
   | { readonly type: "focus"; readonly pane: PaneId }
   | { readonly type: "ratio"; readonly split: SplitId; readonly ratio: number }
-  | { readonly type: "arm"; readonly pane: PaneId; readonly kind: ArmKind }
+  | { readonly type: "arm"; readonly armed: NonNullable<WorkAreaLayout["armed"]> }
+  | { readonly type: "disarm"; readonly armed: NonNullable<WorkAreaLayout["armed"]> }
   /** A lone pane's split button: a launcher tab in a new pane to its right. */
   | { readonly type: "split-launcher"; readonly pane: PaneId }
   | {
@@ -159,6 +160,7 @@ const CHANGE_KINDS: Record<WorkAreaChange["type"], LayoutWriteKind> = {
   focus: "automatic",
   ratio: "automatic",
   arm: "automatic",
+  disarm: "automatic",
   "split-launcher": "user",
   "link-file": "user",
   "linked-file-shown": "automatic",
@@ -543,7 +545,12 @@ function placeWrite(
   if (dropped !== null && dropped !== activated && !paneHolding(next.root, dropped)) {
     next = placeInBackground(next, dropped, kindOf(dropped));
   }
-  if (activated === null) return next;
+  if (activated === null) {
+    // A user open of the surface already shown moves nothing, but it still ends a + menu pick.
+    return write === "user" && requested !== null && byId.has(requested)
+      ? withoutArmed(next)
+      : next;
+  }
   const after =
     write === "user" &&
     openFrom?.adjacent &&
@@ -930,7 +937,12 @@ function landAt(
   view: WorkAreaView,
 ): WorkAreaLayout | null {
   const base = withPayload(layout, tab, layout.tabs[tab] ?? SURFACE_PAYLOAD);
-  const moved = moveTabs(base, base, [tab], at, undefined, view);
+  // A join into the pane that already holds the tab keeps its slot, as the tab's click does.
+  const place: Placement =
+    at.kind === "join" && findPane(base.root, at.pane)?.tabs.includes(tab)
+      ? { kind: "strip", pane: at.pane, before: tab }
+      : at;
+  const moved = moveTabs(base, base, [tab], place, undefined, view);
   if (moved === base) return null;
   return fitsView(moved, view) === false && fitsView(base, view) !== false ? null : moved;
 }
@@ -990,8 +1002,11 @@ function changedLayout(
       return root === layout.root ? layout : { ...layout, root };
     }
     case "arm":
-      if (!findPane(layout.root, change.pane)) return layout;
-      return { ...layout, armed: { pane: change.pane, kind: change.kind } };
+      if (!findPane(layout.root, change.armed.pane)) return layout;
+      return { ...layout, armed: change.armed };
+    case "disarm":
+      // Only the very arm named: a newer pick, even of the same pane and kind, keeps its own.
+      return layout.armed === change.armed ? withoutArmed(layout) : layout;
     case "split-launcher": {
       const lone = leaves(layout.root);
       if (lone.length !== 1 || lone[0]!.id !== change.pane || lone[0]!.tabs.includes(LAUNCHER)) {

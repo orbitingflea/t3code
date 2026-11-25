@@ -4,6 +4,7 @@ import { useGT } from "gt-react";
 import { MessageSquareIcon } from "lucide-react";
 import { useState, type MouseEvent } from "react";
 
+import { useIssueRowDrag } from "~/fork/workArea/chatAnchorLink";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useServerConfigs } from "~/state/entities";
@@ -39,6 +40,7 @@ function LinkedIssueRow({
   const gt = useGT();
   const configs = useServerConfigs();
   const detail = useLinkedIssueDetail(threadRef.environmentId, link, mountScope);
+  const onDragStart = useIssueRowDrag(threadRef, link, mountScope);
   const trackerPresentation = issueTrackerPresentation(link.tracker);
   const state = detail === null ? null : issueStatePresentation(detail.state);
   const Icon = state?.Icon ?? IssueGlyph.issue;
@@ -56,6 +58,7 @@ function LinkedIssueRow({
       useRightPanelStore.getState().openIssue(threadRef, link);
       onOpen?.();
     },
+    onDragStart,
   };
   const glyph = (
     <Icon

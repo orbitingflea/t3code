@@ -22,6 +22,7 @@ import { useState, type MouseEvent as ReactMouseEvent } from "react";
 import type { ComposerThreadTarget } from "~/composerDraftStore";
 import { useLiveRefresh } from "~/hooks/useLiveRefresh";
 import { usePullRequestChecksRefresh } from "~/hooks/usePullRequestChecksRefresh";
+import { type PanelLink, panelDragProps } from "~/fork/workArea/panelLinkDrag";
 import { cn } from "~/lib/utils";
 import { useServerConfigs } from "~/state/entities";
 import { pullRequestEnvironment } from "~/state/pullRequests";
@@ -94,6 +95,7 @@ export function ThreadDetailsPrRow({
   project,
   label,
   onOpen,
+  panelLink,
   onActed,
   onStopWatching,
   composerTarget,
@@ -106,6 +108,7 @@ export function ThreadDetailsPrRow({
   project: EnvironmentProject | null;
   label: string;
   onOpen: (event: ReactMouseEvent<HTMLElement>) => void;
+  panelLink?: (() => PanelLink | null) | undefined;
   onActed?: () => void;
   onStopWatching?: (() => void) | undefined;
   /** Fix and Resolve write here instead of checking the pull request out in a new thread. */
@@ -513,6 +516,7 @@ export function ThreadDetailsPrRow({
             aria-label={openAriaLabel}
             onClick={onOpen}
             onAuxClick={onOpen}
+            {...(panelLink ? panelDragProps(panelLink) : {})}
           />
         }
       >

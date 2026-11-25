@@ -8,6 +8,7 @@ import {
 } from "@t3tools/shared/markdownLinks";
 import { createContext, use } from "react";
 
+import { isWebUrl } from "../../browser/webUrl";
 import ChatMarkdown, { safeUrl } from "../../components/ChatMarkdown";
 import { nodeToPlainText } from "../../components/chat/MarkdownCodeBlock.logic";
 import { createMarkdownRenderer } from "../../components/chat/markdownRenderer";
@@ -23,6 +24,8 @@ import {
   hostFileLinkLabel,
   useHostFileOrigins,
 } from "../hostFileLinks";
+import { useWebPanelLink } from "../workArea/chatAnchorLink";
+import { startPanelLinkDrag } from "../workArea/panelLinkDrag";
 import { dashboardLinkLabel, parseDashboardHref } from "./dashboardLink";
 
 interface LinkScope {
@@ -96,6 +99,14 @@ function slotFilePaths(
   return [...paths];
 }
 
+// The URL a click on `anchor` opens, when its written destination does not depend on the page's
+// address: a full web address (`https:/host` opens as `https://host`) or a protocol-relative one.
+// An emptied, fragment or relative destination, such as `http:notes` on an http page, gives none.
+function standaloneWebHref(anchor: HTMLAnchorElement, written = ""): string | undefined {
+  if (written.startsWith("//")) return anchor.href;
+  return isWebUrl(written) && new URL(written).href === anchor.href ? anchor.href : undefined;
+}
+
 // Agent text without math, breaks or insights; no board on the Dashboard.
 const DASHBOARD_MARKDOWN: WordsHastOptions = {
   math: false,
@@ -112,6 +123,7 @@ const renderMarkdown = createMarkdownRenderer({
     a: function DashboardLink({ node, children, ...props }) {
       const scope = use(DashboardLinkScope);
       const { text, hostFileOrigins } = use(SlotCopyContext);
+      const webPanelLink = useWebPanelLink(scope?.threadRef ?? null);
       // The user is already on the Dashboard.
       if (props.href && parseDashboardHref(props.href)) return dashboardLinkLabel(node, props.href);
       const href = props.href ? normalizeHref(props.href) : "";
@@ -120,7 +132,17 @@ const renderMarkdown = createMarkdownRenderer({
         scope !== null && href !== "" ? resolveMarkdownFileLinkMeta(linkPath, scope.cwd) : null;
       if (scope === null || fileLinkMeta === null) {
         return (
-          <a {...props} target="_blank" rel="noreferrer">
+          <a
+            {...props}
+            target="_blank"
+            rel="noreferrer"
+            onDragStart={(event) =>
+              startPanelLinkDrag(
+                event,
+                webPanelLink(standaloneWebHref(event.currentTarget, props.href)),
+              )
+            }
+          >
             {children}
           </a>
         );

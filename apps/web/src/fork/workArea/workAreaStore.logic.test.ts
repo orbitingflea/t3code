@@ -462,14 +462,14 @@ describe("a link dropped on a pane", () => {
       ["middle", inMiddle],
     ])("plans no drop of a thread link on its %s, but a file link's", (_, at) => {
       narrowFilePane();
-      const plans = (link: { readonly opensChat?: boolean }) =>
+      const plans = (link: { readonly composer?: boolean }) =>
         landingRect(
           probeLayout(layout(), ref, link),
           { type: "place", source: { tabs: [LINK_PROBE] }, at: at() },
           ref,
           WIDE,
         );
-      expect(plans({ opensChat: true })).toBeNull();
+      expect(plans({ composer: true })).toBeNull();
       expect(plans({})).not.toBeNull();
     });
 

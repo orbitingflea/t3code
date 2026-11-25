@@ -27,6 +27,7 @@ import { useProjects, useQuietThreadShell } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 
+import { usePullRequestRowPanelLink } from "../../fork/workArea/chatAnchorLink";
 import { useOpenPrLink } from "../../lib/openPullRequestLink";
 import {
   linkedPullRequestSnapshotStatus,
@@ -40,6 +41,7 @@ function ThreadDetailsPrLinkRow({
   environmentId,
   link,
   onOpen,
+  panelLink,
   onActed,
   onStopWatching,
   composerTarget,
@@ -47,6 +49,7 @@ function ThreadDetailsPrLinkRow({
   environmentId: EnvironmentId;
   link: ThreadPullRequestLink;
   onOpen: (event: ReactMouseEvent<HTMLElement>) => void;
+  panelLink: ComponentProps<typeof ThreadDetailsPrRow>["panelLink"];
   onActed?: (() => void) | undefined;
   onStopWatching?: (() => void) | undefined;
   composerTarget?: ComposerThreadTarget | undefined;
@@ -73,6 +76,7 @@ function ThreadDetailsPrLinkRow({
       project={project}
       label={`#${link.number}${link.snapshot === null ? "" : `: ${link.snapshot.title}`}`}
       onOpen={onOpen}
+      panelLink={panelLink}
       onStopWatching={onStopWatching}
       composerTarget={composerTarget}
       {...(onActed ? { onActed } : {})}
@@ -93,6 +97,7 @@ function ThreadDetailsPrRows({
   onOpenLink: (event: ReactMouseEvent<HTMLElement>, url: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const rowPanelLink = usePullRequestRowPanelLink(threadRef);
   const watch = useAtomCommand(threadEnvironment.watchPullRequest, { reportFailure: true });
   const stopWatching = (link: ThreadPullRequestLink | null) =>
     link?.watch === undefined
@@ -128,6 +133,7 @@ function ThreadDetailsPrRows({
               environmentId={row.environmentId}
               link={link}
               onOpen={(event) => onOpenLink(event, link.url)}
+              panelLink={() => rowPanelLink(link.url)}
               onActed={row.onActed}
               onStopWatching={stopWatching(link)}
               composerTarget={row.composerTarget}
@@ -168,6 +174,7 @@ export function ThreadDetailsThreadPrRows({
     branchSourceControlProvider,
   );
   const openPrLink = useOpenPrLink(threadRef);
+  const rowPanelLink = usePullRequestRowPanelLink(threadRef);
   const { currentLink, pr, number, url } = displayed;
   const projects = useProjects();
   const parsed =
@@ -197,6 +204,7 @@ export function ThreadDetailsThreadPrRows({
       project={rowProject}
       label={`#${number}${pr?.title.trim() ? `: ${pr.title}` : ""}`}
       onOpen={(event) => openPrLink(event, url)}
+      panelLink={() => rowPanelLink(url)}
       composerTarget={composerTarget}
       {...(onActed ? { onActed } : {})}
     />

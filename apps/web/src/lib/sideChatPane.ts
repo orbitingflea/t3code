@@ -54,7 +54,7 @@ export function resolveThreadOpenRoute(
  * Whether `panelRef`'s right panel can show `threadRef` as a tab: a thread of the same environment
  * that is not the one the panel belongs to.
  */
-export function canOpenThreadInPanel(
+function canOpenThreadInPanel(
   threadRef: ScopedThreadRef,
   panelRef: ScopedThreadRef | null,
 ): panelRef is ScopedThreadRef {

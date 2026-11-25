@@ -7,6 +7,8 @@ import { RelativeTime } from "../../components/RelativeTime";
 import { cn } from "../../lib/utils";
 import { useThreadDisplayMode } from "../displayMode/useThreadDisplayMode";
 import { useChatFileOpener } from "../workArea/chatFileOpener";
+import { replyPanelLink } from "../workArea/linkSources";
+import { panelDragProps } from "../workArea/panelLinkDrag";
 import {
   type SubThreadSummary,
   SubThreadViewContext,
@@ -68,6 +70,7 @@ function ReplyLine(props: {
       <button
         type="button"
         onClick={() => opener?.().openSubThread(summary.first)}
+        {...panelDragProps(() => replyPanelLink(opener, summary.first))}
         data-sub-thread-reply-line={summary.first}
         className="flex min-w-0 max-w-full flex-col items-start gap-0.5 rounded-r-md border-border border-l-2 py-0.5 pr-2 pl-2 text-left text-xs outline-none hover:border-info hover:bg-accent/50 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
@@ -125,6 +128,7 @@ export function SubThreadReplyButton(props: {
       <button
         type="button"
         onClick={() => opener?.().openSubThread(summary.first)}
+        {...panelDragProps(() => replyPanelLink(opener, summary.first))}
         className="absolute top-0 left-0 z-10 inline-flex items-center gap-1 rounded-md bg-background px-1.5 text-muted-foreground text-xs opacity-0 outline-none hover:bg-accent hover:text-foreground focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset group-hover/assistant:opacity-100 pointer-coarse:static pointer-coarse:py-0.5 pointer-coarse:opacity-100"
       >
         <ReplyIcon className="size-3" />
@@ -149,6 +153,7 @@ export function SubThreadMetaReply(props: { readonly messageId: string }) {
     <button
       type="button"
       onClick={() => opener?.().openSubThread(summary.first)}
+      {...panelDragProps(() => replyPanelLink(opener, summary.first))}
       className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-muted-foreground text-xs outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:h-6"
     >
       <ReplyIcon className="size-3" />

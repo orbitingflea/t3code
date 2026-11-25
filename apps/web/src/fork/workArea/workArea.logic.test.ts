@@ -324,6 +324,21 @@ describe("work area tree", () => {
     expect(shape()).toEqual(["chat", secondaryChatTabId(other), secondaryChatTabId(third)]);
   });
 
+  it("appends a sidebar selection joined to a pane that already holds one of its Chats", () => {
+    change({
+      type: "place",
+      source: { threads: [other] },
+      at: { kind: "strip", pane: paneAt(0).id, before: PRIMARY_CHAT },
+    });
+    expect(shape()).toEqual([secondaryChatTabId(other), "chat"]);
+    change({
+      type: "place",
+      source: { threads: [other, third] },
+      at: { kind: "join", pane: paneAt(0).id },
+    });
+    expect(shape()).toEqual(["chat", secondaryChatTabId(other), secondaryChatTabId(third)]);
+  });
+
   it("inserts a strip drop in the pane that holds the tab under the marker", () => {
     chatBeside("a.ts");
     change({
@@ -672,19 +687,19 @@ describe("where shown tabs go", () => {
 
   it("arms a pane by kind for the next open of that kind and for background adds", () => {
     chatBeside("a.ts");
-    change({ type: "arm", pane: paneAt(0).id, kind: "preview" });
+    change({ type: "arm", armed: { pane: paneAt(0).id, kind: "preview" } });
     store().reconcileBrowserSurfaces(ref, ["t1"]);
     expect(shape()).toEqual({ axis: "row", first: ["chat", "browser:t1"], second: ["file:a.ts"] });
     expect(layout().armed?.kind).toBe("preview");
     store().open(ref, "files", true);
     expect(paneAt(1).tabs).toContain("files");
     expect(layout().armed?.kind).toBe("preview");
-    change({ type: "arm", pane: paneAt(0).id, kind: "diff" });
+    change({ type: "arm", armed: { pane: paneAt(0).id, kind: "diff" } });
     store().open(ref, "diff");
     expect(paneAt(0).tabs).toContain("diff");
     expect(actives()[0]).toBe("diff");
     expect(layout().armed).toBeUndefined();
-    change({ type: "arm", pane: paneAt(0).id, kind: "files" });
+    change({ type: "arm", armed: { pane: paneAt(0).id, kind: "files" } });
     change({ type: "focus", pane: paneAt(1).id });
     expect(layout().armed).toBeUndefined();
   });

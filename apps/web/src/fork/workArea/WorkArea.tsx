@@ -110,6 +110,7 @@ import {
   type WorkAreaChange,
 } from "./workAreaPlacement.logic";
 import {
+  currentDropAt,
   currentWorkAreaView,
   drawModeView,
   publishWorkAreaView,
@@ -583,13 +584,21 @@ function WorkAreaPane(props: {
     if (surfaces.length > 0) tabs.onCloseAllSurfaces(surfaces, closeDisplayed);
     else closeDisplayed();
   };
-  // A browser or a side chat is created after an await, so its place travels with the request.
-  const armed = (kind: ArmKind, open: () => void) => () =>
-    openFromPaneMenu(threadRef, pane.id, kind, open);
-  const openAfter = (tab: TabId, open: () => void) =>
+  // A browser or a side chat is created after an await, so its place travels with the request,
+  // and its promise reaches a drop, which yields to what the user does before it settles. A drop
+  // brings its own place, so it takes neither this pane's arm nor the launcher's.
+  const armed =
+    <T,>(kind: ArmKind, open: () => T) =>
+    () =>
+      openFromPaneMenu(threadRef, pane.id, kind, open);
+  const openAfter = <T,>(tab: TabId, open: () => T) =>
     runOpen({ record: threadRef, tab, adjacent: true }, open);
-  const fromLauncher = (open: () => void) => () =>
-    pane.active === LAUNCHER ? openAfter(LAUNCHER, open) : open();
+  const fromLauncher =
+    <T,>(open: () => T) =>
+    () =>
+      pane.active === LAUNCHER && currentDropAt(threadRef) === null
+        ? openAfter(LAUNCHER, open)
+        : open();
   const { onDuplicateBrowser: duplicate, ...stripProps } = tabs;
   const splitDisabled = (entry: WorkAreaEntry, edge: Edge) => {
     const holder = paneHolding(layout.root, tabOf(entry));
@@ -659,7 +668,7 @@ function WorkAreaPane(props: {
               update({
                 type: "place",
                 source: { threads: [threadRef] },
-                at: { kind: "join", pane: pane.id },
+                at: currentDropAt(threadRef) ?? { kind: "join", pane: pane.id },
               }),
             ),
           ),

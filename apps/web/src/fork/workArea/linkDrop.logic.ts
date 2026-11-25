@@ -10,12 +10,12 @@ export const LINK_PROBE = asTabId("link-drop-probe");
 export const probeLayout = (
   layout: WorkAreaLayout,
   owner: ScopedThreadRef,
-  link: Pick<PanelLink, "opensChat">,
+  link: Pick<PanelLink, "composer">,
 ): WorkAreaLayout =>
   withPayload(
     layout,
     LINK_PROBE,
-    link.opensChat ? { kind: "secondary-chat", thread: owner, placement: 0 } : { kind: "surface" },
+    link.composer ? { kind: "secondary-chat", thread: owner, placement: 0 } : { kind: "surface" },
   );
 
 /**

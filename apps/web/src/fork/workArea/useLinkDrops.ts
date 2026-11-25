@@ -11,9 +11,36 @@ import type { Placement } from "./workAreaPlacement.logic";
 
 type Point = { readonly x: number; readonly y: number };
 
+// The user's pointer and key presses, counted on the window from the time this module loads, so
+// before any app handler can stop one there (a launcher shortcut, dictation's Escape).
+let userPresses = 0;
+const countPress = () => {
+  userPresses += 1;
+};
+if (typeof window !== "undefined") {
+  window.addEventListener("pointerdown", countPress, true);
+  window.addEventListener("keydown", countPress, true);
+  // A press inside a frame, such as an HTML file preview, reaches only the frame; this window
+  // sees its focus move into the frame.
+  window.addEventListener("blur", () => {
+    if (document.activeElement instanceof HTMLIFrameElement) countPress();
+  });
+}
+
+// True until the user's next pointer or key press. Kept outside the hook, whose compiled body
+// would read the count again in place of the copy taken here.
+function untilNextPress(): () => boolean {
+  const presses = userPresses;
+  return () => userPresses === presses;
+}
+
 const inTextField = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable || target.closest("input, textarea") !== null);
+
+// An open menu, such as the + menu a drag starts from, covers the panes without being one.
+const inMenu = (target: EventTarget | null): boolean =>
+  target instanceof Element && target.closest('[role="menu"]') !== null;
 
 // Plans by geometry: the primary Chat's column lies outside the work area's DOM. Bubble listeners
 // on the document, so a child that stops the drag, as a composer does, keeps it.
@@ -35,20 +62,14 @@ export function useLinkDrops(input: {
 
   // Anything the user does before a slow open lands wins over the drop's place.
   const openDropped = useStableCallback((link: PanelLink, at: Placement) => {
-    let live = true;
-    const settle = () => {
-      document.removeEventListener("pointerdown", cancel, true);
-      document.removeEventListener("keydown", cancel, true);
-      pending.current.delete(cancel);
-    };
+    const noPress = untilNextPress();
+    let cancelled = false;
     const cancel = () => {
-      live = false;
-      settle();
+      cancelled = true;
     };
-    document.addEventListener("pointerdown", cancel, true);
-    document.addEventListener("keydown", cancel, true);
+    const settle = () => pending.current.delete(cancel);
     pending.current.set(cancel, ownerKey);
-    const result = input.open(link, at, () => live);
+    const result = input.open(link, at, () => !cancelled && noPress());
     if (result instanceof Promise) void result.then(settle, settle);
     else settle();
   });
@@ -66,7 +87,7 @@ export function useLinkDrops(input: {
     if (!owned) return;
     const accept = (event: DragEvent): DropPlan | null => {
       const transfer = event.dataTransfer;
-      if (transfer === null || inTextField(event.target)) return null;
+      if (transfer === null || inTextField(event.target) || inMenu(event.target)) return null;
       const effect = dropEffectFor(transfer.effectAllowed);
       const plan = effect === null ? null : planAt({ x: event.clientX, y: event.clientY }, owned);
       if (plan === null || effect === null) return null;
