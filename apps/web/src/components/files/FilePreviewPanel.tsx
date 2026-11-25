@@ -166,7 +166,6 @@ interface FilePreviewPanelProps {
   openInShortcutEnabled: boolean;
   revealLine: number | null;
   revealRequestId: number;
-  /** A tab the right panel store does not hold, such as a work-area linked file. */
   revealSurface?: FileSurface | undefined;
   revealShown?: boolean | undefined;
   onRevealShown?: (() => void) | undefined;

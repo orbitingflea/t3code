@@ -95,14 +95,6 @@ class SourceGeometry {
   }
 }
 
-// What a mounted file view last showed for its surface.
-interface MountedView {
-  readonly surface: FileSurface | undefined;
-  readonly renderedAllowed: boolean;
-  readonly revealKey: number;
-  readonly revealLine: number | null;
-}
-
 interface SourceBinding {
   readonly tracker: ReadingTracker;
   readonly geometry: SourceGeometry;
@@ -159,7 +151,7 @@ export function useFileReadingPosition(input: {
     | { readonly id: string; readonly name: string; readonly mimeType: string }
     | undefined;
   readonly revealLine: number | null;
-  /** The tab when the store holds no surface for it; its object keys the line reveal. */
+  /** The tab; its object keys the line reveal. */
   readonly surface?: FileSurface | undefined;
   /** `surface`'s line was shown before a reload, which the ledger cannot see. */
   readonly revealShown?: boolean | undefined;
@@ -169,8 +161,6 @@ export function useFileReadingPosition(input: {
   // This view's code container: two views of one file each keep their own reading place.
   const sourceContainer = useRef<HTMLElement | null>(null);
   const pane = useRightPanelPane();
-  // A tab open in several panes shows a line reveal in one view; the others keep their place.
-  const leads = pane?.leads ?? true;
   // Each work-area view of a file keeps its own place.
   const scope = pane === null ? {} : { scope: viewScope(scopedThreadKey(pane.owner), pane.view) };
   const surface = useRightPanelStore(
@@ -195,34 +185,17 @@ export function useFileReadingPosition(input: {
   ) {
     ledger.markShown(threadKey, input.surface);
   }
-  const verdictOf = (): RevealVerdict => {
-    const verdict = ledger.verdict(surface);
-    return verdict === "pending" && !leads ? "none" : verdict;
-  };
-  const verdict = verdictOf();
-  const viewMount = (held?: MountedView): MountedView => {
-    // A view that leaves a reveal to another view keeps the mode and reveal it showed.
-    if (held !== undefined && verdict === "none" && ledger.verdict(surface) === "pending") {
-      return {
-        ...held,
-        surface,
-        renderedAllowed: held.revealLine === null || held.renderedAllowed,
-      };
-    }
+  const verdict = ledger.verdict(surface);
+  const viewMount = () => {
     const newest =
       verdict === "shown" && file !== null
         ? readings.newestView(file, ["source", "rendered", "offset"])
         : null;
-    return {
-      surface,
-      renderedAllowed: newest !== null && newest !== "source",
-      revealKey: ledger.generation(surface),
-      revealLine: input.revealLine,
-    };
+    return { surface, renderedAllowed: newest !== null && newest !== "source" };
   };
   // A reveal that lands while this file's view is mounted must not flip it to rendered.
-  const [mounted, setMounted] = useState(() => viewMount());
-  if (mounted.surface !== surface) setMounted(viewMount(mounted));
+  const [mounted, setMounted] = useState(viewMount);
+  if (mounted.surface !== surface) setMounted(viewMount());
   const placed: FileReadingKey | undefined =
     input.attachment === undefined
       ? (file ?? undefined)
@@ -247,7 +220,7 @@ export function useFileReadingPosition(input: {
         ? {
             id: ledger.generation(surface),
             line: input.revealLine,
-            pending: () => verdictOf() === "pending",
+            pending: () => ledger.verdict(surface) === "pending",
             shown: () => {
               ledger.markShown(threadKey, surface);
               input.onRevealShown?.();
@@ -263,11 +236,11 @@ export function useFileReadingPosition(input: {
     placeRef: place.ref,
     rowLine: place.rowLine,
     scrollLine: verdict === "pending" ? input.revealLine : null,
-    revealKey: mounted.revealKey,
+    revealKey: ledger.generation(surface),
     renderedAllowed: mounted.renderedAllowed,
     /** Asked just before a reveal scrolls: a reopened tab whose citation was shown restores instead. */
     keepReveal: (fileContainer: HTMLElement) => {
-      if (file === null || verdictOf() !== "shown") return true;
+      if (file === null || ledger.verdict(surface) !== "shown") return true;
       const saved = readings.readPosition(file, "source");
       const binding = sourceBindings.get(fileContainer);
       if (saved === null || binding === undefined) return true;
@@ -289,13 +262,13 @@ export function useFileReadingPosition(input: {
         if (file === null || !(instance instanceof VirtualizedFile)) return;
         sourceContainer.current = phase === "unmount" ? null : fileContainer;
         // A landed reveal does not re-render the panel, so ask the ledger now.
-        trackSourceView(fileContainer, instance, phase, file, verdictOf());
+        trackSourceView(fileContainer, instance, phase, file, ledger.verdict(surface));
       },
     caretLine: (): number | "first-visible" => {
       const container = sourceContainer.current;
       const anchor = container === null ? null : sourceBindings.get(container)?.tracker.anchor;
       return (
-        (verdictOf() === "pending" ? input.revealLine : null) ??
+        (ledger.verdict(surface) === "pending" ? input.revealLine : null) ??
         (anchor?.view === "source" ? anchor.line : undefined) ??
         "first-visible"
       );

@@ -53,6 +53,7 @@ vi.mock(import("~/components/DiffWorkerPoolProvider"), async () =>
 );
 
 import { sourceFile, sourceView, state } from "~/components/files/fileReadingTestKit";
+import { FILE_LINK_REVEAL_ATTRIBUTE } from "~/components/files/fileSurfaceChrome";
 import { resetState } from "~/components/files/fileReadingTestMocks";
 import { asPaneId, surfaceTabId } from "./workArea.logic";
 import { restoredRecord, restoreWorkArea } from "./workAreaStorage.logic";
@@ -136,6 +137,11 @@ const savedLine = (path: string): number | undefined =>
     ) ?? "null",
   )?.line;
 
+// Where a view's code scrolls to; two places agree within a pixel of rounding.
+const scrolledTo = (view: ReturnType<typeof sourceView>) => view.scroller().scrollTop;
+const expectScrolledTo = (view: ReturnType<typeof sourceView>, top: number) =>
+  expect(Math.abs(scrolledTo(view) - top)).toBeLessThanOrEqual(1);
+
 const tabIn = (pane: string, tab: string) =>
   paneById(pane).querySelector<HTMLElement>(`[data-right-panel-tab-id="${tab}"]`)!;
 
@@ -159,6 +165,7 @@ async function openOwner(record: ReturnType<typeof chatBeside>) {
     "c.ts": sourceFile("c.ts", "gamma", 10),
     "d.ts": sourceFile("d.ts", "delta", 300),
     "e.ts": sourceFile("e.ts", "epsilon", 300),
+    "f.ts": sourceFile("f.ts", "zeta", 300),
   };
   useRightPanelStore.setState({ byThreadKey: { [scopedThreadKey(owner)]: record } });
   __setClientSettingsForTests({
@@ -254,6 +261,7 @@ describe("one file open in two panes", () => {
     await userEvent.wheel(bottom.scroller(), { delta: { y: 3000 } });
     await vi.waitFor(() => expect(savedLine("d.ts")).toBeGreaterThan(100));
     const bottomPlace = bottom.topLine();
+    const bottomTop = scrolledTo(bottom);
     // The top view reads last, so the file's place is the top view's.
     await userEvent.wheel(top.scroller(), { delta: { y: 1200 } });
     await vi.waitFor(() => expect(savedLine("d.ts")).toBeLessThan(bottomPlace.line - 20));
@@ -262,7 +270,7 @@ describe("one file open in two panes", () => {
     await vi.waitFor(() => bottom.expectLineInView(1, "gamma_1"));
     await userEvent.click(tabIn("p2", "file:d.ts"));
 
-    await vi.waitFor(() => expect(bottom.topLine()).toEqual(bottomPlace));
+    await vi.waitFor(() => expectScrolledTo(bottom, bottomTop));
   });
 
   it("opens a file's one view, moved away and back, where it was read last", async () => {
@@ -275,6 +283,7 @@ describe("one file open in two panes", () => {
     await vi.waitFor(() => expect(top.topLine().line).toBeGreaterThan(20));
     const first = top.topLine();
     await vi.waitFor(() => expect(savedLine("e.ts")).toBeGreaterThan(20));
+    const firstTop = scrolledTo(top);
     const move = (from: string, to: string) =>
       act(() =>
         useRightPanelStore.getState().updateWorkArea(owner, {
@@ -286,13 +295,71 @@ describe("one file open in two panes", () => {
 
     await move("p1", "p2");
     await vi.waitFor(() => expect(stripOf("p1")).toEqual(["file:c.ts"]));
-    await vi.waitFor(() => expect(bottom.topLine()).toEqual(first));
+    await vi.waitFor(() => expectScrolledTo(bottom, firstTop));
     await userEvent.wheel(bottom.scroller(), { delta: { y: 3000 } });
     await vi.waitFor(() => expect(bottom.topLine().line).toBeGreaterThan(first.line + 20));
-    const last = bottom.topLine();
     await vi.waitFor(() => expect(savedLine("e.ts")).toBeGreaterThan(first.line + 20));
+    const lastTop = scrolledTo(bottom);
     await move("p2", "p1");
 
-    await vi.waitFor(() => expect(top.topLine()).toEqual(last));
+    await vi.waitFor(() => expectScrolledTo(top, lastTop));
+  });
+
+  it("keeps another view's cited line and selected line when one view reveals a line", async () => {
+    using _environment = installFakeEnvironment([ownerThread]);
+    await using _app = await openOwner(chatBeside("file:f.ts", "file:f.ts"));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      top.expectLineInView(1, "zeta_1");
+      bottom.expectLineInView(1, "zeta_1");
+    });
+    const reveal = (pane: string, line: number) =>
+      act(() => {
+        const store = useRightPanelStore.getState();
+        store.updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) });
+        store.openFile(owner, "f.ts", line);
+      });
+    const cited = (view: typeof top, line: number) =>
+      view.line(line)?.hasAttribute(FILE_LINK_REVEAL_ATTRIBUTE) === true;
+
+    // The focused view of the file leads a reveal.
+    await reveal("p2", 40);
+    await vi.waitFor(() => {
+      bottom.expectLineInView(40, "zeta_40");
+      expect(cited(bottom, 40)).toBe(true);
+    });
+    const selecting = bottom.line(40)!.getRootNode() as ShadowRoot;
+    await userEvent.click(
+      page.elementLocator(selecting.querySelector<HTMLElement>('[data-column-number="42"]')!),
+    );
+    await vi.waitFor(() => expect(bottom.line(42)?.hasAttribute("data-selected-line")).toBe(true));
+    const read = bottom.topLine();
+
+    await reveal("p1", 60);
+    await vi.waitFor(() => {
+      top.expectLineInView(60, "zeta_60");
+      expect(cited(top, 60)).toBe(true);
+    });
+
+    // The other view shows what it showed, now and once it takes the focus.
+    const unchanged = () => {
+      expect(bottom.topLine()).toEqual(read);
+      expect(cited(bottom, 40)).toBe(true);
+      expect(cited(bottom, 60)).toBe(false);
+      expect(bottom.line(42)?.hasAttribute("data-selected-line")).toBe(true);
+    };
+    unchanged();
+    await act(() =>
+      useRightPanelStore.getState().updateWorkArea(owner, { type: "focus", pane: asPaneId("p2") }),
+    );
+    unchanged();
+    // Its rows redraw on a scroll, frames after the focus, and keep the line it cited.
+    await userEvent.wheel(bottom.scroller(), { delta: { y: 60 } });
+    await vi.waitFor(() => expect(bottom.topLine().line).toBeGreaterThan(read.line));
+    expect(bottom.topLine().line).toBeLessThan(40);
+    expect(cited(bottom, 40)).toBe(true);
+    expect(cited(bottom, 60)).toBe(false);
+    expect(bottom.line(42)?.hasAttribute("data-selected-line")).toBe(true);
   });
 });

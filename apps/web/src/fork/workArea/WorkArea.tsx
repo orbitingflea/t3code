@@ -600,6 +600,18 @@ export function WorkArea(props: WorkAreaProps) {
   );
 }
 
+/**
+ * What one view of `tab` shows of `live`: a change lands in the view that leads the tab, and
+ * another view keeps what it showed, then and once it leads. A tab new to the view shows `live`.
+ */
+function useViewShown<T>(tab: TabId, live: T, leads: boolean): T {
+  const [seen, setSeen] = useState({ tab, live, shown: live });
+  if (seen.tab === tab && seen.live === live) return seen.shown;
+  const next = { tab, live, shown: seen.tab !== tab || leads ? live : seen.shown };
+  setSeen(next);
+  return next.shown;
+}
+
 function WorkAreaPane(props: {
   readonly pane: DrawnPane;
   readonly layout: WorkAreaLayout;
@@ -722,6 +734,19 @@ function WorkAreaPane(props: {
   ];
   const payload = layout.tabs[pane.active];
   const activeEntry = entries.find((entry) => entry.id === pane.active);
+  // Of the views showing this tab, the focused one, else the first, takes its reveals.
+  const leads =
+    props.strip || preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id;
+  // A line reveal shows in the view that leads its file; another view keeps the file as it was.
+  const shown = useViewShown(
+    pane.active,
+    payload?.kind === "linked-file"
+      ? payload
+      : activeEntry !== undefined && !isDisplayEntry(activeEntry) && activeEntry.kind === "file"
+        ? activeEntry
+        : null,
+    leads,
+  );
   const lone = !props.strip && layout.root.kind === "pane" && !pane.tabs.includes(LAUNCHER);
   const canSplit = useWorkAreaViewCheck(
     (view) =>
@@ -753,12 +778,12 @@ function WorkAreaPane(props: {
         tab={pane.active}
         placement={payload.placement}
       />
-    ) : payload?.kind === "linked-file" ? (
+    ) : shown?.kind === "linked-file" ? (
       <LinkedFileBody
         owner={threadRef}
         tab={pane.active}
-        entry={linkedFileEntry(pane.active, payload)}
-        shown={payload.shown === true}
+        entry={linkedFileEntry(pane.active, shown)}
+        shown={shown.shown === true}
         keybindings={tabs.keybindings}
         availableEditors={props.availableEditors}
       />
@@ -767,7 +792,7 @@ function WorkAreaPane(props: {
         {props.renderSurface(REPLIES_SURFACE, true)}
       </ReplyTabContext>
     ) : activeEntry !== undefined && !isDisplayEntry(activeEntry) ? (
-      props.renderSurface(activeEntry, true, closeEntry)
+      props.renderSurface(shown?.kind === "file" ? shown : activeEntry, true, closeEntry)
     ) : null;
   return (
     <div
@@ -799,10 +824,7 @@ function WorkAreaPane(props: {
           tabMenu,
           notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
-          // Of the views showing this tab, the focused one, else the first, takes its reveals.
-          leads:
-            props.strip ||
-            preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id,
+          leads,
           owner: threadRef,
           view: viewOf(pane.active),
         }}
