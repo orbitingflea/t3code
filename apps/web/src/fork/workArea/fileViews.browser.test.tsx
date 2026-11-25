@@ -83,6 +83,10 @@ const ownerThread: FakeThread = {
   ),
 };
 const owner = scopeThreadRef(ENVIRONMENT_ID, ownerThread.id);
+const otherThread = threadWithHistory("file-views-other", 1);
+const other = scopeThreadRef(ENVIRONMENT_ID, otherThread.id);
+// Every test serves the same threads, so a thread first shown in a later test still loads.
+const THREADS = [ownerThread, otherThread];
 
 type Tabs = string | readonly [string, ...string[]];
 const tabsOf = (tabs: Tabs) => (typeof tabs === "string" ? [tabs] : tabs);
@@ -156,7 +160,11 @@ function deepActiveElement() {
   return active;
 }
 
-async function openOwner(record: ReturnType<typeof chatBeside>) {
+/** Opens the owner's thread on `record`; `others` hold other threads' records. */
+async function openOwner(
+  record: ReturnType<typeof chatBeside>,
+  others: Readonly<Record<string, ReturnType<typeof chatBeside>>> = {},
+) {
   await preloadHighlighter({ themes: Object.values(DEFAULT_THEMES), langs: ["typescript"] });
   resetState();
   state.files = {
@@ -166,8 +174,11 @@ async function openOwner(record: ReturnType<typeof chatBeside>) {
     "d.ts": sourceFile("d.ts", "delta", 300),
     "e.ts": sourceFile("e.ts", "epsilon", 300),
     "f.ts": sourceFile("f.ts", "zeta", 300),
+    "g.ts": sourceFile("g.ts", "eta", 300),
+    "h.ts": sourceFile("h.ts", "theta", 300),
+    "i.ts": sourceFile("i.ts", "iota", 300),
   };
-  useRightPanelStore.setState({ byThreadKey: { [scopedThreadKey(owner)]: record } });
+  useRightPanelStore.setState({ byThreadKey: { ...others, [scopedThreadKey(owner)]: record } });
   __setClientSettingsForTests({
     ...DEFAULT_CLIENT_SETTINGS,
     onboardingCompletedAt: "2026-01-01T00:00:00.000Z",
@@ -190,12 +201,24 @@ async function openOwner(record: ReturnType<typeof chatBeside>) {
   await expect
     .element(page.getByRole("textbox", { name: `Message ${ownerThread.title}` }))
     .toBeVisible();
-  return stack.move();
+  const moved = stack.move();
+  return { router, [Symbol.asyncDispose]: () => moved.disposeAsync() };
 }
+
+const cited = (view: ReturnType<typeof sourceView>, line: number) =>
+  view.line(line)?.hasAttribute(FILE_LINK_REVEAL_ATTRIBUTE) === true;
+// The lines a pane's code view draws with the cited-line mark.
+const citedIn = (pane: string) =>
+  [
+    ...(paneById(pane)
+      .querySelector("diffs-container")
+      ?.shadowRoot?.querySelectorAll<HTMLElement>(`[data-line][${FILE_LINK_REVEAL_ATTRIBUTE}]`) ??
+      []),
+  ].map((row) => Number(row.dataset.line));
 
 describe("one file open in two panes", () => {
   it("reveals a clicked line in the view it jumps to and leaves the other view where it was read", async () => {
-    using _environment = installFakeEnvironment([ownerThread]);
+    using _environment = installFakeEnvironment(THREADS);
     await using _app = await openOwner(chatBeside(FILE, FILE));
     const jumped = sourceView(paneById("p1"));
     const other = sourceView(paneById("p2"));
@@ -215,7 +238,7 @@ describe("one file open in two panes", () => {
   });
 
   it("starts typing in the view left open at its own cited line once the other view closes", async () => {
-    using _environment = installFakeEnvironment([ownerThread]);
+    using _environment = installFakeEnvironment(THREADS);
     await using _app = await openOwner(chatBeside(KEPT, "file:c.ts"));
     const kept = sourceView(paneById("p1"));
     await vi.waitFor(() => kept.expectLineInView(1, "beta_1"));
@@ -250,7 +273,7 @@ describe("one file open in two panes", () => {
   });
 
   it("brings each view of a file back to its own place after a switch to another tab", async () => {
-    using _environment = installFakeEnvironment([ownerThread]);
+    using _environment = installFakeEnvironment(THREADS);
     await using _app = await openOwner(chatBeside("file:d.ts", ["file:d.ts", "file:c.ts"]));
     const top = sourceView(paneById("p1"));
     const bottom = sourceView(paneById("p2"));
@@ -274,7 +297,7 @@ describe("one file open in two panes", () => {
   });
 
   it("opens a file's one view, moved away and back, where it was read last", async () => {
-    using _environment = installFakeEnvironment([ownerThread]);
+    using _environment = installFakeEnvironment(THREADS);
     await using _app = await openOwner(chatBeside(["file:e.ts", "file:c.ts"], "file:c.ts"));
     const top = sourceView(paneById("p1"));
     const bottom = sourceView(paneById("p2"));
@@ -306,7 +329,7 @@ describe("one file open in two panes", () => {
   });
 
   it("keeps another view's cited line and selected line when one view reveals a line", async () => {
-    using _environment = installFakeEnvironment([ownerThread]);
+    using _environment = installFakeEnvironment(THREADS);
     await using _app = await openOwner(chatBeside("file:f.ts", "file:f.ts"));
     const top = sourceView(paneById("p1"));
     const bottom = sourceView(paneById("p2"));
@@ -320,8 +343,6 @@ describe("one file open in two panes", () => {
         store.updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) });
         store.openFile(owner, "f.ts", line);
       });
-    const cited = (view: typeof top, line: number) =>
-      view.line(line)?.hasAttribute(FILE_LINK_REVEAL_ATTRIBUTE) === true;
 
     // The focused view of the file leads a reveal.
     await reveal("p2", 40);
@@ -361,5 +382,47 @@ describe("one file open in two panes", () => {
     expect(cited(bottom, 40)).toBe(true);
     expect(cited(bottom, 60)).toBe(false);
     expect(bottom.line(42)?.hasAttribute("data-selected-line")).toBe(true);
+  });
+
+  it("starts each view from its own thread's file when another thread shows the file in the same panes", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    await using app = await openOwner(chatBeside("file:i.ts", "file:i.ts"), {
+      [scopedThreadKey(other)]: chatBeside("file:i.ts", "file:i.ts"),
+    });
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      top.expectLineInView(1, "iota_1");
+      bottom.expectLineInView(1, "iota_1");
+    });
+    const reveal = (pane: string, line: number) =>
+      act(() => {
+        const store = useRightPanelStore.getState();
+        store.updateWorkArea(owner, { type: "focus", pane: asPaneId(pane) });
+        store.openFile(owner, "i.ts", line);
+      });
+    await reveal("p1", 60);
+    await vi.waitFor(() => expect(cited(top, 60)).toBe(true));
+    await reveal("p2", 40);
+    await vi.waitFor(() => expect(cited(bottom, 40)).toBe(true));
+    expect(cited(top, 60)).toBe(true);
+
+    // The other thread's panes have the same ids and show the file with no line reveal.
+    await act(() =>
+      app.router.navigate({
+        to: "/$environmentId/$threadId",
+        params: { environmentId: ENVIRONMENT_ID, threadId: otherThread.id },
+      }),
+    );
+    await expect
+      .element(page.getByRole("textbox", { name: `Message ${otherThread.title}` }))
+      .toBeVisible();
+    // Neither view draws a line the first thread cited.
+    await vi.waitFor(() => {
+      for (const pane of ["p1", "p2"]) {
+        expect(sourceView(paneById(pane)).topLine().line).toBeGreaterThan(0);
+        expect(citedIn(pane)).toEqual([]);
+      }
+    });
   });
 });

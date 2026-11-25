@@ -5,6 +5,7 @@ import {
   DragOverlay,
   type UniqueIdentifier,
 } from "@dnd-kit/core";
+import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EditorId, ScopedThreadRef } from "@t3tools/contracts";
 import {
   type CSSProperties,
@@ -71,6 +72,7 @@ import {
 import { dragShieldProps, registerThreadDragFallback } from "./threadDragFallback";
 import { useLinkDrops } from "./useLinkDrops";
 import { followFindRequests } from "./useWorkAreaChat";
+import { viewScope } from "./viewReading";
 import {
   type ArmKind,
   type Edge,
@@ -601,13 +603,14 @@ export function WorkArea(props: WorkAreaProps) {
 }
 
 /**
- * What one view of `tab` shows of `live`: a change lands in the view that leads the tab, and
- * another view keeps what it showed, then and once it leads. A tab new to the view shows `live`.
+ * What one `view` of a tab shows of `live`: a change lands in the view that leads the tab, and
+ * another view keeps what it showed, then and once it leads. A view new to the pane, of another
+ * tab or another thread's work area, shows `live`.
  */
-function useViewShown<T>(tab: TabId, live: T, leads: boolean): T {
-  const [seen, setSeen] = useState({ tab, live, shown: live });
-  if (seen.tab === tab && seen.live === live) return seen.shown;
-  const next = { tab, live, shown: seen.tab !== tab || leads ? live : seen.shown };
+function useViewShown<T>(view: string, live: T, leads: boolean): T {
+  const [seen, setSeen] = useState({ view, live, shown: live });
+  if (seen.view === view && seen.live === live) return seen.shown;
+  const next = { view, live, shown: seen.view !== view || leads ? live : seen.shown };
   setSeen(next);
   return next.shown;
 }
@@ -737,9 +740,10 @@ function WorkAreaPane(props: {
   // Of the views showing this tab, the focused one, else the first, takes its reveals.
   const leads =
     props.strip || preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id;
+  const viewId = viewScope(scopedThreadKey(threadRef), { pane: pane.id, tab: pane.active });
   // A line reveal shows in the view that leads its file; another view keeps the file as it was.
   const shown = useViewShown(
-    pane.active,
+    viewId,
     payload?.kind === "linked-file"
       ? payload
       : activeEntry !== undefined && !isDisplayEntry(activeEntry) && activeEntry.kind === "file"
