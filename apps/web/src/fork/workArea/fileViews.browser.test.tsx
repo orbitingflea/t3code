@@ -21,7 +21,7 @@ import {
   installFakeEnvironment,
   threadWithHistory,
 } from "../../../test/fakeEnvironment";
-import { render } from "../../../test/render";
+import { act, render } from "../../../test/render";
 
 vi.mock(
   "../../../../../packages/client-runtime/src/connection/driver.ts",
@@ -54,9 +54,12 @@ vi.mock(import("~/components/DiffWorkerPoolProvider"), async () =>
 
 import { sourceFile, sourceView, state } from "~/components/files/fileReadingTestKit";
 import { resetState } from "~/components/files/fileReadingTestMocks";
+import { asPaneId, surfaceTabId } from "./workArea.logic";
 import { restoredRecord, restoreWorkArea } from "./workAreaStorage.logic";
 
 const FILE = "file:a.ts";
+// Each test reads its own file, since a file's reading place outlives the test.
+const KEPT = "file:b.ts";
 const fileSurface = (path: string): RightPanelSurface => ({
   id: `file:${path}`,
   kind: "file",
@@ -114,10 +117,21 @@ const chatBeside = (top: string, bottom: string) =>
 
 const paneById = (id: string) =>
   document.querySelector<HTMLElement>(`[data-work-area-pane="${id}"]`)!;
+const stripOf = (id: string) =>
+  [...paneById(id).querySelectorAll("[data-right-panel-tab-id]")].map((tab) =>
+    tab.getAttribute("data-right-panel-tab-id"),
+  );
+
 const fileLink = (name: string) =>
   [...document.querySelectorAll<HTMLElement>("a.chat-markdown-file-link")].find((link) =>
     link.getAttribute("href")?.endsWith(`/${name}:40`),
   )!;
+
+function deepActiveElement() {
+  let active = document.activeElement;
+  while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+  return active;
+}
 
 async function openOwner(record: ReturnType<typeof chatBeside>) {
   await preloadHighlighter({ themes: Object.values(DEFAULT_THEMES), langs: ["typescript"] });
@@ -172,5 +186,40 @@ describe("one file open in two panes", () => {
     // Both views get the reveal in one render, so the other view's would have landed with it.
     await vi.waitFor(() => jumped.expectLineInView(40, "alpha_40"));
     expect(other.topLine()).toEqual(read);
+  });
+
+  it("starts typing in the view left open at its own cited line once the other view closes", async () => {
+    using _environment = installFakeEnvironment([ownerThread]);
+    await using _app = await openOwner(chatBeside(KEPT, "file:c.ts"));
+    const kept = sourceView(paneById("p1"));
+    await vi.waitFor(() => kept.expectLineInView(1, "beta_1"));
+    await userEvent.click(fileLink("b.ts"));
+    await vi.waitFor(() => kept.expectLineInView(40, "beta_40"));
+    // The cited line sits mid-view, below the first line in full view.
+    expect(kept.topLine().line).toBeLessThan(39);
+    // A second view mounts after the first, as an Alt-drag of the tab into p2 makes it.
+    await act(() =>
+      useRightPanelStore.getState().updateWorkArea(owner, {
+        type: "place",
+        source: { view: { pane: asPaneId("p1"), tab: surfaceTabId(KEPT) }, copy: true },
+        at: { kind: "join", pane: asPaneId("p2") },
+      }),
+    );
+    await vi.waitFor(() => expect(stripOf("p2")).toEqual(["file:c.ts", KEPT]));
+    const closing = sourceView(paneById("p2"));
+    await vi.waitFor(() => expect(closing.topLine().line).toBeGreaterThan(0));
+    await userEvent.wheel(closing.scroller(), { delta: { y: 3000 } });
+    await vi.waitFor(() => expect(closing.topLine().line).toBeGreaterThan(100));
+    await userEvent.click(
+      page.elementLocator(paneById("p2")).getByRole("button", { name: "Close b.ts" }),
+    );
+    await vi.waitFor(() => expect(stripOf("p2")).toEqual(["file:c.ts"]));
+    expect(stripOf("p1")).toEqual([KEPT]);
+
+    paneById("p1").querySelector<HTMLElement>("[data-file-content-focus]")!.focus();
+    await vi.waitFor(() => expect(deepActiveElement()?.matches("[data-content]")).toBe(true));
+    await userEvent.keyboard("Z");
+
+    await vi.waitFor(() => expect(kept.line(40)?.textContent).toContain("Zconst beta_40 "));
   });
 });
