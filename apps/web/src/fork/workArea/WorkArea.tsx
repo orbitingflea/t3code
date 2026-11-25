@@ -73,7 +73,6 @@ import { dragShieldProps, registerThreadDragFallback } from "./threadDragFallbac
 import { useLinkDrops } from "./useLinkDrops";
 import { followFindRequests } from "./useWorkAreaChat";
 import { onViewEnd, type ViewId, viewIdOf } from "./viewIdentity";
-import { viewScope } from "./viewReading";
 import {
   type ArmKind,
   type Edge,
@@ -832,9 +831,7 @@ function WorkAreaPane(props: {
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
           leads,
           // The one strip lists tabs, not views, so its file keeps the file's own place.
-          readingScope: props.strip
-            ? undefined
-            : viewScope(ownerKey, { pane: pane.id, tab: pane.active }),
+          readingScope: props.strip ? undefined : viewId,
         }}
       >
         <RightPanelTabs

@@ -137,9 +137,9 @@ describe("file reading positions", () => {
     // The file's place is the newest any view saved, as a page with one view saves it.
     expect(readings.readPosition(file, "source")?.line).toBe(50);
     expect(setup(storage).readings.readPosition(file, "source")?.line).toBe(200);
-    // A view without a rendered place of its own reads the file's, but its newest is its own.
+    // A view that opened with no rendered place stays at the top of its rendered view.
     readings.writePosition(file, { view: "rendered", block: 2, fraction: 0 });
-    expect(readings.readPosition(right, "rendered")?.block).toBe(2);
+    expect(readings.readPosition(right, "rendered")).toBeNull();
     expect(readings.newestView(right, ["source", "rendered"])).toBe("source");
     expect(readings.newestView({ ...file, scope: "new" }, ["source", "rendered"])).toBe("rendered");
     expect([...items.keys()].every((key) => !key.includes("right") && !key.includes("left"))).toBe(
@@ -149,6 +149,17 @@ describe("file reading positions", () => {
     readings.forgetScope("right");
     expect(readings.readPosition(right, "source")?.line).toBe(50);
     expect(readings.readPosition(left, "source")?.line).toBe(50);
+  });
+
+  it("keeps a view that opened before any place at the top while another view reads", () => {
+    const { clock, readings } = setup();
+    const unread = { ...file, scope: "unread" };
+    expect(readings.readPosition(unread, "source")).toBeNull();
+    clock.now += 1;
+    readings.writePosition({ ...file, scope: "read" }, { view: "source", line: 200, offset: 0 });
+    expect(readings.readPosition(file, "source")?.line).toBe(200);
+    expect(readings.readPosition(unread, "source")).toBeNull();
+    expect(readings.newestView(unread, ["source", "rendered"])).toBeNull();
   });
 
   it("expires an entry 30 days after it was written, and reads do not renew it", () => {

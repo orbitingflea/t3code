@@ -55,6 +55,8 @@ vi.mock(import("~/components/DiffWorkerPoolProvider"), async () =>
 import { sourceFile, sourceView, state } from "~/components/files/fileReadingTestKit";
 import { FILE_LINK_REVEAL_ATTRIBUTE } from "~/components/files/fileSurfaceChrome";
 import { resetState } from "~/components/files/fileReadingTestMocks";
+import { pathReadingKey } from "~/components/files/fileReadingPosition";
+import { readings } from "~/components/files/fileReadingSave";
 import { asPaneId, surfaceTabId } from "./workArea.logic";
 import { restoredRecord, restoreWorkArea } from "./workAreaStorage.logic";
 
@@ -213,6 +215,15 @@ async function openOwner(
 
 const cited = (view: ReturnType<typeof sourceView>, line: number) =>
   view.line(line)?.hasAttribute(FILE_LINK_REVEAL_ATTRIBUTE) === true;
+// The file was read to `line` before the test, so its views open there.
+const readBefore = (path: string, line: number) =>
+  readings.writePosition(pathReadingKey(ENVIRONMENT_ID, `/workspace/render/${path}`), {
+    view: "source",
+    line,
+    offset: 0,
+  });
+const expectNear = (view: ReturnType<typeof sourceView>, line: number) =>
+  expect(Math.abs(view.topLine().line - line)).toBeLessThanOrEqual(2);
 const moveView = (from: string, to: string, tab: string) =>
   act(() =>
     useRightPanelStore.getState().updateWorkArea(owner, {
@@ -468,6 +479,48 @@ describe("one file open in two panes", () => {
     const moved = sourceView(paneById("p0"));
 
     await vi.waitFor(() => expectScrolledTo(moved, topTop));
+  });
+
+  it("keeps a moved view that was not read where it opened, though the other view was read", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    readBefore("j.ts", 40);
+    await using _app = await openOwner(chatBeside("file:j.ts", "file:j.ts"));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      expectNear(top, 40);
+      expectNear(bottom, 40);
+    });
+    const opened = scrolledTo(top);
+    // Only the other view is read, so the file's place is the other view's.
+    await userEvent.wheel(bottom.scroller(), { delta: { y: 4000 } });
+    await vi.waitFor(() => expect(savedLine("j.ts")).toBeGreaterThan(150));
+
+    await moveView("p1", "p0", "file:j.ts");
+    await vi.waitFor(() => expect(stripOf("p0")).toEqual(["chat", "file:j.ts"]));
+
+    await vi.waitFor(() => expectScrolledTo(sourceView(paneById("p0")), opened));
+  });
+
+  it("keeps a view that was not read where it opened after a switch to another tab and back", async () => {
+    using _environment = installFakeEnvironment(THREADS);
+    readBefore("l.ts", 40);
+    await using _app = await openOwner(chatBeside("file:l.ts", ["file:l.ts", "file:c.ts"]));
+    const top = sourceView(paneById("p1"));
+    const bottom = sourceView(paneById("p2"));
+    await vi.waitFor(() => {
+      expectNear(top, 40);
+      expectNear(bottom, 40);
+    });
+    const opened = scrolledTo(bottom);
+    await userEvent.wheel(top.scroller(), { delta: { y: 4000 } });
+    await vi.waitFor(() => expect(savedLine("l.ts")).toBeGreaterThan(150));
+
+    await userEvent.click(tabIn("p2", "file:c.ts"));
+    await vi.waitFor(() => bottom.expectLineInView(1, "gamma_1"));
+    await userEvent.click(tabIn("p2", "file:l.ts"));
+
+    await vi.waitFor(() => expectScrolledTo(bottom, opened));
   });
 
   it("keeps a moved view's own cited line", async () => {

@@ -53,6 +53,16 @@ const ReadingPosition = Schema.Union([
 export type ReadingPosition = typeof ReadingPosition.Type;
 export type ReadingView = ReadingPosition["view"];
 export type ReadingPositionOf<V extends ReadingView> = Extract<ReadingPosition, { view: V }>;
+const READING_VIEWS = Object.keys({
+  source: null,
+  rendered: null,
+  pdf: null,
+  offset: null,
+  media: null,
+} satisfies Record<ReadingView, null>) as ReadingView[];
+// A view's own place of a kind before it saved one: it opened at the top.
+const AT_TOP = "top";
+type OwnEntry = Entry<ReadingPosition> | typeof AT_TOP;
 
 /** `closed` marks a tab closed after its reveal was shown; only Reopen Closed View brings it back. */
 const RevealReceipt = Schema.Struct({
@@ -68,8 +78,7 @@ const decodeReceiptKey = Schema.decodeUnknownOption(Schema.Tuple([Schema.String,
 
 /**
  * A workspace or host file by absolute path, or a chat attachment by id. Optional `scope` keeps a
- * work-area view's own place in memory. Reads fall back to the file-level place, and writes also
- * update the file-level place.
+ * work-area view's own place in memory. Writes also update the file-level place.
  */
 export type FileReadingKey = (
   | { readonly kind: "path"; readonly environmentId: string; readonly absolutePath: string }
@@ -149,7 +158,7 @@ export function createFileReadingStore(options: {
   );
   const receipts = table(RECEIPT_PREFIX, RECEIPT_CAP, Schema.decodeUnknownOption(RevealReceipt));
   // Each view's own places by its scope, for this page only; storage keeps the file's place.
-  const scoped = new Map<string, Map<string, Entry<ReadingPosition>>>();
+  const scoped = new Map<string, Map<string, OwnEntry>>();
   const tables: ReadonlyArray<Table<unknown>> = [positions, receipts];
   let storage: StorageLike | null | undefined;
   let captured = 0;
@@ -301,22 +310,30 @@ export function createFileReadingStore(options: {
     evict(target, at);
   };
 
-  const own = (file: FileReadingKey) =>
-    file.scope === undefined ? undefined : scoped.get(file.scope);
-  const keepOwn = (file: FileReadingKey, entry: Entry<ReadingPosition>) => {
-    if (file.scope === undefined) return;
-    const places = own(file) ?? new Map<string, Entry<ReadingPosition>>();
-    scoped.set(file.scope, places.set(positionKey(file, entry.value.view), entry));
+  // A view's places start as the file's when it first reads or saves one, so it opens where the
+  // file was read last, else at the top, and a place another view saves later is not its own.
+  const own = (file: FileReadingKey, scope: string) => {
+    const places = scoped.get(scope) ?? new Map<string, OwnEntry>();
+    scoped.set(scope, places);
+    if (!places.has(positionKey(file, "source"))) {
+      for (const view of READING_VIEWS) {
+        places.set(positionKey(file, view), read(positions, positionKey(file, view)) ?? AT_TOP);
+      }
+    }
+    return places;
   };
-  // A view's own entry, else the file's while the view saved none of that kind.
-  const readEntry = (file: FileReadingKey, view: ReadingView) =>
-    own(file)?.get(positionKey(file, view)) ?? read(positions, positionKey(file, view));
+  const keepOwn = (file: FileReadingKey, entry: Entry<ReadingPosition>) => {
+    if (file.scope !== undefined)
+      own(file, file.scope).set(positionKey(file, entry.value.view), entry);
+  };
+  const readEntry = (file: FileReadingKey, view: ReadingView) => {
+    if (file.scope === undefined) return read(positions, positionKey(file, view));
+    const entry = own(file, file.scope).get(positionKey(file, view));
+    return entry === AT_TOP ? undefined : entry;
+  };
 
   return {
-    /**
-     * Returns the saved `view` position for `file`, or `null`. Uses `file.scope` first and falls
-     * back to the file-level place.
-     */
+    /** Returns the saved `view` position for `file`, or `null`. */
     readPosition<V extends ReadingView>(
       file: FileReadingKey,
       view: V,
@@ -347,19 +364,11 @@ export function createFileReadingStore(options: {
         },
       };
     },
-    /**
-     * Returns the view in `views` with the newest entry. Compares only `file.scope` entries once
-     * that scope saves any view in `views`, else compares the file-level entries.
-     */
+    /** Returns the view in `views` with the newest entry. */
     newestView(file: FileReadingKey, views: ReadonlyArray<ReadingView>): ReadingView | null {
-      const places = own(file);
-      // A view that saved a place of its own was last in its own newest view.
-      const owned = views.some((view) => places?.has(positionKey(file, view)) === true);
       let newest: Entry<ReadingPosition> | undefined;
       for (const view of views) {
-        const entry = owned
-          ? places?.get(positionKey(file, view))
-          : read(positions, positionKey(file, view));
+        const entry = readEntry(file, view);
         if (entry?.value.view === view && (newest === undefined || later(entry, newest))) {
           newest = entry;
         }
@@ -369,15 +378,6 @@ export function createFileReadingStore(options: {
     /** Drops all in-memory positions kept for `scope`, leaving stored file places intact. */
     forgetScope(scope: string): void {
       scoped.delete(scope);
-    },
-    /**
-     * Moves in-memory positions kept for `from` to `to`, replacing any entries at `to`.
-     * Does nothing when `from` has no entries, and leaves stored file places intact.
-     */
-    moveScope(from: string, to: string): void {
-      const places = scoped.get(from);
-      scoped.delete(from);
-      if (places !== undefined) scoped.set(to, places);
     },
     readReceipt(threadKey: string, relativePath: string): RevealReceipt | null {
       return read(receipts, receiptKey(threadKey, relativePath))?.value ?? null;

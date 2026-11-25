@@ -9,7 +9,7 @@ import { isBrowserPreviewFile } from "~/browser/openFileInPreview";
 import { useClosedViewStore } from "~/closedViewStore";
 import type { FileSurface } from "~/fork/workArea/workArea.logic";
 import { useRightPanelPane } from "~/fork/workArea/tabStrip";
-import { followViewScopes } from "~/fork/workArea/viewReading";
+import { onViewEnd } from "~/fork/workArea/viewIdentity";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import {
@@ -37,7 +37,7 @@ export const pathReadingKey = (environmentId: string, absolutePath: string): Fil
   absolutePath,
 });
 ledger.start();
-followViewScopes(readings, useRightPanelStore);
+onViewEnd(readings.forgetScope);
 
 const NO_VIEWS: ReadonlyArray<ReadingView> = [];
 // A workspace file's code view has its own tracker; an attachment's source view is the container's.
