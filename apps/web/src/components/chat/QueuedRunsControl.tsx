@@ -36,6 +36,7 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { useId, useImperativeHandle, useRef, useState, type ReactNode, type Ref } from "react";
 
 import { useAssetUrls } from "../../assets/assetUrls";
+import { useShowsQueuedRun } from "../../fork/subThreads/queuedRunsScope";
 import { threadEnvironment } from "../../state/threads";
 import { useQuietThreadProjection, useQuietThreadShell } from "../../state/entities";
 import { useEnvironment } from "../../state/environments";
@@ -121,7 +122,8 @@ export function QueuedRunsControl({
     queuedImageAttachmentResources,
   );
   const workflow = projection ? deriveThreadQueueWorkflowState(projection, messages) : null;
-  const queued = workflow?.queuedRuns ?? [];
+  const showsQueuedRun = useShowsQueuedRun(scopeThreadRef(props.environmentId, props.threadId));
+  const queued = (workflow?.queuedRuns ?? []).filter(({ message }) => showsQueuedRun(message));
   const activeRun = workflow?.activeRun ?? null;
   // A fresh message starts its own turn: it may skip compaction, but not steer into a turn.
   const canSendRun = (freshContext: boolean) =>
@@ -251,7 +253,14 @@ export function QueuedRunsControl({
   };
 
   const collapsible = items.length > QUEUE_VISIBLE_ROWS;
-  const visibleItems = collapsible && !showAll ? items.slice(0, QUEUE_VISIBLE_ROWS - 1) : items;
+  const visibleItems =
+    collapsible && !showAll
+      ? items.filter(
+          (item, index) =>
+            index < QUEUE_VISIBLE_ROWS - 1 ||
+            (item.runId !== null && item.runId === props.editingRunId),
+        )
+      : items;
 
   return (
     <section
@@ -269,7 +278,8 @@ export function QueuedRunsControl({
         })}
       </span>
       <ol className="flex flex-col items-end gap-3" id={queueListId}>
-        {visibleItems.map((item, position) => {
+        {visibleItems.map((item) => {
+          const position = items.indexOf(item);
           const previewText = isAttachmentOnlyBootstrapPrompt(item.text)
             ? ""
             : assistantCitationsToPlainText(

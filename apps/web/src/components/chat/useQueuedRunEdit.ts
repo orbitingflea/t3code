@@ -215,6 +215,10 @@ export function useQueuedRunEdit(input: {
   readonly routeThreadRef: ScopedThreadRef;
   readonly threadDraftTarget: ComposerThreadTarget;
   readonly activeThreadId: ThreadId | null;
+  readonly ownsEdit?: (context: OrchestrationMessageContext | undefined) => boolean;
+  readonly recoveryTarget?: (
+    context: OrchestrationMessageContext | undefined,
+  ) => ComposerThreadTarget | undefined;
   readonly serverProjection: ThreadStructure | null;
   readonly promptRef: { current: string };
   readonly composerRef: RefObject<ChatComposerHandle | null>;
@@ -224,6 +228,8 @@ export function useQueuedRunEdit(input: {
     routeThreadRef,
     threadDraftTarget,
     activeThreadId,
+    ownsEdit,
+    recoveryTarget,
     serverProjection,
     promptRef,
     composerRef,
@@ -232,8 +238,12 @@ export function useQueuedRunEdit(input: {
   const promoteQueuedRun = useAtomCommand(threadEnvironment.promoteQueuedRun);
   const editKey = scopedThreadKey(routeThreadRef);
   const storedEdit = useAtomValue(queuedRunEdits.atom)[editKey] ?? null;
-  const editing = activeThreadId === null ? null : storedEdit;
-  const isSaving = useAtomValue(queuedRunEdits.savingAtom)[editKey] === true;
+  const editing =
+    activeThreadId === null || (storedEdit !== null && ownsEdit?.(storedEdit.context) === false)
+      ? null
+      : storedEdit;
+  const saveInFlight = useAtomValue(queuedRunEdits.savingAtom)[editKey] === true;
+  const isSaving = editing !== null && saveInFlight;
   const draftTarget =
     editing === null ? threadDraftTarget : queuedRunEditDraftId(routeThreadRef, editing.runId);
 
@@ -279,7 +289,7 @@ export function useQueuedRunEdit(input: {
   const clearEditDraft = (runId: RunId) => {
     const target = queuedRunEditDraftId(routeThreadRef, runId);
     // A save in flight still sends these uploads.
-    if (isSaving) {
+    if (saveInFlight) {
       const store = useComposerDraftStore.getState();
       store.clearComposerContent(target);
       store.clearDraftThread(target);
@@ -287,7 +297,7 @@ export function useQueuedRunEdit(input: {
   };
 
   const beginEdit = useStableCallback((request: EditQueuedRunRequest) => {
-    if (activeThreadId === null) return;
+    if (activeThreadId === null || (storedEdit !== null && editing === null)) return;
     if (editing !== null && editing.runId !== request.runId) clearEditDraft(editing.runId);
     const target = queuedRunEditDraftId(routeThreadRef, request.runId);
     const sentText = stripAttachmentOnlyBootstrapPrompt(request.text);
@@ -350,7 +360,7 @@ export function useQueuedRunEdit(input: {
         onRunLeftQueue: (_, edit) => {
           const recovery = recoverQueuedMessageEdit({
             editTarget: queuedRunEditDraftId(routeThreadRef, edit.runId),
-            threadTarget: threadDraftTarget,
+            threadTarget: recoveryTarget?.(edit.context) ?? threadDraftTarget,
             originalText: edit.originalText,
             ...(edit.originalModelSelection
               ? { originalModelSelection: edit.originalModelSelection }
@@ -387,6 +397,7 @@ export function useQueuedRunEdit(input: {
     );
     focusComposerSoon();
   });
+  const ownsEditNow = useStableCallback(() => editing !== null);
   const cancelEdit = useStableCallback(() => {
     if (editing === null) return;
     clearEditDraft(editing.runId);
@@ -541,10 +552,12 @@ export function useQueuedRunEdit(input: {
     if (error !== null) return;
     if (changedAfterSave) return;
     releaseDraftAttachments(newAttachments);
-    promptRef.current = "";
     clearEditDraft(editing.runId);
-    composerRef.current?.resetCursorState();
-    focusComposerSoon();
+    if (ownsEditNow()) {
+      promptRef.current = "";
+      composerRef.current?.resetCursorState();
+      focusComposerSoon();
+    }
     // A plain submit means "Update queued message"; only the opposite-action shortcut or
     // modifier-click asks to steer, as it does for a new follow-up.
     if (submission?.submissionIntent === "alternate" && submission.dispatchMode === "steer") {
@@ -555,6 +568,7 @@ export function useQueuedRunEdit(input: {
   return {
     editingRunId: editing?.runId ?? null,
     isEditing: editing !== null,
+    isEditingElsewhere: storedEdit !== null && editing === null,
     isSaving,
     draftTarget,
     editingAttachments,
