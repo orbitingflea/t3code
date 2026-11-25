@@ -795,6 +795,10 @@ function WorkAreaPane(props: {
           tabMenu,
           notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
+          // Of the views showing this tab, the focused one, else the first, takes its reveals.
+          leads:
+            props.strip ||
+            preferredView(layout, pane.active, layout.focused, "reveal")?.id === pane.id,
         }}
       >
         <RightPanelTabs
