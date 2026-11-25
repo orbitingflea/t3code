@@ -3,7 +3,7 @@ import { scopedThreadKey } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { resolvePathLinkTarget } from "@t3tools/shared/fileLinks";
 import { filePreviewKind } from "@t3tools/shared/filePreview";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { isBrowserPreviewFile } from "~/browser/openFileInPreview";
 import { useClosedViewStore } from "~/closedViewStore";
@@ -12,7 +12,6 @@ import { useRightPanelStore } from "~/rightPanelStore";
 
 import {
   createRevealLedger,
-  fileReadingId,
   liveFileSurface,
   type FileReadingKey,
   type ReadingPositionOf,
@@ -100,7 +99,6 @@ interface SourceBinding {
 }
 // Keyed by Pierre's file container: its unmount phase also fires when the file turns into a placeholder.
 const sourceBindings = new WeakMap<HTMLElement, SourceBinding>();
-const sourceTrackerByFile = new Map<string, ReadingTracker>();
 
 function trackSourceView(
   fileContainer: HTMLElement,
@@ -113,12 +111,6 @@ function trackSourceView(
   if (phase === "unmount") {
     existing?.tracker.dispose();
     sourceBindings.delete(fileContainer);
-    if (
-      existing !== undefined &&
-      sourceTrackerByFile.get(fileReadingId(file)) === existing.tracker
-    ) {
-      sourceTrackerByFile.delete(fileReadingId(file));
-    }
     return;
   }
   if (existing !== undefined) {
@@ -134,7 +126,6 @@ function trackSourceView(
     scrolled === element ? binding : null,
   );
   sourceBindings.set(fileContainer, { tracker, geometry, binding });
-  sourceTrackerByFile.set(fileReadingId(file), tracker);
   if (verdict === "pending") return;
   const saved = readings.readPosition(file, "source");
   if (saved !== null) tracker.restore(binding, saved);
@@ -164,6 +155,8 @@ export function useFileReadingPosition(input: {
   readonly onRevealShown?: (() => void) | undefined;
 }) {
   const threadKey = scopedThreadKey(input.threadRef);
+  // This view's code container: two views of one file each keep their own reading place.
+  const sourceContainer = useRef<HTMLElement | null>(null);
   const surface = useRightPanelStore(
     (state) => input.surface ?? liveFileSurface(state.byThreadKey[threadKey], input.requestedPath),
   );
@@ -254,11 +247,13 @@ export function useFileReadingPosition(input: {
       (fileContainer, instance, phase) => {
         reveal(fileContainer, instance, phase);
         if (file === null || !(instance instanceof VirtualizedFile)) return;
+        sourceContainer.current = phase === "unmount" ? null : fileContainer;
         // A landed reveal does not re-render the panel, so ask the ledger now.
         trackSourceView(fileContainer, instance, phase, file, ledger.verdict(surface));
       },
     caretLine: (): number | "first-visible" => {
-      const anchor = file === null ? null : sourceTrackerByFile.get(fileReadingId(file))?.anchor;
+      const container = sourceContainer.current;
+      const anchor = container === null ? null : sourceBindings.get(container)?.tracker.anchor;
       return (
         (ledger.verdict(surface) === "pending" ? input.revealLine : null) ??
         (anchor?.view === "source" ? anchor.line : undefined) ??
