@@ -59,15 +59,19 @@ export interface SplitNode {
 
 export type LayoutNode = PaneNode | SplitNode;
 
+/** One pane's view of a tab; a tab appears at most once in each pane. */
 export interface ViewRef {
   readonly pane: PaneId;
   readonly tab: TabId;
 }
 
+/** String key for a `ViewRef`, built by `viewKey` and read by `parseViewKey`. */
 export type ViewKey = string & { readonly __view: unique symbol };
 
+/** Encodes `view` as a `ViewKey` for maps, sets and drag ids. */
 export const viewKey = (view: ViewRef): ViewKey => `${view.pane}/${view.tab}` as ViewKey;
 
+/** Decodes a key from `viewKey`; null when it does not begin with a pane id and "/". */
 export function parseViewKey(key: string): ViewRef | null {
   // Pane ids never hold "/", so the first one ends the pane.
   const at = key.indexOf("/");
@@ -154,6 +158,7 @@ export const isNonEmpty = <T>(items: readonly T[]): items is NonEmpty<T> => item
 
 type TabClass = Exclude<WorkAreaTab["kind"], "surface"> | RightPanelKind;
 
+/** How many panes may hold a tab: `"one"` moves on reopen; `"many"` allows one view per pane. */
 export type ViewCount = "one" | "many";
 
 interface TabTraits {
@@ -195,6 +200,10 @@ const TRAITS: Readonly<Record<TabClass, TabTraits>> = {
 // so a surface tab's message box is read from its id.
 const SIDE_THREAD_PREFIX = "thread:";
 
+/**
+ * A tab's `chat` and `composer` traits from its payload and id, without reading `surfaces`.
+ * Use `viewsOf` for a tab's view count.
+ */
 export const traitsOf = (
   tab: TabId,
   payload: WorkAreaTab | undefined,
@@ -205,11 +214,16 @@ export const traitsOf = (
       ? TRAITS.thread
       : SINGLE;
 
+/** `traitsOf` for `tab` in `layout`. */
 export const tabTraits = (
   layout: WorkAreaLayout,
   tab: TabId,
 ): Pick<TabTraits, "chat" | "composer"> => traitsOf(tab, layout.tabs[tab]);
 
+/**
+ * Whether `tab` may open in one pane or many, reading surface kinds from `surfaces`.
+ * A surface tab missing from `surfaces` defaults to `"one"`.
+ */
 export function viewsOf(
   layout: WorkAreaLayout,
   surfaces: readonly RightPanelSurface[],
@@ -231,12 +245,19 @@ export function findPane(root: LayoutNode, id: PaneId): PaneNode | undefined {
   return leaves(root).find((pane) => pane.id === id);
 }
 
+/** Every pane holding `tab`, in leaf order. */
 export const holders = (root: LayoutNode, tab: TabId): PaneNode[] =>
   leaves(root).filter((pane) => pane.tabs.includes(tab));
 
+/** Whether any pane in `root` holds `tab`. */
 export const isPlaced = (root: LayoutNode, tab: TabId): boolean =>
   leaves(root).some((pane) => pane.tabs.includes(tab));
 
+/**
+ * The pane holding `tab` that a write targets, or undefined when `tab` is unplaced.
+ * Automatic and reveal writes prefer a pane showing `tab` (`near` first), then `near`, focused,
+ * and first in leaf order; other writes prefer `near`, focused, shown, then first.
+ */
 export function preferredView(
   layout: WorkAreaLayout,
   tab: TabId,
@@ -255,9 +276,14 @@ export function preferredView(
   return ordered.find((pane) => pane !== undefined) ?? holding[0];
 }
 
+/** Views a tab gesture acts on: every view of `view.tab` in strip view, else only `view`. */
 export const gestureViews = (layout: WorkAreaLayout, view: ViewRef, strip: boolean): ViewRef[] =>
   strip ? holders(layout.root, view.tab).map((pane) => ({ pane: pane.id, tab: view.tab })) : [view];
 
+/**
+ * Splits `views` to close into `alone` (views whose tab keeps another view elsewhere) and
+ * distinct `tabs` (tabs losing every view). Views absent from `root` are ignored.
+ */
 export function closePlan(
   root: LayoutNode,
   views: readonly ViewRef[],
@@ -277,6 +303,7 @@ export function closePlan(
   return { alone, tabs };
 }
 
+/** Distinct Chat tabs placed in `layout`, in leaf order, each listed once. */
 export const chatTabs = (layout: WorkAreaLayout): TabId[] => [
   ...new Set(
     leaves(layout.root).flatMap((pane) => pane.tabs.filter((tab) => tabTraits(layout, tab).chat)),
@@ -369,8 +396,8 @@ export function nearestRemaining(
 }
 
 /**
- * Removes tabs from every pane but `keep`; a pane that lost its active tab shows its neighbour, or
- * `restore` when it still holds it. Empty panes collapse into their sibling.
+ * Removes every view of `ids` from every pane except `keep`; a modified pane shows `restore` when
+ * kept, else its active tab or nearest neighbour. Empty panes collapse into their sibling.
  */
 export function removeTabs(
   layout: WorkAreaLayout,
@@ -385,6 +412,7 @@ export function removeTabs(
   );
 }
 
+/** Removes one view from its pane; restores `restore` when kept, else keeps or advances active. */
 export const removeView = (
   layout: WorkAreaLayout,
   view: ViewRef,
@@ -392,6 +420,11 @@ export const removeView = (
 ): WorkAreaLayout =>
   removeWhere(layout, (pane, tab) => pane.id === view.pane && tab === view.tab, restore);
 
+/**
+ * Removes every `(pane, tab)` pair where `removes` holds. A modified pane activates `restore`
+ * when kept, else its active tab or nearest neighbour; empty panes collapse, and removing every
+ * pane returns a default layout keeping `layout.tabs`.
+ */
 export function removeWhere(
   layout: WorkAreaLayout,
   removes: (pane: PaneNode, tab: TabId) => boolean,
@@ -534,8 +567,9 @@ const chatEntryId = (tab: TabId): "chat" | `chat:${string}` =>
   tab === PRIMARY_CHAT ? "chat" : `chat:${tab.slice("chat:".length)}`;
 
 /**
- * A strip's entries for `RightPanelTabs`: surfaces as stored, display-only entries for Chat and
- * linked-file tabs. Display entries never enter a record's `surfaces`.
+ * A strip's entries for `RightPanelTabs`: surfaces as stored, and display-only entries for Chat,
+ * linked-file, launcher and reply tabs (never placed in `record.surfaces`). When `strip` is true
+ * (single-strip view), a lone Chat tab is unclosable even with several views.
  */
 export function stripEntries(
   layout: WorkAreaLayout,

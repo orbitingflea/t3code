@@ -24,6 +24,10 @@ export interface PaneGeometry {
   readonly tabs: readonly { readonly id: TabId; readonly box: Box }[];
 }
 
+/**
+ * What is being dragged onto the work area. For a `"tab"` drag, `copy` marks a copy gesture, which
+ * allows a lone tab to split its own pane.
+ */
 export type DragSubject =
   | { readonly kind: "tab"; readonly tab: TabId; readonly from: PaneId; readonly copy?: true }
   | { readonly kind: "outside" };

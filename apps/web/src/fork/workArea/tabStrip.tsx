@@ -52,7 +52,9 @@ interface RightPanelPane {
   readonly tabMenu: RightPanelTabMenu;
   /** Runs before a press activates its tab, so a drop can give the pane back what it showed. */
   readonly notePress: (surfaceId: string) => void;
+  /** Per-view drag id for `surfaceId` in this pane, unique across panes in the shared drag context. */
   readonly dragId: (surfaceId: string) => string;
+  /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
 }
 

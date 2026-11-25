@@ -147,6 +147,10 @@ type WorkAreaProps = PaneTabsProps & {
   /** The primary Chat's own controls, at the end of the bar of the pane that shows it. */
   readonly chatControls?: ReactNode;
   readonly availableEditors: ReadonlyArray<EditorId>;
+  /**
+   * Renders a surface body. When `onClose` is given, in-body close controls call it so closing
+   * removes only this pane's view while another view stays open.
+   */
   readonly renderSurface: (
     surface: RightPanelSurface,
     visible: boolean,

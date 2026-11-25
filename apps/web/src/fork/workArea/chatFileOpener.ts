@@ -158,7 +158,8 @@ function withMention(target: Omit<ChatFileTarget, "openMention">): ChatFileTarge
 
 /**
  * Opens in `thread`'s own panel through the store, beside an `own` origin's tab. A `shown` origin
- * opens in the owner's layout beside its tab, files read in `thread`'s project.
+ * opens in the owner's layout beside its tab, files read in `thread`'s project. Pass `pane` to
+ * anchor opens and `showOrigin` to that pane's view when the origin tab is open in several panes.
  */
 export function chatFileTarget(
   origin: OpenOrigin | null,
@@ -258,7 +259,8 @@ export function chatFileTarget(
 
 /**
  * A linked file's folder breadcrumb, when its thread works in the owner's workspace: the owner's
- * Files explorer opens beside the linked tab, then moves to that folder in its own slot.
+ * Files explorer opens beside `tab` (anchored to `pane` when given), then moves to that folder in
+ * its own slot.
  */
 export function openLinkedFolder(
   owner: ScopedThreadRef,

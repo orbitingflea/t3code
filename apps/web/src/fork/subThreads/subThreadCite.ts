@@ -36,6 +36,10 @@ let focusCount = 0;
 
 const lastFocus = (box: ReplyBox) => focusedAt.get(box.tab)?.get(box.pane) ?? 0;
 
+/**
+ * Registers a mounted reply tab's composer for `citeInThread`, keyed by `(tab, pane)` so multiple
+ * views of one reply tab track focus order separately. Returns a focus recorder and a disposer.
+ */
 export function registerReplyBox(
   tab: ReplyEntry,
   threadKey: string,

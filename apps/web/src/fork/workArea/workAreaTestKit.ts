@@ -41,7 +41,9 @@ export const record = () => selectThreadRightPanelState(store().byThreadKey, ref
 export const layout = () => resolveLayout(record());
 export const panes = () => leaves(layout().root);
 export const paneAt = (index: number) => panes()[index]!;
+/** First pane in leaf order holding `tab` in the test thread's layout, or undefined. */
 export const holderOf = (tab: TabId) => holders(layout().root, tab)[0];
+/** `ViewRef` for `tab` in its first holding pane; throws if `tab` is unplaced. */
 export const viewOf = (tab: TabId): ViewRef => ({ pane: holderOf(tab)!.id, tab });
 
 export type Shape =

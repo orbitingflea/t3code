@@ -417,7 +417,10 @@ export function settleInnermostFirst(
     .reduce((settled, [split]) => settleSplit(settled, split, view), layout);
 }
 
-/** Whether `tab` is on screen: the active tab of a drawn pane, or of the one strip. */
+/**
+ * Whether `tab` is on screen: the active tab of a drawn pane (restricted to `pane` when given in
+ * split view), or the focused tab in strip view.
+ */
 export function tabShown(
   layout: WorkAreaLayout,
   view: WorkAreaView,

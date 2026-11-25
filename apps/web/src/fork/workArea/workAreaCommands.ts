@@ -80,8 +80,9 @@ export function openFromPaneMenu<T>(
 }
 
 /**
- * `rightPanel.close`: the focused pane's active tab. A surface takes its own close path; a linked
- * file or a Chat closes in the work area, which refuses the last Chat. False when nothing closed.
+ * `rightPanel.close`: closes the focused pane's active view in split view, or every view of the
+ * focused tab in strip view. The last view of a surface uses `closeSurface`; the last Chat tab
+ * cannot close. Returns false when nothing closed.
  */
 export function closeFocusedTab(
   threadRef: ScopedThreadRef,
@@ -93,6 +94,11 @@ export function closeFocusedTab(
   return closeTab(threadRef, gestureViews(layout, view, strip), closeSurface);
 }
 
+/**
+ * Closes `views` of one tab. Views whose tab stays open elsewhere close via `close-view`; when no
+ * view remains, a surface closes through `closeSurface` and other tabs close in the work area
+ * (refusing the last Chat). Returns true if any view or tab closed.
+ */
 export function closeTab(
   threadRef: ScopedThreadRef,
   views: readonly ViewRef[],
@@ -117,6 +123,11 @@ export function closeTab(
   return !isPlaced(resolveLayout(readRecord(threadRef)).root, tab);
 }
 
+/**
+ * Bulk-closes `views` across one or more tabs. Surfaces losing their last view go through
+ * `closeSurfaces`, and other single-view or non-surface closes run in its `after` callback so a
+ * cancelled confirmation closes nothing.
+ */
 export function closeViews(
   threadRef: ScopedThreadRef,
   views: readonly ViewRef[],

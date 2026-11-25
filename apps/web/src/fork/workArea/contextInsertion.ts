@@ -1,6 +1,9 @@
 import type { ComposerContextInsertionHandler } from "~/composerDraftStore";
 
-// Each draft key's chosen handler: the draft store's inserts read it.
+/**
+ * Active context-insertion handler per composer draft key, read by the draft store.
+ * When several views share a draft, tracks the last-focused composer (else the last-mounted one).
+ */
 export const contextInsertionHandlers = new Map<string, ComposerContextInsertionHandler>();
 
 // Two views of one chat mount two composers of one draft; each inserts at its own caret.
@@ -20,6 +23,10 @@ function choose(key: string): void {
   else contextInsertionHandlers.set(key, chosen);
 }
 
+/**
+ * Registers a mounted composer's insertion `handler` for `key` and selects it if none has higher
+ * focus priority. Returns a cleanup that removes only this handler and falls back to the next.
+ */
 export function mountContextInsertion(
   key: string,
   handler: ComposerContextInsertionHandler,
@@ -34,6 +41,7 @@ export function mountContextInsertion(
   };
 }
 
+/** Marks `handler` as the most recently focused composer for every draft key it is mounted on. */
 export function focusContextInsertion(handler: ComposerContextInsertionHandler): void {
   focusedAt.set(handler, (focusCount += 1));
   for (const [key, mounted] of mountedByKey) {

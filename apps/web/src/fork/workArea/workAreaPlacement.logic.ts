@@ -83,10 +83,10 @@ import {
 export type LayoutWriteKind = "user" | "close" | "automatic" | "activate" | "reveal";
 
 /**
- * Where an open started. A `tab` with `adjacent` lands right after it in its pane. An `armed` +
- * menu pick holds while its pane exists, even after `layout.armed` clears. An origin without `tab`
- * or `armed` uses normal placement. A live `drop` (a dropped link's place) wins. User writes place
- * tabs outside `existing` (surface tabs at start) by this origin even if another write placed them.
+ * Where an open starts. `tab` (with optional `pane` picking its view) places beside that view, or
+ * right after it with `adjacent`. An `armed` + menu pick holds while its pane exists even after
+ * `layout.armed` clears. Without `tab` or `armed`, normal placement applies. A live `drop` wins.
+ * User writes place tabs outside `existing` by this origin even if another write placed them.
  */
 export type OpenFrom = (
   | {
@@ -120,6 +120,11 @@ export type Placement =
   | { readonly kind: "edge"; readonly pane: PaneId; readonly edge: Edge }
   | { readonly kind: "join"; readonly pane: PaneId };
 
+/**
+ * What a `place` change moves or adds. A `view` moves from its pane (activating `restore` there
+ * when kept), or adds a view when `copy` is true on a many-view tab; `tabs` and `threads` add
+ * views for many-view tabs and move one-view tabs.
+ */
 export type PlaceSource =
   | { readonly view: ViewRef; readonly copy?: true; readonly restore?: TabId }
   | { readonly tabs: readonly TabId[] }
@@ -127,9 +132,13 @@ export type PlaceSource =
 
 /** The work area's own gestures. Ids, never indices: a stale change is a no-op. */
 export type WorkAreaChange =
+  /** Places `source` at `at`; in strip view, drops move the whole tab rather than one view. */
   | { readonly type: "place"; readonly source: PlaceSource; readonly at: Placement }
+  /** Removes one view of a tab; a no-op if `view` is absent or is the tab's last view. */
   | { readonly type: "close-view"; readonly view: ViewRef }
+  /** Closes a non-surface tab from every pane; refuses the last Chat tab. */
   | { readonly type: "close"; readonly tab: TabId }
+  /** Activates `view.tab` in `view.pane` and focuses that pane; a no-op if absent. */
   | { readonly type: "activate"; readonly view: ViewRef }
   | { readonly type: "unfloat"; readonly tab: TabId }
   | { readonly type: "focus"; readonly pane: PaneId }
@@ -417,7 +426,10 @@ export function openBesideTarget(
   return from;
 }
 
-// A tab menu's move: `tab` joins the nearest pane toward `edge`; null when none lies there.
+/**
+ * Builds a `place` change moving `view` into the nearest pane toward `edge`; null when `view` is
+ * absent or no pane lies in that direction.
+ */
 export function moveToward(
   layout: WorkAreaLayout,
   view: ViewRef,
@@ -1044,7 +1056,10 @@ function landAt(
   return fitsView(moved, view) === false && fitsView(base, view) !== false ? null : moved;
 }
 
-/** `updateWorkArea`'s reducer. The write path then repairs the result and writes the mirrors. */
+/**
+ * `updateWorkArea`'s reducer; reads `surfaces` to look up each surface tab's view count.
+ * The write path then repairs the result and writes the mirrors.
+ */
 export function applyWorkAreaChange(
   layout: WorkAreaLayout,
   change: WorkAreaChange,
@@ -1278,8 +1293,8 @@ function takesOver(layout: WorkAreaLayout, tab: TabId, change: WorkAreaChange): 
 }
 
 /**
- * Where `change` puts what it places, as fractions of the work area; null when it changes nothing
- * or its result does not fit `view`.
+ * Where `change` puts what it places, as fractions of the work area, reading surface view counts
+ * from `surfaces`; null when it changes nothing or its result does not fit `view`.
  */
 export function landingRect(
   layout: WorkAreaLayout,
