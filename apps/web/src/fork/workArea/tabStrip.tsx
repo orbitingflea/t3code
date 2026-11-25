@@ -23,6 +23,7 @@ import type { PreviewPanelShell } from "~/components/preview/PreviewPanelShell";
 import { workspaceAreaProps } from "~/lib/workspaceFocus";
 
 import { modeSurfaceLabel } from "../dashboard/dashboardSurface";
+import type { ViewId } from "./viewIdentity";
 import type { DisplayEntry, Edge, PaneId, ReplyEntry, WorkAreaEntry } from "./workArea.logic";
 import type { PaneEdges } from "./workAreaGeometry.logic";
 
@@ -57,6 +58,8 @@ interface RightPanelPane {
   readonly dragId: (surfaceId: string) => string;
   /** Whether this pane leads reveals for its active tab; other views of the tab keep their scroll. */
   readonly leads: boolean;
+  readonly view: ViewId;
+  readonly strip: boolean;
   readonly reading: Pick<FileReadingKey, "scope" | "alsoScopes">;
 }
 

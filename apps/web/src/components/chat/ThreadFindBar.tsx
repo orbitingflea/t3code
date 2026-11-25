@@ -3,6 +3,7 @@ import { T, useGT } from "gt-react";
 import { ChevronDownIcon, ChevronUpIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
 import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
+import { findTakesFocus } from "~/fork/workArea/findView";
 import { cn } from "~/lib/utils";
 import {
   formatThreadFindCount,
@@ -38,7 +39,7 @@ export function ThreadFindBar(props: ThreadFindBarProps) {
 
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- focuses and selects the input DOM node when the bar opens or a find shortcut fires
   useEffect(() => {
-    if (!props.open) return;
+    if (!props.open || !findTakesFocus(inputRef.current)) return;
     inputRef.current?.focus();
     inputRef.current?.select();
   }, [

@@ -13,6 +13,7 @@ import {
 
 import { panelHostedElsewhere } from "./chatFileOpener";
 import { findOpensThreadPage } from "./findOpensThread";
+import { noteFindRequest } from "./findView";
 import {
   focusedTab,
   preferredView,
@@ -85,6 +86,7 @@ export function followFindRequests(): void {
   if (followingFind) return;
   followingFind = true;
   useThreadFindStore.subscribe((next, previous) => {
+    if (next.focusRequestId !== previous.focusRequestId) noteFindRequest();
     if (next.focusRequestId === previous.focusRequestId || next.threadKey === null) return;
     const thread = parseScopedThreadKey(next.threadKey);
     if (thread === null || (panelHostedElsewhere(thread) && !findOpensThreadPage(next.threadKey)))

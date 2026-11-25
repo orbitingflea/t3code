@@ -188,15 +188,65 @@ it("opens Find only in the view of a Chat open in two panes that it is opened fr
   await expect.element(findIn("p2")).toHaveFocus();
   expect(barIn("p1")).toBeNull();
 
-  // Find shows in the view the user turns to.
+  // Find stays in its view when the user turns to the other one.
   await focusPane("p1");
-  await expect.element(findIn("p1")).toBeVisible();
-  await vi.waitFor(() => expect(barIn("p2")).toBeNull());
+  expect(layoutNow().focused).toBe("p1");
+  expect(barIn("p1")).toBeNull();
+  expect(barIn("p2")).not.toBeNull();
 
-  // Opening it again from the other view moves it back there.
+  // Opening it from the other view moves it there.
+  await openFindFrom("p1");
+  await expect.element(findIn("p1")).toHaveFocus();
+  await vi.waitFor(() => expect(barIn("p2")).toBeNull());
+});
+
+it("keeps Find in its view and the keyboard in the main Chat's message box the user clicks", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(otherChatTwice(), 3);
+  for (const id of ["p1", "p2"]) await expect.element(composerIn(id)).toBeVisible();
   await openFindFrom("p2");
   await expect.element(findIn("p2")).toHaveFocus();
-  await vi.waitFor(() => expect(barIn("p1")).toBeNull());
+
+  const mainComposer = page.getByRole("textbox", { name: `Message ${ownerThread.title}` });
+  await userEvent.click(mainComposer);
+  await vi.waitFor(() => expect(layoutNow().focused).toBe("p0"));
+  await userEvent.keyboard("hello");
+
+  await expect.element(mainComposer).toHaveTextContent("hello");
+  expect(barIn("p1")).toBeNull();
+  expect(barIn("p2")).not.toBeNull();
+});
+
+it("keeps Find in its view and the focus where a write puts it", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(otherChatTwice(), 3);
+  for (const id of ["p1", "p2"]) await expect.element(composerIn(id)).toBeVisible();
+  await openFindFrom("p2");
+  await expect.element(findIn("p2")).toHaveFocus();
+
+  // A write that focuses the main Chat's pane, as an open there does.
+  await focusPane("p0");
+
+  expect(layoutNow().focused).toBe("p0");
+  expect(barIn("p1")).toBeNull();
+  expect(barIn("p2")).not.toBeNull();
+});
+
+it("keeps Find in its view and the keyboard in the other view's message box", async () => {
+  using _environment = installFakeEnvironment(THREADS, { threadFind: true });
+  await using _app = await openOwner(otherChatTwice(), 3);
+  for (const id of ["p1", "p2"]) await expect.element(composerIn(id)).toBeVisible();
+  await openFindFrom("p1");
+  await expect.element(findIn("p1")).toHaveFocus();
+
+  const target = composerIn("p2").element();
+  if (!(target instanceof HTMLElement)) throw new Error("Expected a message box");
+  await act(() => target.focus());
+  await vi.waitFor(() => expect(layoutNow().focused).toBe("p2"));
+
+  await expect.element(composerIn("p2")).toHaveFocus();
+  expect(barIn("p1")).not.toBeNull();
+  expect(barIn("p2")).toBeNull();
 });
 
 it("keeps Find open in a Chat shown once after its one view moves to another pane", async () => {
@@ -232,6 +282,8 @@ it("shows Find in the view left after the view it was opened in closes", async (
   await vi.waitFor(() => expect(holdersOfOther()).toEqual(["p1"]));
 
   await expect.element(findIn("p1")).toBeVisible();
+  // Only a request to open Find takes the keyboard; the close ran the field's effects in `act`.
+  expect(document.activeElement).not.toBe(findIn("p1").element());
 });
 
 it("keeps Find open in the one strip when a drop moves its Chat to another pane", async () => {

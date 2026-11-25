@@ -839,6 +839,8 @@ function WorkAreaPane(props: {
           notePress: (surfaceId) => props.notePress(viewOf(surfaceTabId(surfaceId))),
           dragId: (surfaceId) => viewKey(viewOf(surfaceTabId(surfaceId))),
           leads,
+          view: viewId,
+          strip: props.strip,
           reading,
         }}
       >
