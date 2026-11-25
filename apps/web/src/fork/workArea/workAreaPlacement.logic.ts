@@ -1258,12 +1258,11 @@ function revealReply(
     return shown;
   }
   // One strip draws one tab: the reply shows right after the origin, whose Find stays one tab back.
+  // Its views in other panes stay for when the window is wide again.
   if (isStripView(layout, view)) {
     const rest = source.tabs.filter((other) => other !== tab);
     const after = rest[rest.indexOf(origin) + 1];
-    const lifted = removeTabs(layout, new Set([tab]), { keep: source.id });
-    const kept = findPane(lifted.root, source.id)!;
-    return setPane(lifted, insertTabs(kept, [tab], after ?? null, true));
+    return setPane(layout, insertTabs(source, [tab], after ?? null, true));
   }
   // A reply in the origin's pane moves to another pane when one has room for it.
   if (source.tabs.includes(tab)) {

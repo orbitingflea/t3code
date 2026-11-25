@@ -582,6 +582,57 @@ describe("a Find reveal from a Chat open in two panes", () => {
     expect(activeIn(asPaneId("p1"))).toBe(reply);
     expect(next.focused).toBe("p0");
   });
+
+  it("in the one strip, shows the reply after the searched Chat and keeps its copies in other panes", () => {
+    publishWorkAreaView(NARROW);
+    const reply = replyTabId(other, "m-1");
+    const start: WorkAreaLayout = {
+      root: {
+        kind: "split",
+        id: "s2" as never,
+        axis: "row",
+        ratio: 0.5,
+        first: {
+          kind: "pane",
+          id: asPaneId("p0"),
+          tabs: [otherChat, "file:a" as TabId],
+          active: otherChat,
+        },
+        second: {
+          kind: "split",
+          id: "s3" as never,
+          axis: "column",
+          ratio: 0.5,
+          first: { kind: "pane", id: asPaneId("p1"), tabs: [reply], active: reply },
+          second: { kind: "pane", id: asPaneId("p2"), tabs: [PRIMARY_CHAT, reply], active: reply },
+        },
+      },
+      tabs: {
+        ...CHAT_PAYLOADS,
+        "file:a": { kind: "surface" },
+        [reply]: { kind: "sub-thread", thread: other, first: "m-1" },
+      } as WorkAreaLayout["tabs"],
+      focused: asPaneId("p0"),
+      seq: 4,
+    };
+    const next = applyWorkAreaChange(
+      start,
+      { type: "open-reply", thread: other, first: "m-1", reveal: "find" },
+      ref,
+      [file("a")],
+      NARROW,
+      { tab: otherChat, pane: asPaneId("p0") },
+    );
+    const panesNow = Object.fromEntries(
+      leaves(next.root).map((node) => [node.id, { tabs: node.tabs, active: node.active }]),
+    );
+    expect(panesNow).toEqual({
+      p0: { tabs: [otherChat, reply, "file:a"], active: reply },
+      p1: { tabs: [reply], active: reply },
+      p2: { tabs: [PRIMARY_CHAT, reply], active: reply },
+    });
+    expect(next.focused).toBe("p0");
+  });
 });
 
 describe("saved layouts", () => {
