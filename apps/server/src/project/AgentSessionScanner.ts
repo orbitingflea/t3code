@@ -925,11 +925,6 @@ export const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const projectStore = yield* ProjectStore.ProjectStoreV2;
   const runtimes = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
-<<<<<<< origin/main
-  const baseDir = path.resolve(serverConfig.baseDir);
-  const worktreesDir = path.resolve(serverConfig.worktreesDir);
-  const homeCacheDir = yield* homeCheckoutCacheDir;
-=======
   const configuredT3Dirs = {
     baseDir: path.resolve(serverConfig.baseDir),
     worktreesDir: path.resolve(serverConfig.worktreesDir),
@@ -941,7 +936,7 @@ export const make = Effect.gen(function* () {
     baseDir: yield* realPathOf(configuredT3Dirs.baseDir),
     worktreesDir: yield* realPathOf(configuredT3Dirs.worktreesDir),
   };
->>>>>>> upstream/main
+  const homeCacheDir = yield* homeCheckoutCacheDir;
   const platform = yield* HostProcess.Platform;
   const isWindows = platform === "win32";
   const foldWorktreeCase = isWindows;
@@ -967,17 +962,12 @@ export const make = Effect.gen(function* () {
     );
   const isT3OwnedPath = (candidatePath: string, t3Dirs = configuredT3Dirs) =>
     normalizeForWorktreeMatch(candidatePath, foldWorktreeCase).startsWith(
-<<<<<<< origin/main
-      normalizeForWorktreeMatch(baseDir, foldWorktreeCase),
-    ) ||
-    isT3ManagedWorktree(candidatePath, worktreesDir, foldWorktreeCase) ||
-    isCheckoutCachePath(candidatePath, { homeCacheDir, caseFold: foldWorktreeCase });
-=======
       normalizeForWorktreeMatch(t3Dirs.baseDir, foldWorktreeCase),
-    ) || isT3ManagedWorktree(candidatePath, t3Dirs.worktreesDir, foldWorktreeCase);
+    ) ||
+    isT3ManagedWorktree(candidatePath, t3Dirs.worktreesDir, foldWorktreeCase) ||
+    isCheckoutCachePath(candidatePath, { homeCacheDir, caseFold: foldWorktreeCase });
   const isExcludedProjectPath = (candidatePath: string, t3Dirs = configuredT3Dirs) =>
     isScratchPath(candidatePath) || isT3OwnedPath(candidatePath, t3Dirs);
->>>>>>> upstream/main
 
   const listDirectory = (directory: string) =>
     fileSystem.readDirectory(directory).pipe(Effect.orElseSucceed((): ReadonlyArray<string> => []));

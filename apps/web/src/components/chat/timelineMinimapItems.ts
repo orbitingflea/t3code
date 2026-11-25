@@ -104,15 +104,9 @@ export function markdownPlainText(markdown: string): string {
 // The tooltip shows a few lines; bound parsing work for long messages and streaming responses.
 function markdownMinimapPreview(markdown: string | null) {
   if (markdown === null) return null;
-<<<<<<< origin/main
-  const compact = markdownNodeText(markdownTree(markdown.slice(0, 1_500), { singleTilde: false }))
-    .replace(/\s+/g, " ")
-    .trim();
-=======
   const compact = markdownPlainText(
     markdown.slice(0, splitsSurrogatePair(markdown, 1_500) ? 1_499 : 1_500),
   );
->>>>>>> upstream/main
   return compact.length > 0 ? compact : null;
 }
 

@@ -12,41 +12,6 @@ import { CLOUD_LINKED_USER_ID } from "../cloud/config.ts";
 import * as ServerConfig from "../config.ts";
 
 /**
-<<<<<<< origin/main
- * Codex writes `tokens` only for ChatGPT logins and omits the key for API-key,
- * agent-identity, and personal-access-token logins, so its absence is a
- * supported install and not a malformed file. `account_id` is the ChatGPT
- * workspace, which a whole Team shares; the `id_token` names the person.
- */
-export const CodexAuthJsonSchema = Schema.Struct({
-  tokens: Schema.optionalKey(
-    Schema.Struct({
-      account_id: Schema.String,
-      id_token: Schema.optionalKey(Schema.String),
-    }),
-  ),
-});
-
-/** `userID` is random per machine. `oauthAccount` is present only while Claude Code is logged in. */
-const ClaudeJsonSchema = Schema.Struct({
-  userID: Schema.optionalKey(Schema.String),
-  oauthAccount: Schema.optionalKey(
-    Schema.Struct({
-      accountUuid: Schema.optionalKey(Schema.String),
-    }),
-  ),
-});
-
-// `sub` names the login method (`google-oauth2|…`), so one person can have several.
-// `user_id` (`user-…`) is the OpenAI account and is the same for every login.
-const IdTokenClaims = Schema.Struct({
-  "https://api.openai.com/auth": Schema.Struct({ user_id: Schema.NonEmptyString }),
-});
-const decodeIdTokenClaims = Schema.decodeUnknownOption(Schema.fromJsonString(IdTokenClaims));
-
-/**
-=======
->>>>>>> upstream/main
  * Who an install belongs to, from strongest to weakest. `connect` is the T3
  * Connect account. `device` is a client device that connected.
  */

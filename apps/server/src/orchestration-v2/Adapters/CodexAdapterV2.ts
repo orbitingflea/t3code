@@ -19,7 +19,6 @@ import {
 import type { ManagedServerProvider } from "@t3tools/provider-core/server/snapshot";
 import type { CodexEffectiveRuntime } from "../../provider/CodexManagedRuntime.ts";
 import { classifyCodexManagedError } from "../../provider/CodexManagedErrors.ts";
-import { CodexAuthJsonSchema, openAiUserId } from "../../telemetry/Identify.ts";
 import {
   buildCodexInitializeParams,
   codexAppServerEnvironment,
@@ -117,6 +116,7 @@ import { ChildProcess, ChildProcessSpawner } from "effect/process";
 import { resolveAttachmentPath, resolveAttachmentPathById } from "../../attachmentStore.ts";
 import * as PortScanner from "../../preview/PortScanner.ts";
 import { getCodexServiceTierOptionValue } from "../../codexModelOptions.ts";
+import { readCodexAccount } from "../../fork/codexAccount.ts";
 import { resolveCodexTurnServiceTier } from "../../fork/codexServiceTier.ts";
 import {
   codexCompactionNoteItems,
@@ -345,25 +345,6 @@ const decodeCodexBackgroundTerminalTerminateResponse = Schema.decodeUnknownEffec
 const decodeCodexBackgroundTerminalsListResponse = Schema.decodeUnknownEffect(
   CodexBackgroundTerminalsListResponse,
 );
-const decodeCodexAuthJson = Schema.decodeUnknownOption(Schema.fromJsonString(CodexAuthJsonSchema));
-
-// A Team shares `account_id`; the id_token's user id tells its seats apart.
-const readCodexAccount = Effect.fn("CodexAdapterV2.readAccount")(function* (
-  fileSystem: FileSystem.FileSystem,
-  authPath: string,
-) {
-  const text = yield* fileSystem.readFileString(authPath).pipe(Effect.option);
-  const tokens = Option.flatMap(Option.flatMap(text, decodeCodexAuthJson), (auth) =>
-    Option.fromUndefinedOr(auth.tokens),
-  );
-  return Option.map(tokens, (tokens) => {
-    const userId = Option.fromUndefinedOr(tokens.id_token).pipe(
-      Option.flatMap(openAiUserId),
-      Option.getOrElse(() => ""),
-    );
-    return `${tokens.account_id}\n${userId}`;
-  });
-});
 // Initialize normally answers in under a second; leave room for a slow first launch.
 const CODEX_INITIALIZE_TIMEOUT = "30 seconds";
 const CodexThreadSampleResponse = Schema.Struct({ text: Schema.NullOr(Schema.String) });

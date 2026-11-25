@@ -5985,7 +5985,15 @@ describe("AcpAdapterV2", () => {
       );
       assert.equal(runtimeOrdinalSeen, 2);
       assert.lengthOf(runtimeInputs, 2);
-<<<<<<< origin/main
+      // Loading the thread into the replacement agent is reported, and cleared before the turn runs.
+      assert.deepEqual(
+        Array.from(startup, (event) =>
+          event.type === "provider_session.updated"
+            ? (event.providerSession.startupPhase ?? null)
+            : "turn running",
+        ).slice(0, 3),
+        ["resume", null, "turn running"],
+      );
       assert.isFalse(yield* accountChanged!, "restarted process read the new account");
 
       account = Option.some("account-c");
@@ -6000,17 +6008,6 @@ describe("AcpAdapterV2", () => {
       assert.isFalse(yield* accountChanged!, "replacement process read the new account");
       account = Option.none();
       assert.isFalse(yield* accountChanged!, "unreadable");
-=======
-      // Loading the thread into the replacement agent is reported, and cleared before the turn runs.
-      assert.deepEqual(
-        Array.from(startup, (event) =>
-          event.type === "provider_session.updated"
-            ? (event.providerSession.startupPhase ?? null)
-            : "turn running",
-        ).slice(0, 3),
-        ["resume", null, "turn running"],
-      );
->>>>>>> upstream/main
     }).pipe(Effect.provide(layerTest)),
   );
 

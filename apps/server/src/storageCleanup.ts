@@ -58,14 +58,11 @@ import { forkParked } from "./serverActivation.ts";
 import * as Settings from "./serverSettings.ts";
 import * as TerminalManager from "./terminal/Manager.ts";
 import { isFilesystemRoot, managedWorktreesDirectories } from "./worktreesDirectory.ts";
-<<<<<<< origin/main
 import {
   homeCheckoutCacheDir,
   isCheckoutCachePath,
 } from "./fork/reflinkWorktrees/checkoutCacheSites.ts";
-=======
 import * as CheckpointCaptureIndex from "./vcs/checkpointCaptureIndex.ts";
->>>>>>> upstream/main
 import * as GitVcsDriver from "./vcs/GitVcsDriver.ts";
 import { isNonRepositoryGitStderr } from "./vcs/GitVcsDriverCore.ts";
 import { isLinkedWorktree, removeLinkedWorktree } from "./vcs/worktreeRemoval.ts";

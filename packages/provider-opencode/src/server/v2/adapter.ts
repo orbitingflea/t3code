@@ -4848,15 +4848,11 @@ export const make = Effect.fn("OpenCode2Adapter.make")(function* (instanceId: Pr
           );
         }
       }
-<<<<<<< origin/main
       // Mentions in inline context (handoff history, FYI messages) are not this turn's skills.
-      const mentions = skillMentions(
+      const skills = yield* skillsMentioned(
+        location,
         turnInput.message.text.slice(turnInput.inlineContextLength ?? 0),
       );
-      const skills = mentions.length === 0 ? [] : yield* skillsMentioned(location, mentions);
-=======
-      const skills = yield* skillsMentioned(location, text);
->>>>>>> upstream/main
       const files = yield* promptFiles(turnInput.message.attachments);
       const messageText = turnInput.resume ? "" : yield* promptText(turnInput);
       if (!sending()) return;

@@ -2766,16 +2766,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           ),
         );
         if (clicked._tag === "Failure" || clicked.value === null) return;
-<<<<<<< origin/main
-        if (threadActionRequiresOperate(clicked.value) && !checkThreadOperations([thread])) return;
-        if (await handleDisplayModeAction(threadRef, clicked.value)) return;
-=======
         if (
           threadActionRequiresOperate(clicked.value) &&
           !checkThreadOperations([thread], isThreadTriageAction(clicked.value))
         )
           return;
->>>>>>> upstream/main
+        if (await handleDisplayModeAction(threadRef, clicked.value)) return;
         if (clicked.value?.startsWith("snooze:")) {
           const preset =
             clicked.value === "snooze:custom"

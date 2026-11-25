@@ -34,11 +34,8 @@ import { mcpToolSession, type McpToolSession } from "../mcp/AcpMcpStdioBridge.ts
 import { expandHomePath } from "../os-jank.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import { readLiveServerRuntimeState } from "../serverRuntimeState.ts";
-<<<<<<< origin/main
 import { userViewCommand } from "../fork/userView/userViewCommand.ts";
-=======
 import { unsetInheritedRepositoryEnv } from "../vcs/VcsProcess.ts";
->>>>>>> upstream/main
 import { projectLocationFlags, resolveCliAuthConfig } from "./config.ts";
 
 /**

@@ -3024,6 +3024,7 @@ describe("AntigravityAdapterV2 update_steps checklist", () => {
       const adapter = yield* makeAntigravityAdapterV2({
         instanceId,
         selfInvocation: yield* resolveSelfInvocation(),
+        profileDirectory: unusedProfileDirectory,
         makeRuntime: (input) =>
           makeAntigravityAcpRuntime({
             ...input,

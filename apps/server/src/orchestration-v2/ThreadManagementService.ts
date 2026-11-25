@@ -1301,6 +1301,7 @@ const make = Effect.gen(function* () {
       turnItems.some(
         (item) =>
           item.type === "user_message" &&
+          item.fyi !== true &&
           (item.inputIntent === "steer" || item.inputIntent === "promoted_queued_to_steer") &&
           item.completedAt !== null &&
           !DateTime.isLessThan(DateTime.makeUnsafe(item.completedAt), requestedAt),
