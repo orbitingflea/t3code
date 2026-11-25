@@ -27,10 +27,16 @@ function choose(key: string): void {
  * Registers a mounted composer's insertion `handler` for `key` and selects it if none has higher
  * focus priority. Returns a cleanup that removes only this handler and falls back to the next.
  */
-export function mountContextInsertion(
+export function setContextInsertion(
   key: string,
-  handler: ComposerContextInsertionHandler,
-): () => void {
+  handler: ComposerContextInsertionHandler | null,
+): (() => void) | undefined {
+  if (handler === null) {
+    // Every registration goes, so a later focus or unmount cannot bring a handler back.
+    mountedByKey.delete(key);
+    contextInsertionHandlers.delete(key);
+    return undefined;
+  }
   mountedByKey.set(key, [...(mountedByKey.get(key) ?? []), handler]);
   choose(key);
   return () => {

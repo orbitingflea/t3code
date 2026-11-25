@@ -43,6 +43,22 @@ describe("context inserted into a draft two composers edit", () => {
     }
   });
 
+  it("stays off a draft whose handler was cleared, even once a composer of it takes focus", () => {
+    const draft = useComposerDraftStore.getState();
+    const mounted = vi.fn(() => true);
+    const unmount = draft.setContextInsertionHandler(other, mounted);
+    try {
+      draft.setContextInsertionHandler(other, null);
+      focusContextInsertion(mounted);
+      draft.addReviewComment(other, comment("c4"));
+      expect(mounted).not.toHaveBeenCalled();
+      expect(draft.getComposerDraft(other)?.reviewComments.map(({ id }) => id)).toEqual(["c4"]);
+    } finally {
+      unmount?.();
+      draft.removeReviewComment(other, "c4");
+    }
+  });
+
   it("goes to the composer mounted last while neither was focused", () => {
     const draft = useComposerDraftStore.getState();
     const first = vi.fn(() => true);
