@@ -1258,11 +1258,13 @@ function revealReply(
     return shown;
   }
   // One strip draws one tab: one view of the reply shows right after the origin, whose Find stays
-  // one tab back. The source pane's own view, else the one shown, moves; other views stay.
+  // one tab back. The source pane's own view moves, else one whose pane keeps other tabs, else the
+  // one shown; other views stay.
   if (isStripView(layout, view)) {
     const elsewhere = source.tabs.includes(tab)
       ? undefined
-      : preferredView(layout, tab, source.id, "reveal");
+      : (holders(layout.root, tab).find((pane) => pane.tabs.length > 1) ??
+        preferredView(layout, tab, source.id, "reveal"));
     const lifted =
       elsewhere === undefined ? layout : removeView(layout, { pane: elsewhere.id, tab });
     const kept = findPane(lifted.root, source.id)!;

@@ -627,10 +627,11 @@ describe("a Find reveal from a Chat open in two panes", () => {
     const panesNow = Object.fromEntries(
       leaves(next.root).map((node) => [node.id, { tabs: node.tabs, active: node.active }]),
     );
-    // The first view shown moves, so its pane closes; the other view stays.
+    // The view whose pane keeps other tabs moves, so no pane closes; the other view stays.
     expect(panesNow).toEqual({
       p0: { tabs: [otherChat, reply, "file:a"], active: reply },
-      p2: { tabs: [PRIMARY_CHAT, reply], active: reply },
+      p1: { tabs: [reply], active: reply },
+      p2: { tabs: [PRIMARY_CHAT], active: PRIMARY_CHAT },
     });
     expect(next.focused).toBe("p0");
   });
