@@ -3,7 +3,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useLayoutEffect } from "react";
 import { create } from "zustand";
 
-import { attachThreadFindTimeline } from "~/components/chat/threadFindStore";
+import { attachThreadFindTimeline, useThreadFindStore } from "~/components/chat/threadFindStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { useInSubThreadView } from "../subThreads/subThreadsState";
@@ -20,9 +20,10 @@ const chatViews = new Map<ViewId, { readonly thread: string }>();
 // The view that shows Find in split panes: each Find request names it, and it changes again only
 // when that view ends.
 const useFindOwner = create<{ readonly owner: FindOwner | null }>(() => ({ owner: null }));
+// The views a write shows are not drawn yet when its ended views are told, so Find waits without
+// an owner and the Chat views drawn after the write pick it again.
 onViewEnd((id) => {
-  const { owner } = useFindOwner.getState();
-  if (owner?.view === id) useFindOwner.setState({ owner: ownerFor(owner.thread) });
+  if (useFindOwner.getState().owner?.view === id) useFindOwner.setState({ owner: null });
 });
 
 // Counts Find requests here, since the store counts from 1 again after a close.
@@ -94,11 +95,16 @@ export function useAttachFindTimeline(): (timeline: FindTimeline) => () => void 
   const pane = useRightPanelPane();
   const reply = useInSubThreadView();
   const view = pane === null || pane.strip ? null : pane.view;
+  const openThread = useThreadFindStore((state) => state.threadKey);
   return (timeline: FindTimeline) => {
     if (view === null) return attachThreadFindTimeline(timeline);
     if (reply) return () => {};
     timelines.set(view, timeline);
-    const detach = attachThreadFindTimeline(sharedTimeline(timeline.threadKey));
+    // Find reads one attached timeline, so a Chat of another thread leaves the open Find's alone.
+    const detach =
+      openThread === null || openThread === timeline.threadKey
+        ? attachThreadFindTimeline(sharedTimeline(timeline.threadKey))
+        : () => {};
     return () => {
       if (timelines.get(view) === timeline) timelines.delete(view);
       const thread = timeline.threadKey;
