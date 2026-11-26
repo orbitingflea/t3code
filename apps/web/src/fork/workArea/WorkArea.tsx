@@ -736,14 +736,14 @@ function WorkAreaPane(props: {
         ),
       }
     : { scope: viewId };
-  const shown = shownBy(
-    viewId,
+  const live =
     payload?.kind === "linked-file"
       ? payload
       : activeEntry !== undefined && !isDisplayEntry(activeEntry) && activeEntry.kind === "file"
         ? activeEntry
-        : null,
-  );
+        : null;
+  // The one strip lists the tab once, so it shows the tab's latest reveal whichever view it draws.
+  const shown = props.strip ? live : shownBy(viewId, live);
   const lone = !props.strip && layout.root.kind === "pane" && !pane.tabs.includes(LAUNCHER);
   const canSplit = useWorkAreaViewCheck(
     (view) =>

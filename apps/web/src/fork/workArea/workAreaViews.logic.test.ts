@@ -788,6 +788,23 @@ describe("a line reveal in a file with two views", () => {
     expect([lineIn(top), lineIn(idOf("p2", "file:a"))]).toEqual([40, 40]);
   });
 
+  it("goes to the pane an open came from though the focused pane shows the same file", () => {
+    seat(
+      [file("a")],
+      row(pane("p0", ["chat"]), column(pane("p1", [otherChat, "file:a"]), pane("p2", ["file:a"]))),
+      "p2",
+    );
+    const top = idOf("p1", "file:a");
+    const bottom = idOf("p2", "file:a");
+    // A citation in p1's side Chat lands after the user focused p2, which shows the file.
+    runWithOpenOrigin({ record: ref, tab: otherChat, pane: asPaneId("p1") }, () =>
+      store().openFile(ref, "a", 40),
+    );
+    expect(layout().focused).toBe("p1");
+    expect(actives()).toEqual(["chat", "file:a", "file:a"]);
+    expect([lineIn(top), lineIn(bottom)]).toEqual([40, null]);
+  });
+
   it("goes to the pane the open focuses when closing the Files tab uncovers another view", () => {
     const files: RightPanelSurface = { id: "files", kind: "files" };
     seat(

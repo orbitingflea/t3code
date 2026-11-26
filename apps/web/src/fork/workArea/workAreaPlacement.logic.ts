@@ -584,8 +584,11 @@ function placeWrite(
     const tab = surfaceTabId(surface.id);
     return placedSet.has(tab) || tab === layout.floating?.tab ? [] : [tab];
   });
+  // Views of one tab share its surface id, so an open from a pane other than the focused one
+  // still activates there when the focused pane shows the same surface.
+  const fromOtherPane = openFrom?.pane !== undefined && openFrom.pane !== settled.focused;
   const target =
-    requested !== null && requested !== prevLive && byId.has(requested)
+    requested !== null && (requested !== prevLive || fromOtherPane) && byId.has(requested)
       ? surfaceTabId(requested)
       : null;
   const removedLive =
