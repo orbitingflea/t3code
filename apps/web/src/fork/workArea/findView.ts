@@ -3,6 +3,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useLayoutEffect } from "react";
 import { create } from "zustand";
 
+import { attachThreadFindTimeline } from "~/components/chat/threadFindStore";
 import { useRightPanelStore } from "~/rightPanelStore";
 
 import { useInSubThreadView } from "../subThreads/subThreadsState";
@@ -62,14 +63,45 @@ export function noteFindRequest(thread: string | null): void {
   useFindOwner.setState({ owner: thread === null ? null : ownerFor(thread) });
 }
 
-/**
- * Returns whether this view owns Find. Always true outside a work-area pane or in the single tab
- * strip; in split panes, true only for the view assigned Find.
- */
-export function useOwnsFind(): boolean {
+type FindTimeline = Parameters<typeof attachThreadFindTimeline>[0];
+
+// Each Chat view's timeline. Find reads the timeline of the view a request names at that moment,
+// so a request from another view starts from that view's place.
+const timelines = new Map<ViewId, FindTimeline>();
+const sharedTimelines = new Map<string, FindTimeline>();
+
+function sharedTimeline(thread: string): FindTimeline {
+  const timelineOf = () => {
+    const named = ownerFor(thread)?.view;
+    const own = named === undefined ? undefined : timelines.get(named);
+    return own ?? [...timelines.values()].find((timeline) => timeline.threadKey === thread);
+  };
+  const shared = sharedTimelines.get(thread) ?? {
+    threadKey: thread,
+    readPosition: (query) => timelineOf()?.readPosition(query),
+    navigate: () => timelineOf()?.navigate(),
+  };
+  sharedTimelines.set(thread, shared);
+  return shared;
+}
+
+export function useAttachFindTimeline(): (timeline: FindTimeline) => () => void {
   const pane = useRightPanelPane();
-  const owner = useFindOwner((state) => state.owner?.view);
-  return pane === null || pane.strip || owner === pane.view;
+  const reply = useInSubThreadView();
+  const view = pane === null || pane.strip ? null : pane.view;
+  return (timeline: FindTimeline) => {
+    if (view === null) return attachThreadFindTimeline(timeline);
+    if (reply) return () => {};
+    timelines.set(view, timeline);
+    const detach = attachThreadFindTimeline(sharedTimeline(timeline.threadKey));
+    return () => {
+      if (timelines.get(view) === timeline) timelines.delete(view);
+      const thread = timeline.threadKey;
+      if ([...timelines.values()].some((entry) => entry.threadKey === thread)) return;
+      sharedTimelines.delete(thread);
+      detach();
+    };
+  };
 }
 
 /**
@@ -83,19 +115,22 @@ export function useFindInView(thread: ScopedThreadRef | null, openThread: string
   // A reply draws its own matches while Find is open, but Find belongs to a Chat of the thread.
   const reply = useInSubThreadView();
   const view = reply ? null : (pane?.view ?? null);
-  const owner = useFindOwner((state) => state.owner?.view);
+  const owner = useFindOwner((state) => state.owner);
+  const open = key !== null && openThread === key;
+  const unowned = open && owner?.thread !== key;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- lists this Chat view for the Find requests that name the view showing Find
   useLayoutEffect(() => {
     if (view === null || key === null) return;
     const entry = { thread: key };
     chatViews.set(view, entry);
+    // Find is open with no view, as when its view ended while this one was hidden.
+    if (unowned) useFindOwner.setState({ owner: ownerFor(key) });
     return () => {
       if (chatViews.get(view) === entry) chatViews.delete(view);
     };
-  }, [view, key]);
-  const open = key !== null && openThread === key;
+  }, [view, key, unowned]);
   if (!open || pane === null || view === null || pane.strip) return open;
-  return owner === view;
+  return owner?.view === view;
 }
 
 /**
