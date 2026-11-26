@@ -47,11 +47,12 @@ export function viewIdOf(owner: string, view: ViewRef): ViewId {
   return id;
 }
 
-/** Calls `listener` when a tracked work-area view ends; returns the unsubscribe function. */
+/** Returns the tracked `ViewId` for `view` in `owner`, or `undefined` without minting one. */
 export function knownViewId(owner: string, view: ViewRef): ViewId | undefined {
   return ids.get(owner)?.get(viewKey(view));
 }
 
+/** Calls `listener` when a tracked work-area view ends; returns the unsubscribe function. */
 export function onViewEnd(listener: (id: ViewId) => void): () => void {
   endListeners.add(listener);
   return () => endListeners.delete(listener);

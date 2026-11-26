@@ -85,6 +85,11 @@ function sharedTimeline(thread: string): FindTimeline {
   return shared;
 }
 
+/**
+ * Returns a callback that attaches a timeline to thread Find for this view. Outside split panes
+ * it attaches directly. In split panes it skips reply views and routes position reads and
+ * navigation to the Chat view chosen for the thread at call time.
+ */
 export function useAttachFindTimeline(): (timeline: FindTimeline) => () => void {
   const pane = useRightPanelPane();
   const reply = useInSubThreadView();
@@ -105,9 +110,10 @@ export function useAttachFindTimeline(): (timeline: FindTimeline) => () => void 
 }
 
 /**
- * Returns whether Find is open for `thread` in this view, and registers work-area Chat views for
- * Find ownership. Returns true when `thread` matches `openThread`, except in split panes where
- * only the owning Chat view (and any reply view) returns true.
+ * Returns whether Find is open for `thread` in this view and registers work-area Chat views for
+ * Find ownership. When Find is open for `thread` with no owner, assigns Find to the Chat view
+ * picked for `thread`. Returns true when `thread` matches `openThread`, except in split panes
+ * where only the owning Chat view and reply views return true.
  */
 export function useFindInView(thread: ScopedThreadRef | null, openThread: string | null): boolean {
   const key = thread === null ? null : scopedThreadKey(thread);
