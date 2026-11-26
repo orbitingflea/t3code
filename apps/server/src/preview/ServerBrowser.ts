@@ -3298,17 +3298,14 @@ const make = Effect.gen(function* () {
             viewer.pressedButtons.set(button, { x: num(message.x), y: num(message.y) });
           else if (action === "up") viewer.pressedButtons.delete(button);
         }
-<<<<<<< origin/main
         if (action === "up")
           void PreviewPageCopy.forwardPressCopy(tab, viewer, button, CLIPBOARD_WORLD);
-=======
         const press = left && action === "up" ? viewer.selectPress : null;
         if (press) {
           viewer.selectPress = null;
           await offerSelectMenu(session, viewer, press);
           releaseSelectHandle(viewer, session, press);
         }
->>>>>>> upstream/main
         return;
       }
       case "wheel":

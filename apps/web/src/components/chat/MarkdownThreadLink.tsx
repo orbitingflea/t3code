@@ -97,50 +97,6 @@ export function MarkdownThreadLink(props: {
       title: knownTitle,
     };
     return (
-<<<<<<< origin/main
-      <Tooltip>
-        <TooltipTrigger
-          render={
-            <ContextChip
-              kind="thread"
-              render={
-                <button
-                  type="button"
-                  draggable={panelRef !== null}
-                  onDragStart={(event) =>
-                    startPanelOnlyDrag(
-                      event,
-                      threadChipPanelLink({
-                        threadRef: props.threadRef,
-                        target: { kind: "linked", target: linkedTarget },
-                      }),
-                    )
-                  }
-                  {...trigger(
-                    (intent) =>
-                      openLinkedThreadRead({
-                        panelRef,
-                        target: linkedTarget,
-                        intent,
-                        navigate,
-                      }),
-                    // Outside a thread there is no panel to read it in.
-                    { panel: panelRef !== null },
-                  )}
-                />
-              }
-              aria-label={gt("Thread, {title}", { title })}
-            >
-              <MessagesSquareIcon />
-              <ContextChipLabel>{title}</ContextChipLabel>
-            </ContextChip>
-          }
-        />
-        <TooltipPopup side="top">
-          {gt("Read the thread on {label}", { label: linkedLabel })}
-        </TooltipPopup>
-      </Tooltip>
-=======
       <SharedTooltipTrigger
         render={
           <ContextChip
@@ -148,16 +104,21 @@ export function MarkdownThreadLink(props: {
             render={
               <button
                 type="button"
+                draggable={panelRef !== null}
+                onDragStart={(event) =>
+                  startPanelOnlyDrag(
+                    event,
+                    threadChipPanelLink({
+                      threadRef: props.threadRef,
+                      target: { kind: "linked", target: linkedTarget },
+                    }),
+                  )
+                }
                 {...trigger(
                   (intent) =>
                     openLinkedThreadRead({
                       panelRef,
-                      target: {
-                        viaEnvironmentId: props.environmentId,
-                        ...writtenRef,
-                        label: linkedLabel,
-                        title: knownTitle,
-                      },
+                      target: linkedTarget,
                       intent,
                       navigate,
                     }),
@@ -174,7 +135,6 @@ export function MarkdownThreadLink(props: {
         }
         label={gt("Read the thread on {label}", { label: linkedLabel })}
       />
->>>>>>> upstream/main
     );
   }
   if (missing && resolved === null) {

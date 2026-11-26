@@ -35,14 +35,10 @@ export const threadEnvironment = createThreadEnvironmentAtoms(
   threadFamilies.snapshotAtom,
   environmentShell.statusAtom,
 );
-<<<<<<< origin/main
 const environmentThreads = displayModeThreadStates(
   createEnvironmentThreadStateAtoms(connectionAtomRuntime),
 );
-=======
-const environmentThreads = createEnvironmentThreadStateAtoms(connectionAtomRuntime);
 export const environmentThreadStateAtom = environmentThreads.stateAtom;
->>>>>>> upstream/main
 export const environmentThreadDetails = createEnvironmentThreadDetailAtoms(
   environmentThreads.stateAtom,
 );

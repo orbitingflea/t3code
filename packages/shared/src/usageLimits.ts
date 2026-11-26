@@ -21,7 +21,6 @@ import {
 import * as DateTime from "effect/DateTime";
 
 import { isLocalLoopbackHost, isWildcardHost } from "./hostClassification.ts";
-import { bindAntigravityEmails } from "./fork/antigravityEmailBindings.ts";
 
 const MINUTE = 60_000;
 
@@ -230,21 +229,16 @@ const nativeReport = (provider: ServerProvider): AccountReport => ({
 });
 
 // Include every enabled login, even unreadable workspaces.
-function accountKeyResolver(reports: readonly AccountReport[]) {
-  const bind = bindAntigravityEmails(reports);
-  const keyOf = (report: AccountReport) => {
-    const { driver, email, usageLimits } = bind(report);
-    return accountKey(driver, email, usageLimits);
-  };
+function accountKeyResolver(reports: Iterable<AccountReport>) {
   const workspaces = new Map<string, Set<string>>();
   for (const report of reports) {
-    const key = keyOf(report);
+    const key = accountKey(report.driver, report.email, report.usageLimits);
     if (key && report.workspaceId) {
       workspaces.set(key, (workspaces.get(key) ?? new Set()).add(report.workspaceId));
     }
   }
   return (report: AccountReport): string | null => {
-    const key = keyOf(report);
+    const key = accountKey(report.driver, report.email, report.usageLimits);
     if (!key) return null;
     if (report.workspaceId) return `${key}:${report.workspaceId}`;
     const known = workspaces.get(key);

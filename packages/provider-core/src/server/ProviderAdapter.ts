@@ -604,18 +604,14 @@ export interface ProviderAdapterV2TurnInput {
   readonly inlineContextLength?: number;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
-<<<<<<< origin/main
-  readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
-  /** Context for this turn only, beside a slash command that must reach the provider unchanged. Run `delivered` once the agent gets `text`. */
-  readonly commandNote?: { readonly text: string; readonly delivered: Effect.Effect<void> };
-=======
   readonly appContext?: ReadonlyArray<{
     readonly key: string;
     readonly text: string;
     /** ISO time the note was last set, so a resent note reads as earlier state, not news. */
     readonly updatedAt?: string;
   }>;
->>>>>>> upstream/main
+  /** Context for this turn only, beside a slash command that must reach the provider unchanged. Run `delivered` once the agent gets `text`. */
+  readonly commandNote?: { readonly text: string; readonly delivered: Effect.Effect<void> };
 }
 
 export type ProviderAdapterV2ResumeTurnInput = Omit<

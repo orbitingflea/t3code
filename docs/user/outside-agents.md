@@ -52,34 +52,6 @@ t3 thread user-view "$id" --sub-thread 51c0de
 t3 thread list
 ```
 
-<<<<<<< origin/main
-`.` means the project that contains the current folder, or a git worktree of
-its repository; a project id also works. A new thread uses the project's
-default model and permission mode, and runs in the project folder unless you
-pass `--worktree <base-branch>`. Its title is the message's first line, or
-`--title`; add `--generate-title` to have it named from the message, as threads
-started in the app are. `send` never interrupts: a busy thread gets the message
-as its next turn. Pass `-` as the message to read it from stdin.
-
-To choose the model, pass `--provider <instance-id> --model <slug>`. Add
-`--option id=value` for each model option. For reasoning effort, Codex uses
-`--option reasoningEffort=high`, while Claude uses `--option effort=high`.
-Option ids and allowed values depend on the provider and model; use those
-reported by `orchestrator_capabilities`. `true` and `false` set on/off options.
-
-`user-view` prints a Chat mode thread word for word as your screen shows it: the latest main-list messages, or
-with `--sub-thread`, a sub-thread and the three main-list messages before it.
-
-`--wait` prints the agent's reply. It exits 1 when the run fails or stops, and
-2 when the agent waits for an answer you give in the app. Add `--json` for a
-result that always includes the thread id.
-
-## Remove an agent
-
-Approved agents appear under **Settings → Sharing & access** like other clients.
-Revoke one there to cut off its access immediately. A sign-in lasts 30 days;
-after that the agent asks you to approve it again.
-=======
 - Pass `--worktree <base-branch>`, `--title` / `--generate-title`, `--provider <id> --model <slug>`, `--option id=value` (e.g. `reasoningEffort=high` for Codex, `effort=high` for Claude), or `-` to read the prompt from stdin.
+- `user-view` prints a Chat mode thread word for word as your screen shows it. It prints the latest main-list messages, or with `--sub-thread`, a sub-thread and the three main-list messages before it.
 - `--wait` prints the reply and exits `1` on failure/stop or `2` when waiting for user input. Add `--json` for structured output including the thread ID.
->>>>>>> upstream/main

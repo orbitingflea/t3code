@@ -36,7 +36,6 @@ import {
 } from "../../textGeneration/AntigravityTextGeneration.ts";
 import {
   antigravityRuntimeState,
-  makeAntigravityRuntimeUsageProbe,
   profileAntigravityRuntimeState,
   removeAntigravityRuntimeSessionFiles,
   withUserAgyState,
@@ -578,20 +577,6 @@ export const AntigravityDriver: ProviderDriver<
       };
     });
 
-<<<<<<< origin/main
-    const usage = yield* makeAntigravityRuntimeUsageProbe({
-      profileDirectory,
-      userHome,
-      authMethod: auth.authMethod,
-      runtimeState,
-    }).pipe(
-      Effect.provideService(FileSystem.FileSystem, fileSystem),
-      Effect.provideService(Path.Path, path),
-      Effect.provideService(Digest.Digest, digest),
-      Effect.provideService(HttpClient.HttpClient, httpClient),
-    );
-=======
->>>>>>> upstream/main
     const provider = yield* makeAntigravityProvider(settings, {
       environment: processEnvironment,
       stampIdentity: classifyModels,
@@ -637,16 +622,11 @@ export const AntigravityDriver: ProviderDriver<
         ),
       ),
       profileDirectory,
-<<<<<<< origin/main
       runtimeState,
-      onSessionStarted: (started, cwd) =>
-        provider.onSessionStarted(started, cwd).pipe(Effect.andThen(authFlow.onSignedInElsewhere)),
-=======
       onSessionStarted: (started, cwd, session) =>
         provider
           .onSessionStarted(started, cwd, session)
           .pipe(Effect.andThen(authFlow.onSignedInElsewhere)),
->>>>>>> upstream/main
       onSessionEvent: (event, cwd) => {
         if (event._tag === "ConfigOptionsUpdated") {
           return provider.onConfigOptionsUpdated(event.configOptions);

@@ -22,21 +22,9 @@ import {
 import { codexPlanLabel } from "../provider/CodexProvider.ts";
 import { codexRateLimitsToLimits } from "../provider/codexUsageLimits.ts";
 import { claudeUsageResponseToLimits } from "../provider/claudeUsageLimits.ts";
-<<<<<<< origin/main
-import {
-  antigravityAccountFingerprint,
-  antigravitySummaryWindows,
-  antigravityUserAgent,
-} from "../provider/antigravityUsageLimits.ts";
-import {
-  makeUnavailableUsageLimits,
-  makeUsageLimits,
-} from "@t3tools/provider-core/server/usageLimits";
+import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
 import { withAccountReadAt } from "../fork/usageReadAt/usageReadAt.ts";
 import * as ClaudeHub from "../fork/claudeUsageSource/claudeHub.ts";
-=======
-import { makeUnavailableUsageLimits } from "@t3tools/provider-core/server/usageLimits";
->>>>>>> upstream/main
 
 /** A hub with its management key already read from wherever the setting keeps it. */
 export interface CliproxyHub {
@@ -51,11 +39,7 @@ const AuthFile = Schema.Struct({
   label: Schema.optional(Schema.String),
   email: Schema.optional(Schema.String),
   disabled: Schema.optional(Schema.Boolean),
-<<<<<<< origin/main
   organization_uuid: Schema.optional(Schema.String),
-  project_id: Schema.optional(Schema.String),
-=======
->>>>>>> upstream/main
   id_token: Schema.optional(
     Schema.Struct({
       chatgpt_account_id: Schema.optional(Schema.String),

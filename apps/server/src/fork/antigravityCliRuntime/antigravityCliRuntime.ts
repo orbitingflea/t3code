@@ -10,7 +10,6 @@ import * as SqlClient from "effect/sql/SqlClient";
 
 import type * as AcpSessionRuntime from "@t3tools/provider-acp/server/AcpSessionRuntime";
 import { removeAntigravitySessionFiles } from "../../provider/acp/AntigravitySessionFiles.ts";
-import { makeAntigravityUsageProbe } from "../../provider/antigravityUsageLimits.ts";
 import type { AntigravityExecutable } from "../../provider/AntigravityInstallation.ts";
 
 /**
@@ -93,37 +92,6 @@ export const antigravityRuntimeStateOf = (options: {
 
 const antigravityTokenPath = (state: AntigravityRuntimeState, path: Path.Path) =>
   path.join(state.root, state.appFolder, state.tokenFile);
-
-/**
- * Limits read with the sign-in of whichever runtime runs when they are read. The runtime is
- * resolved per read, as the binary path may resolve only later; each runtime's folder is fixed.
- */
-export const makeAntigravityRuntimeUsageProbe = Effect.fn("makeAntigravityRuntimeUsageProbe")(
-  function* (
-    input: Omit<Parameters<typeof makeAntigravityUsageProbe>[0], "appDirectory"> & {
-      readonly userHome: string;
-      readonly runtimeState: Effect.Effect<AntigravityRuntimeState>;
-    },
-  ) {
-    const path = yield* Path.Path;
-    const { userHome, runtimeState, ...options } = input;
-    const cliState = antigravityRuntimeState(
-      { managedVersionDirectory: null },
-      { profileDirectory: options.profileDirectory, userHome, path },
-    );
-    const managed = yield* makeAntigravityUsageProbe(options);
-    const cli = yield* makeAntigravityUsageProbe({
-      ...options,
-      appDirectory: path.join(cliState.root, cliState.appFolder),
-    });
-    return {
-      probe: Effect.flatMap(runtimeState, (state) =>
-        state.runtime === "cli" ? cli.probe : managed.probe,
-      ),
-      clear: Effect.andThen(managed.clear, cli.clear),
-    };
-  },
-);
 
 const RefreshToken = Schema.Struct({ refresh_token: Schema.NonEmptyString });
 const decodeRefreshToken = Schema.decodeUnknownOption(

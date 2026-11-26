@@ -1092,37 +1092,11 @@ function RightPanelTab(
           }}
         />
       ) : (
-<<<<<<< origin/main
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <button
-                type="button"
-                data-tab-title
-                onDoubleClick={() => {
-                  if (surface.kind === "device" && props.canRename) onStartRename(surface.id);
-                }}
-                className="cursor-pointer flex min-w-0 items-center"
-                aria-label={
-                  sideChatState === null
-                    ? undefined
-                    : gt("{title}, {state}", {
-                        title,
-                        state: messages(SIDE_CHAT_STATE_LABELS[sideChatState]),
-                      })
-                }
-              >
-                <span className="truncate">{title}</span>
-              </button>
-            }
-          />
-          <TooltipPopup>
-            {surface.kind === "device" ? (
-=======
         <SharedTooltipTrigger
           render={
             <button
               type="button"
+              data-tab-title
               onDoubleClick={() => {
                 if (surface.kind === "device" && props.canRename) onStartRename(surface.id);
               }}
@@ -1135,14 +1109,12 @@ function RightPanelTab(
                       state: messages(SIDE_CHAT_STATE_LABELS[sideChatState]),
                     })
               }
-              onClick={() => onActivate(surface)}
             >
               <span className="truncate">{title}</span>
             </button>
           }
           label={
             surface.kind === "device" ? (
->>>>>>> upstream/main
               <DeviceTabTooltip
                 surface={surface}
                 environmentId={props.environmentId}
@@ -1206,48 +1178,6 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
     canScrollRight: false,
   });
 
-<<<<<<< origin/main
-  if (props.open === false && addSurfaceMenuOpen) setAddSurfaceMenuOpen(false);
-
-  const addSurfaceMenuBlocked = () =>
-    !addSurfaceMenuOpen && document.querySelector(LAUNCHER_SHORTCUT_BLOCKING_LAYERS) !== null;
-  const onNewSurfaceKeyDown = useEffectEvent((event: KeyboardEvent) => {
-    if (event.defaultPrevented || event.isComposing) return;
-    if (
-      resolveShortcutCommand(event, props.keybindings, {
-        context: { ...props.getShortcutContext(), rightPanelOpen: true },
-      }) !== "rightPanel.new"
-    )
-      return;
-    if (addSurfaceMenuBlocked()) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (!event.repeat) {
-      addSurfaceTriggerRef.current?.focus();
-      setAddSurfaceMenuOpen(true);
-    }
-  });
-  // Forwarded from a focused browser page. Focusing the trigger here would let ChatView's
-  // window-focus handler see a plain button and refocus the composer, closing the menu.
-  const onMenuAction = useEffectEvent((action: string) => {
-    if (action === "rightPanel.new" && !addSurfaceMenuBlocked()) setAddSurfaceMenuOpen(true);
-  });
-  // Inside ChatView's split view, which owns the shell and the split menu entries.
-  const pane = useRightPanelPane();
-  const takesNewSurfaceShortcut = props.open !== false && pane?.focused !== false;
-  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes document keydown and the desktop menu action (forwarded from a focused browser page) for the new surface shortcut while the panel is open
-  useEffect(() => {
-    if (!takesNewSurfaceShortcut) return;
-    document.addEventListener("keydown", onNewSurfaceKeyDown, true);
-    const unsubscribe = window.desktopBridge?.onMenuAction(onMenuAction);
-    return () => {
-      document.removeEventListener("keydown", onNewSurfaceKeyDown, true);
-      unsubscribe?.();
-    };
-  }, [takesNewSurfaceShortcut]);
-
-=======
->>>>>>> upstream/main
   const updateTabScrollState = (viewport: HTMLDivElement) => {
     const hasOverflow = viewport.scrollWidth - viewport.clientWidth > TAB_SCROLL_EDGE_TOLERANCE;
     const canScrollLeft = hasOverflow && viewport.scrollLeft > TAB_SCROLL_EDGE_TOLERANCE;
@@ -1354,12 +1284,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
           },
         ]
       : []),
-<<<<<<< origin/main
     ...(props.modeSurfaceActions ?? []),
   ] as const);
-=======
-  ] as const;
-  const canAddSurface = addSurfaceActions.some((action) => action.available);
+  // A menu whose items Settings > Right panel all hid still opens, to point there.
+  const canAddSurface =
+    addSurfaceActions.length === 0 || addSurfaceActions.some((action) => action.available);
 
   if ((props.open === false || !canAddSurface) && addSurfaceMenuOpen) setAddSurfaceMenuOpen(false);
 
@@ -1386,17 +1315,19 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
   const onMenuAction = useEffectEvent((action: string) => {
     if (action === "rightPanel.new" && !addSurfaceMenuBlocked()) setAddSurfaceMenuOpen(true);
   });
+  // Inside ChatView's split view, which owns the shell and the split menu entries.
+  const pane = useRightPanelPane();
+  const takesNewSurfaceShortcut = props.open !== false && canAddSurface && pane?.focused !== false;
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes document keydown and the desktop menu action (forwarded from a focused browser page) for the new surface shortcut while the panel is open and can add a surface
   useEffect(() => {
-    if (props.open === false || !canAddSurface) return;
+    if (!takesNewSurfaceShortcut) return;
     document.addEventListener("keydown", onNewSurfaceKeyDown, true);
     const unsubscribe = window.desktopBridge?.onMenuAction(onMenuAction);
     return () => {
       document.removeEventListener("keydown", onNewSurfaceKeyDown, true);
       unsubscribe?.();
     };
-  }, [props.open, canAddSurface]);
->>>>>>> upstream/main
+  }, [takesNewSurfaceShortcut]);
 
   const handleAddSurfaceMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = surfaceShortcutActionForKey(addSurfaceActions, event.nativeEvent);

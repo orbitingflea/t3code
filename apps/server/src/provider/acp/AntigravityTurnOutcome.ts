@@ -26,12 +26,9 @@ const MAX_ERROR_PAYLOAD_BYTES = 16_384;
 const API_ERROR =
   /Error (\d{3}), Message: ((?:(?!, Status: |Error \d{3}, Message: ).)+), Status: ([A-Z_]+|\d{3}[^,\n]*)/s;
 // Antigravity 1.5 with a Google account writes "STATUS (code NNN): message".
-<<<<<<< origin/main
 // A protobuf length byte leads it and can be a capital, so only a google.rpc.Code name starts it.
 const STATUS_ERROR =
   /(CANCELLED|UNKNOWN|INVALID_ARGUMENT|DEADLINE_EXCEEDED|NOT_FOUND|ALREADY_EXISTS|PERMISSION_DENIED|RESOURCE_EXHAUSTED|FAILED_PRECONDITION|ABORTED|OUT_OF_RANGE|UNIMPLEMENTED|INTERNAL|UNAVAILABLE|DATA_LOSS|UNAUTHENTICATED) \(code (\d{3})\): (\P{Cc}+)/u;
-=======
-const STATUS_ERROR = /(?<![A-Z_])([A-Z_]+) \(code (\d{3})\): (\P{Cc}+)/u;
 // Newer Antigravity builds attach the HTTP JSON body (pretty-printed or compact) to the error step.
 const ERROR_JSON_START = /\{\s*"error"\s*:/g;
 const decodeVerificationError = Schema.decodeUnknownOption(
@@ -55,7 +52,6 @@ const decodeVerificationErrorInfo = Schema.decodeUnknownOption(
     ),
   }),
 );
->>>>>>> upstream/main
 const QUOTA_EXHAUSTED = /\breason:QUOTA_EXHAUSTED\b/;
 // Claude rejects a saved thinking block without a valid signature. It sits in the native
 // history, so every later prompt to that session fails the same way.

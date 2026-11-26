@@ -963,9 +963,6 @@ export const make = Effect.gen(function* () {
     }
     return result;
   });
-<<<<<<< origin/main
-  const hostPlatform = yield* HostProcess.Platform;
-=======
   /**
    * Before a push's first side effect: a caller that needs approval learns which hooks to ask
    * about. The driver reads them again as it starts the push, so this is only the early answer.
@@ -1001,7 +998,7 @@ export const make = Effect.gen(function* () {
           digest: cause.cause.digest,
         })
       : undefined;
->>>>>>> upstream/main
+  const hostPlatform = yield* HostProcess.Platform;
   const createPrNeedsPush = Effect.fn("GitManager.createPrNeedsPush")(function* (
     cwd: string,
     status: {

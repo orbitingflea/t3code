@@ -9,7 +9,6 @@ import { extractMcpToolCallIdentity } from "@t3tools/provider-acp/server/runtime
 import * as Digest from "effect/crypto/Digest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
-import { HttpClient, HttpClientResponse } from "effect/http";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Path from "effect/Path";
@@ -18,12 +17,7 @@ import type * as EffectAcpSchema from "effect-acp/compat";
 
 import { makeAntigravityAcpAdapterFlavor } from "../../orchestration-v2/Adapters/AntigravityAdapterV2.ts";
 import { antigravitySessionMeta } from "../../provider/acp/AntigravityAcpSupport.ts";
-import {
-  antigravityRuntimeState,
-  makeAntigravityRuntimeUsageProbe,
-  profileAntigravityRuntimeState,
-  withUserAgyState,
-} from "./antigravityCliRuntime.ts";
+import { antigravityRuntimeState, withUserAgyState } from "./antigravityCliRuntime.ts";
 import {
   type AntigravityTextGenerationOptions,
   makeAntigravityTextGeneration,
@@ -404,104 +398,6 @@ describe("Antigravity CLI runtime", () => {
       const hooked = yield* cliHelperTurn(userHome, HELPER_SESSION);
       assert.equal(hooked.result, "Failure");
       assert.deepEqual(hooked.helperFiles, [], "no agent started");
-    }).pipe(Effect.scoped, Effect.provide(layer)),
-  );
-
-  it.effect("reads limits with the sign-in of the runtime that runs", () =>
-    Effect.gen(function* () {
-      const fileSystem = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const userHome = yield* fileSystem.makeTempDirectoryScoped();
-      const profileDirectory = path.join(userHome, "profile");
-      // A profile the 1.4.5 runtime used still holds its refreshable login.
-      const profileApp = path.join(profileDirectory, "antigravity-acp");
-      yield* fileSystem.makeDirectory(profileApp, { recursive: true });
-      yield* fileSystem.writeFileString(
-        path.join(profileApp, "acp_token.json"),
-        JSON.stringify({
-          client_id: "client",
-          client_secret: "profile-secret",
-          refresh_token: "profile-refresh",
-        }),
-      );
-      const cliApp = path.join(userHome, ".gemini", "antigravity-cli");
-      yield* fileSystem.makeDirectory(cliApp, { recursive: true });
-      yield* fileSystem.writeFileString(
-        path.join(cliApp, "antigravity-oauth-token"),
-        JSON.stringify({
-          token: {
-            access_token: "cli-access",
-            refresh_token: "cli-refresh",
-            expiry: "1970-01-01T01:00:00.123456789Z",
-          },
-        }),
-      );
-      const requests: Array<{ readonly url: string; readonly bearer: string | undefined }> = [];
-      const http = HttpClient.make((request) =>
-        Effect.sync(() => {
-          requests.push({ url: request.url, bearer: request.headers.authorization });
-          return HttpClientResponse.fromWeb(
-            request,
-            request.url.endsWith("/token")
-              ? Response.json({ access_token: "profile-access", expires_in: 3600 })
-              : request.url.endsWith(":retrieveUserQuotaSummary")
-                ? Response.json({
-                    buckets: [{ bucketId: "gemini-5h", window: "5h", remainingFraction: 0.75 }],
-                  })
-                : Response.json({}, { status: 403 }),
-          );
-        }),
-      );
-      let runtime: "cli" | "managed" = "cli";
-      let keyring: string | undefined;
-      const { probe } = yield* makeAntigravityRuntimeUsageProbe({
-        profileDirectory,
-        userHome,
-        authMethod: "oauth-personal",
-        readKeyringSecret: Effect.sync(() => keyring),
-        runtimeState: Effect.sync(() =>
-          runtime === "cli"
-            ? antigravityRuntimeState(
-                { managedVersionDirectory: null },
-                { profileDirectory, userHome, path },
-              )
-            : profileAntigravityRuntimeState(profileDirectory),
-        ),
-      }).pipe(Effect.provideService(HttpClient.HttpClient, http));
-
-      const cli = yield* probe;
-      assert.isUndefined(cli.unavailable);
-      assert.deepEqual(
-        cli.windows.map((window) => [window.id, window.usedPercent]),
-        [["gemini-5h", 25]],
-      );
-      assert.isFalse(
-        requests.some((request) => request.url.endsWith("/token")),
-        "the CLI's own login, not the profile's, with no refresh",
-      );
-      assert.isTrue(requests.some((request) => request.bearer === "Bearer cli-access"));
-
-      runtime = "managed";
-      requests.length = 0;
-      const managed = yield* probe;
-      assert.isTrue(requests.some((request) => request.url.endsWith("/token")));
-      assert.isFalse(requests.some((request) => request.bearer === "Bearer cli-access"));
-      assert.isUndefined(managed.unavailable);
-      assert.notMatch(
-        JSON.stringify([cli, managed]),
-        /cli-access|cli-refresh|profile-access|profile-refresh|profile-secret/,
-      );
-
-      // The user's own CLI may keep its Google sign-in only in the system keyring.
-      yield* fileSystem.remove(path.join(cliApp, "antigravity-oauth-token"));
-      keyring = JSON.stringify({
-        token: { access_token: "keyring-access", expiry: "1970-01-01T01:00:00.123456789Z" },
-      });
-      runtime = "cli";
-      requests.length = 0;
-      const fromKeyring = yield* probe;
-      assert.isUndefined(fromKeyring.unavailable);
-      assert.isTrue(requests.some((request) => request.bearer === "Bearer keyring-access"));
     }).pipe(Effect.scoped, Effect.provide(layer)),
   );
 });

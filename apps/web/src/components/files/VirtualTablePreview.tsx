@@ -3,11 +3,8 @@ import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "re
 import { useClientSettings } from "~/hooks/useSettings";
 import { observeResize } from "~/lib/observeResize";
 import { PREVIEW_PAGE_ROWS } from "./largeTextProtocol";
-<<<<<<< origin/main
 import { announceViewer } from "./fileReadingPlace";
-=======
 import { SharedTooltipTrigger } from "~/components/ui/shared-tooltip";
->>>>>>> upstream/main
 
 export default function VirtualTablePreview(props: {
   readonly name: string;

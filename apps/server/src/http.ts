@@ -129,45 +129,6 @@ export function assetResponseHeaders(
     readonly htmlPolicy?: "file-page";
   },
 ): Record<string, string> {
-<<<<<<< origin/main
-  const lowerPath = filePath.toLowerCase();
-  const inlineMimeType = options?.mimeType?.split(";", 1)[0]?.trim();
-  const htmlContentSecurityPolicy =
-    options?.htmlPolicy === "file-page"
-      ? `${HTML_CONTENT_SECURITY_POLICY}; ${FILE_PAGE_NETWORK_POLICY}`
-      : HTML_CONTENT_SECURITY_POLICY;
-  return {
-    "Cache-Control": "private, max-age=3600",
-    "X-Content-Type-Options": "nosniff",
-    ...(options?.download
-      ? {
-          "Content-Disposition": downloadContentDisposition(options.fileName),
-          "Content-Security-Policy": "default-src 'none'; sandbox",
-          "Content-Type":
-            options.mimeType !== undefined && isSafeDownloadMimeType(options.mimeType)
-              ? options.mimeType
-              : "application/octet-stream",
-        }
-      : inlineMimeType !== undefined && isSafeInlineMediaMimeType(inlineMimeType)
-        ? { "Content-Type": inlineMimeType }
-        : inlineMimeType !== undefined && isSafeInlineDocumentMimeType(inlineMimeType)
-          ? {
-              "Content-Type":
-                inlineMimeType.toLowerCase() === "text/html"
-                  ? "text/html; charset=utf-8"
-                  : "application/pdf",
-              ...(inlineMimeType.toLowerCase() === "text/html"
-                ? { "Content-Security-Policy": htmlContentSecurityPolicy }
-                : {}),
-            }
-          : lowerPath.endsWith(".html") || lowerPath.endsWith(".htm")
-            ? {
-                "Content-Type": "text/html; charset=utf-8",
-                "Content-Security-Policy": htmlContentSecurityPolicy,
-              }
-            : {}),
-    ...(!options?.download && isScriptableXmlPath(lowerPath)
-=======
   const base = { "Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff" };
   if (options?.download) {
     return {
@@ -185,7 +146,10 @@ export function assetResponseHeaders(
     return {
       ...base,
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Security-Policy": HTML_CONTENT_SECURITY_POLICY,
+      "Content-Security-Policy":
+        options?.htmlPolicy === "file-page"
+          ? `${HTML_CONTENT_SECURITY_POLICY}; ${FILE_PAGE_NETWORK_POLICY}`
+          : HTML_CONTENT_SECURITY_POLICY,
     };
   }
   return {
@@ -193,7 +157,6 @@ export function assetResponseHeaders(
     "Content-Type": mimeType,
     // XML types render as documents, so they get the same policy as SVG.
     ...(XML_DOCUMENT_MIME_TYPE_PATTERN.test(mimeType)
->>>>>>> upstream/main
       ? { "Content-Security-Policy": SVG_CONTENT_SECURITY_POLICY }
       : {}),
   };

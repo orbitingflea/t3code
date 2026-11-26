@@ -23,13 +23,10 @@ import { readThreadTurnItems } from "../../state/entities";
 import { useV2ItemSupport } from "../../state/v2ItemSupport";
 import { TimelineRowCtx, TimelineRowActivityCtx, type TimelineRow } from "./timelineRowContext";
 import { MESSAGE_HEADING_LEVEL, MessageAuthorHeading } from "./TimelineRowParts";
-<<<<<<< origin/main
 import { SubThreadMetaReply, SubThreadReplyLine } from "../../fork/subThreads/SubThreadReplyLine";
 import { AgentMessageDivider } from "../../fork/displayMode/AgentMessageDivider";
 import { EditedMark } from "../../fork/displayMode/EditedMark";
-=======
 import { SharedTooltipTrigger } from "../ui/shared-tooltip";
->>>>>>> upstream/main
 
 export function AssistantTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" }> }) {
   const ctx = use(TimelineRowCtx);
@@ -249,33 +246,22 @@ function AssistantMessageMeta({
         <AssistantReplyButton message={message} itemId={projectedItem.sourceItemId} />
       ) : null}
       {!message.streaming && (
-<<<<<<< origin/main
-        <Tooltip>
-          <TooltipTrigger render={<p className="text-muted-foreground text-xs tabular-nums" />}>
-            {formatDayAwareTimestamp(
-              message.editedAt ?? message.updatedAt,
-              ctx.timestampFormat,
-              undefined,
-              undefined,
-              m,
-            )}
-          </TooltipTrigger>
-          <TooltipPopup>
-            {formatChatTimestampTooltip(
-              message.editedAt ?? message.updatedAt,
-              ctx.timestampFormat,
-              m,
-            )}
-          </TooltipPopup>
-        </Tooltip>
-=======
         <SharedTooltipTrigger
           render={<p className="text-muted-foreground text-xs tabular-nums" />}
-          label={formatChatTimestampTooltip(message.updatedAt, ctx.timestampFormat, m)}
+          label={formatChatTimestampTooltip(
+            message.editedAt ?? message.updatedAt,
+            ctx.timestampFormat,
+            m,
+          )}
         >
-          {formatDayAwareTimestamp(message.updatedAt, ctx.timestampFormat, undefined, undefined, m)}
+          {formatDayAwareTimestamp(
+            message.editedAt ?? message.updatedAt,
+            ctx.timestampFormat,
+            undefined,
+            undefined,
+            m,
+          )}
         </SharedTooltipTrigger>
->>>>>>> upstream/main
       )}
       <SubThreadMetaReply messageId={message.id} />
     </div>

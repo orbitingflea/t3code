@@ -1092,11 +1092,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const commandSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
-<<<<<<< origin/main
-  const { worktreesDir } = yield* ServerConfig.ServerConfig;
-=======
-  const { stateDir, worktreesDir, worktreeCheckoutCacheDir } = yield* ServerConfig.ServerConfig;
->>>>>>> upstream/main
+  const { stateDir, worktreesDir } = yield* ServerConfig.ServerConfig;
   const isServerInternalPath = yield* makeIsServerInternalPath;
   const digest = yield* Digest.Digest;
   const random = yield* SecureRandom.SecureRandom;

@@ -16,24 +16,11 @@ Git-backed projects show branch and worktree controls below the composer before 
 
 ## Math
 
-<<<<<<< origin/main
-Messages and Markdown previews typeset LaTeX on web, desktop, and mobile. Math is read from
-`$…$`, `$$…$$`, `\(…\)`, and `\[…\]`, outside of code.
-Fenced `math` blocks also render. Formulas work in tables, including absolute-value bars.
-Dollar amounts such as `$5 and $10` stay text; write `\$` to keep any other dollar sign literal.
-Wide formulas scroll horizontally while the surrounding text wraps. Copying a formula or
-exporting a table preserves the TeX.
-
-The composer keeps TeX source editable, including when rich text is enabled. To show the TeX
-source instead, turn off **Render math** in **Settings → Appearance**. The preference is saved
-separately on each device.
-=======
-Turn on **Settings → Appearance → Render math** (per device) to render LaTeX in messages and Markdown previews on web, desktop, and mobile.
+Messages and Markdown previews render LaTeX by default on web, desktop, and mobile. **Settings → Appearance → Render math** is on by default and saved on each device. Turn it off to show the TeX source instead.
 
 - Supports `$…$`, `$$…$$`, `\(…\)`, `\[…\]`, and fenced `math` blocks outside of code.
 - Currency like `$5 and $10` stays plain text; use `\$` to escape other literal dollar signs.
 - Copying a formula or exporting a table preserves the raw TeX. The composer keeps TeX source editable.
->>>>>>> upstream/main
 
 ## Motion
 
