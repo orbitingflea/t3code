@@ -57,8 +57,8 @@ import {
   SimpleWorkEntryRow,
 } from "./TimelineWorkEntryRow";
 import {
+  sliceThoughtPreviewSource,
   thoughtPreviewMarkdown,
-  THOUGHT_PREVIEW_SOURCE_MAX_LENGTH,
   toolGroupSummaryIconName,
   workEntryIconName,
 } from "./TimelineWorkEntryRow.logic";
@@ -631,7 +631,7 @@ export function LiveWorkEntryTimelineRow({
   const failed = workEntryDisplayIndicatesToolFailure(row.entry);
   const thoughtLine =
     row.thought && !row.expanded
-      ? liveThoughtLine((row.thought.detail ?? "").slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH))
+      ? liveThoughtLine(sliceThoughtPreviewSource(row.thought.detail ?? ""))
       : "";
   const thoughtIsStatus = thoughtLine !== "" && row.entry === row.thought;
 
@@ -691,7 +691,7 @@ export function LiveWorkEntryTimelineRow({
           ) : row.entry.itemType === "reasoning" ? (
             <ChatMarkdown
               inline
-              text={(row.entry.detail ?? label).slice(0, THOUGHT_PREVIEW_SOURCE_MAX_LENGTH)}
+              text={sliceThoughtPreviewSource(row.entry.detail ?? label)}
               cwd={ctx.markdownCwd}
               parseRawHtml={false}
               // Fork: agent text, so a thinking line's "1~2" keeps its tilde.

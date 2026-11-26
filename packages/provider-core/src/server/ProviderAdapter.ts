@@ -604,9 +604,18 @@ export interface ProviderAdapterV2TurnInput {
   readonly inlineContextLength?: number;
   readonly modelSelection: ModelSelection;
   readonly runtimePolicy: ProviderAdapterV2RuntimePolicy;
+<<<<<<< origin/main
   readonly appContext?: ReadonlyArray<{ readonly key: string; readonly text: string }>;
   /** Context for this turn only, beside a slash command that must reach the provider unchanged. Run `delivered` once the agent gets `text`. */
   readonly commandNote?: { readonly text: string; readonly delivered: Effect.Effect<void> };
+=======
+  readonly appContext?: ReadonlyArray<{
+    readonly key: string;
+    readonly text: string;
+    /** ISO time the note was last set, so a resent note reads as earlier state, not news. */
+    readonly updatedAt?: string;
+  }>;
+>>>>>>> upstream/main
 }
 
 export type ProviderAdapterV2ResumeTurnInput = Omit<
@@ -793,6 +802,14 @@ export interface ProviderAdapterV2SessionRuntime {
     cwd?: string | null,
   ) => number | undefined;
   readonly canReuseContextUsage?: (previous: ModelSelection, next: ModelSelection) => boolean;
+  /**
+   * False when the native session no longer holds a cancelled turn's request. Set only by
+   * providers that can drop one, so a turn a restart cut off is settled like a Stop.
+   */
+  readonly nativeTurnKept?: (input: {
+    readonly providerThread: OrchestrationV2ProviderThread;
+    readonly nativeTurnId: string;
+  }) => Effect.Effect<boolean, ProviderAdapterV2Error>;
   /** Excludes turn-scoped options from native thread load matching. */
   readonly normalizeThreadLoadModelSelection?: (selection: ModelSelection) => ModelSelection;
   readonly ensureThread: (

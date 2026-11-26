@@ -27,7 +27,10 @@ import { cn } from "~/lib/utils";
 import { useQuietThreadShell } from "~/state/entities";
 import { ContextChip, ContextChipAction, ContextChipLabel } from "../ContextChip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
-import { AssistantCitationCommentEditor } from "./AssistantCitationCommentEditor";
+import {
+  AssistantCitationCommentEditor,
+  type AssistantCitationCommentDictation,
+} from "./AssistantCitationCommentEditor";
 import { resolveAssistantCitationCommentDismissal } from "./assistantCitationCommentDismissal";
 import { observeAssistantCitationCommentSource } from "./AssistantCitationSource";
 import { composerFloatingLayerProps } from "./composerEventScope";
@@ -210,6 +213,7 @@ export function AssistantCitationChip({
   // Save sets this; finalFocus reads and clears it to tell Save from the other ways to close.
   const closedBySaveRef = useRef(false);
   const draftCommentRef = useRef<string | null>(null);
+  const dictationRef = useRef<AssistantCitationCommentDictation>(null);
   const [voiceSetupOpen, setVoiceSetupOpen] = useState(false);
   const [unavailableSourceAnchor, setUnavailableSourceAnchor] =
     useState<AssistantCitationSourceAnchor | null>(null);
@@ -220,7 +224,7 @@ export function AssistantCitationChip({
   useEffect(() => {
     if (!commentOpen) draftCommentRef.current = null;
   }, [commentOpen]);
-  const settleDraftOnClose = (reason: string): boolean => {
+  const settleDraft = (reason: string): boolean => {
     const dismissal = resolveAssistantCitationCommentDismissal({
       reason,
       draft: draftCommentRef.current,
@@ -229,13 +233,19 @@ export function AssistantCitationChip({
     if (dismissal.kind === "commit") return commentEditor?.onSave(dismissal.comment) ?? true;
     return dismissal.kind !== "keep-open";
   };
+  // Closing unmounts the editor, which would discard its dictation, so it stays open until that lands.
+  const settleDraftOnClose = (reason: string): boolean => {
+    const finishing =
+      reason !== "escape-key" &&
+      dictationRef.current?.finish((comment) => {
+        draftCommentRef.current = comment;
+        if (settleDraft(reason)) commentEditor?.onOpenChange(false);
+      });
+    return !finishing && settleDraft(reason);
+  };
+  // The timeline virtualizes rows, so a vanished source is routine; the user may still be typing.
   const onSourceUnavailable = useEffectEvent(() => {
-    if (!sourceAnchor) return;
-    if (settleDraftOnClose("none")) {
-      commentEditor?.onOpenChange(false);
-    } else {
-      setUnavailableSourceAnchor(sourceAnchor);
-    }
+    if (sourceAnchor) setUnavailableSourceAnchor(sourceAnchor);
   });
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- observes the cited DOM source while the comment editor is open and reacts when it disappears
   useEffect(() => {
@@ -361,6 +371,7 @@ export function AssistantCitationChip({
                 key={serializeAssistantCitation(citation)}
                 citation={citation}
                 inputRef={commentInputRef}
+                dictationRef={dictationRef}
                 onVoiceSetupOpenChange={setVoiceSetupOpen}
                 onDraftChange={(comment) => {
                   draftCommentRef.current = comment;
