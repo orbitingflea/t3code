@@ -22,8 +22,16 @@ const NonNegative = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0));
 const Positive = Schema.Finite.check(Schema.isGreaterThan(0));
 
 const ReadingPosition = Schema.Union([
-  /** `offset` is the viewport top minus the line's top; an attachment's source view keeps line 1. */
-  Schema.Struct({ view: Schema.Literal("source"), line: PositiveInt, offset: Schema.Finite }),
+  /**
+   * `offset` is the viewport top minus the line's top; an attachment's source view keeps line 1.
+   * `centered` marks a landed citation, which a code view centers at its current height.
+   */
+  Schema.Struct({
+    view: Schema.Literal("source"),
+    line: PositiveInt,
+    offset: Schema.Finite,
+    centered: Schema.optionalKey(Schema.Literal(true)),
+  }),
   /** `block` is an item: a Markdown block, table row, page or notebook cell; `fraction` is how far the viewport top is into it. */
   Schema.Struct({
     view: Schema.Literal("rendered"),

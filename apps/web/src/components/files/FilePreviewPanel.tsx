@@ -125,6 +125,7 @@ import {
 } from "./fileSurfaceChrome";
 import SourceFilePreview from "./ReadOnlySourcePreview";
 import { pathReadingKey, useFileReadingPosition } from "./fileReadingPosition";
+import type { LineRevealHooks } from "./fileReadingPosition";
 import LargeFilePreview from "./LargeFilePreview";
 import { FULL_TEXT_MAX_BYTES } from "./largeTextProtocol";
 import { resolveCenteredFileLineScrollTop } from "./fileLineReveal";
@@ -631,19 +632,12 @@ interface FileRevealState {
 function useFileLineReveal(
   relativePath: string | null,
   revealLine: number | null,
-  scrollLine: number | null,
   revealRequestId: number,
-  onRevealApplied?: (fileContainer: HTMLElement, line: number) => void,
-  keepReveal?: (fileContainer: HTMLElement) => boolean,
-  restoresSavedScroll?: () => boolean,
+  { citedLine, keepReveal, restoresSavedScroll, onRevealApplied }: LineRevealHooks,
 ): (scroller: "virtualizer" | "codeView") => FilePostRender {
   const [revealStatesByPath] = useState(() => new Map<string, FileRevealState>());
 
   return (scroller) => (fileContainer, instance, phase) => {
-    // CodeView reveals as upstream does, by the tab's reveal key: the reading tracker that keeps the
-    // editor's place cannot place CodeView's rows, which its file element holds only while mounted.
-    const codeView = scroller === "codeView";
-    const revealAt = codeView ? revealLine : scrollLine;
     if (relativePath === null) return;
 
     const existingState = revealStatesByPath.get(relativePath);
@@ -690,7 +684,7 @@ function useFileLineReveal(
 
     const contents = instance.file?.contents;
     const targetLine =
-      revealLine === null || contents === undefined ? null : clampFileLine(contents, revealLine);
+      citedLine === null || contents === undefined ? null : clampFileLine(contents, citedLine);
     updateFileLinkReveal(fileContainer, targetLine);
 
     if (!(instance instanceof VirtualizedFile)) return;
@@ -707,8 +701,8 @@ function useFileLineReveal(
       // A pending line reveal owns the scroll position.
       if (
         savedScrollTop > 0 &&
-        (codeView || restoresSavedScroll?.() !== true) &&
-        (revealAt === null || state.handledRequestId === revealRequestId)
+        !restoresSavedScroll() &&
+        (revealLine === null || state.handledRequestId === revealRequestId)
       ) {
         const restoreScroll = (attempt: number) => {
           state.restoreFrameId = requestAnimationFrame(() => {
@@ -728,7 +722,7 @@ function useFileLineReveal(
       }
     }
 
-    if (revealAt === null) {
+    if (revealLine === null) {
       fileContainer.style.minHeight = "";
       return;
     }
@@ -776,7 +770,7 @@ function useFileLineReveal(
       });
     };
 
-    const guardScrollTarget = (line: number) => {
+    const guardScrollTarget = (line: number, revealedContents: string | undefined) => {
       let framesLeft = REVEAL_GUARD_FRAMES;
       let guardFrameId: number | null = null;
       const cancelGuard = () => {
@@ -799,10 +793,13 @@ function useFileLineReveal(
         capture: true,
       });
       window.addEventListener("keydown", cancelGuard, true);
+      // A reveal cut short at the end of a file still downloading lets go once more of it arrives.
+      const shown = line < revealLine ? revealedContents : undefined;
       const holdTarget = () => {
         guardFrameId = null;
         framesLeft -= 1;
-        if (framesLeft <= 0 || !scrollContainer.isConnected) {
+        const grew = shown !== undefined && instance.file?.contents !== shown;
+        if (framesLeft <= 0 || !scrollContainer.isConnected || grew) {
           cancelGuard();
           return;
         }
@@ -836,35 +833,34 @@ function useFileLineReveal(
         // handled.
         const currentContents = instance.file?.contents;
         const line =
-          currentContents === undefined ? null : clampFileLine(currentContents, revealAt);
+          currentContents === undefined ? null : clampFileLine(currentContents, revealLine);
         const targetTop = line === null ? null : resolveScrollTarget(line);
         if (line === null || targetTop === null) {
           if (attempt < REVEAL_MAX_ATTEMPTS) scheduleReveal(attempt + 1);
           return;
         }
-        if (keepReveal?.(fileContainer) === false) {
-          state.handledRequestId = revealRequestId;
-          return;
-        }
         updateFileLinkReveal(fileContainer, line);
 
         state.handledRequestId = revealRequestId;
+        if (!keepReveal(fileContainer)) return;
         if (scroller === "codeView") {
           // That window's geometry cannot place the line, so the viewer scrolls to it.
           // It centers its estimate of the line, and rows it mounts on arrival can still move it.
           instance.scrollToLine(line, "center", (result) => {
             // A view torn down before the line settled never showed it, so the next view reveals it.
-            if (result === "cancelled" && !fileContainer.isConnected) state.handledRequestId = null;
+            if (result === "cancelled" && !fileContainer.isConnected) {
+              if (state.handledRequestId === revealRequestId) state.handledRequestId = null;
+            }
             if (result !== "settled") return;
             state.revealedScrollTop = scrollContainer.scrollTop;
-            onRevealApplied?.(fileContainer, line);
-            guardScrollTarget(line);
+            onRevealApplied(fileContainer, line);
+            guardScrollTarget(line, currentContents);
           });
           return;
         }
         scrollContainer.scrollTop = targetTop;
-        onRevealApplied?.(fileContainer, line);
-        guardScrollTarget(line);
+        onRevealApplied(fileContainer, line);
+        guardScrollTarget(line, currentContents);
       });
     };
 
@@ -1412,6 +1408,7 @@ export default function FilePreviewPanel({
     relativePath: attachment === undefined ? relativePath : null,
     attachment,
     revealLine,
+    downloadBytes: file.data?.truncated === true ? file.data.byteLength : null,
   });
   const revealHandled =
     revealLine === null ||
@@ -1554,14 +1551,8 @@ export default function FilePreviewPanel({
       : relativePath && attachment === undefined
         ? resolvePathLinkTarget(relativePath, cwd)
         : null;
-  const fileLineReveal = useFileLineReveal(
-    relativePath,
-    revealLine,
-    reading.scrollLine,
-    reading.revealKey,
-    reading.onRevealApplied,
-    reading.keepReveal,
-    reading.restoresSavedScroll,
+  const fileLineReveal = reading.trackSource(
+    useFileLineReveal(relativePath, reading.scrollLine, reading.revealKey, reading),
   );
   // Mounting the file read under the workspace mutation id refetches it after each mutation.
   useAtomMount(
@@ -1961,7 +1952,7 @@ export default function FilePreviewPanel({
                   resolvedTheme={resolvedTheme}
                   revealRequestId={revealRequestId}
                   wordWrap={wordWrap}
-                  onPostRender={reading.trackSource(fileLineReveal("virtualizer"))}
+                  onPostRender={fileLineReveal("virtualizer")}
                   onPendingChange={onPendingChange}
                   onEditorChange={handleEditorChangeStable}
                 />

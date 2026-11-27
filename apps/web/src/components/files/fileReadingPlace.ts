@@ -68,12 +68,19 @@ interface Restore {
 export class ReadingTracker {
   private state: "idle" | "holding" | "armed" = "idle";
   private frame: number | null = null;
+  /** The scroller whose reader scroll waits for `frame` to be read. */
+  private capturing: Binding | null = null;
   private restoring: Restore | null = null;
   /** A scrollbar drag can pause longer than the save delay without a new pointerdown. */
   private pointerDown = false;
   private readonly pending: PendingPosition;
   /** The newest position restored, captured or recorded. */
   anchor: ReadingPosition | null = null;
+
+  /** The reader holds a pointer down in the root, as in a text selection or a scrollbar drag. */
+  get pressed(): boolean {
+    return this.pointerDown;
+  }
 
   constructor(
     private readonly root: HTMLElement,
@@ -130,6 +137,17 @@ export class ReadingTracker {
     this.pending.write(position);
   }
 
+  /** Reads and writes a reader scroll whose frame has not run yet, before the view goes away. */
+  settle(): void {
+    const binding = this.capturing;
+    if (this.frame === null || binding === null || this.state !== "armed") return;
+    const position = binding.geometry.capture();
+    if (position === null) return;
+    this.anchor = position;
+    this.pending.hold(position);
+    this.pending.flush();
+  }
+
   dispose(): void {
     this.stop();
     this.root.removeEventListener("wheel", this.arm, { capture: true });
@@ -169,8 +187,10 @@ export class ReadingTracker {
   };
 
   private capture(binding: Binding, attempts: number): void {
+    this.capturing = binding;
     this.frame = requestAnimationFrame(() => {
       this.frame = null;
+      this.capturing = null;
       if (this.state !== "armed") return;
       const position = binding.geometry.capture();
       if (position === null) {
