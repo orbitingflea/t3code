@@ -624,6 +624,8 @@ interface FileRevealState {
   scrollTop: number;
   scrollContainer: HTMLElement | null;
   restoreFrameId: number | null;
+  /** Where CodeView settled on the revealed line, while the view is still there. */
+  revealedScrollTop: number | null;
 }
 
 function useFileLineReveal(
@@ -631,13 +633,17 @@ function useFileLineReveal(
   revealLine: number | null,
   scrollLine: number | null,
   revealRequestId: number,
+<<<<<<< origin/main
   onRevealApplied?: (fileContainer: HTMLElement, line: number) => void,
   keepReveal?: (fileContainer: HTMLElement) => boolean,
   restoresSavedScroll?: () => boolean,
 ): FilePostRender {
+=======
+): (scroller: "virtualizer" | "codeView") => FilePostRender {
+>>>>>>> upstream/main
   const [revealStatesByPath] = useState(() => new Map<string, FileRevealState>());
 
-  return (fileContainer, instance, phase) => {
+  return (scroller) => (fileContainer, instance, phase) => {
     if (relativePath === null) return;
 
     const existingState = revealStatesByPath.get(relativePath);
@@ -649,6 +655,7 @@ function useFileLineReveal(
       scrollTop: 0,
       scrollContainer: null,
       restoreFrameId: null,
+      revealedScrollTop: null,
     };
     if (!existingState) revealStatesByPath.set(relativePath, state);
 
@@ -671,6 +678,12 @@ function useFileLineReveal(
       const restorePending = state.restoreFrameId !== null;
       cancelPendingReveal();
       if (scrollContainer && !restorePending) state.scrollTop = scrollContainer.scrollTop;
+      // A rebuilt CodeView estimates its line heights again, so a saved offset no longer points at
+      // the line. Starting the worker pool rebuilds the viewer right after its first render.
+      if (state.revealedScrollTop !== null && state.revealedScrollTop === state.scrollTop) {
+        state.handledRequestId = null;
+      }
+      state.revealedScrollTop = null;
       state.scrollContainer = null;
       return;
     }
@@ -721,9 +734,12 @@ function useFileLineReveal(
     }
 
     if (!scrollContainer) return;
-    fileContainer.style.minHeight = `${Math.ceil(
-      Math.max(instance.height, scrollContainer.clientHeight),
-    )}px`;
+    // CodeView's file element is the mounted window of rows, which the viewer sizes and places.
+    if (scroller === "virtualizer") {
+      fileContainer.style.minHeight = `${Math.ceil(
+        Math.max(instance.height, scrollContainer.clientHeight),
+      )}px`;
+    }
 
     if (state.handledRequestId === revealRequestId || state.frameId !== null) {
       return;
@@ -790,13 +806,19 @@ function useFileLineReveal(
           cancelGuard();
           return;
         }
-        const targetTop = resolveScrollTarget(line);
+        // CodeView's file element holds only its mounted rows, so only a mounted row places the line.
+        const targetTop =
+          scroller === "codeView" &&
+          !(fileContainer.shadowRoot ?? fileContainer).querySelector(`[data-line="${line}"]`)
+            ? null
+            : resolveScrollTarget(line);
         if (
           targetTop !== null &&
           Math.abs(scrollContainer.scrollTop - targetTop) > REVEAL_GUARD_TOLERANCE_PX
         ) {
           scrollContainer.scrollTop = targetTop;
         }
+        if (scroller === "codeView") state.revealedScrollTop = scrollContainer.scrollTop;
         guardFrameId = requestAnimationFrame(holdTarget);
       };
       guardFrameId = requestAnimationFrame(holdTarget);
@@ -826,9 +848,23 @@ function useFileLineReveal(
         }
         updateFileLinkReveal(fileContainer, line);
 
+<<<<<<< origin/main
         scrollContainer.scrollTop = targetTop;
         onRevealApplied?.(fileContainer, line);
+=======
+>>>>>>> upstream/main
         state.handledRequestId = revealRequestId;
+        if (scroller === "codeView") {
+          // That window's geometry cannot place the line, so the viewer scrolls to it.
+          // It centers its estimate of the line, and rows it mounts on arrival can still move it.
+          instance.scrollToLine(line, "center", (result) => {
+            if (result !== "settled") return;
+            state.revealedScrollTop = scrollContainer.scrollTop;
+            guardScrollTarget(line);
+          });
+          return;
+        }
+        scrollContainer.scrollTop = targetTop;
         guardScrollTarget(line);
       });
     };
@@ -1519,6 +1555,7 @@ export default function FilePreviewPanel({
       : relativePath && attachment === undefined
         ? resolvePathLinkTarget(relativePath, cwd)
         : null;
+<<<<<<< origin/main
   const onFilePostRender = reading.trackSource(
     useFileLineReveal(
       relativePath,
@@ -1530,6 +1567,9 @@ export default function FilePreviewPanel({
       reading.restoresSavedScroll,
     ),
   );
+=======
+  const fileLineReveal = useFileLineReveal(relativePath, revealLine, revealRequestId);
+>>>>>>> upstream/main
   // Mounting the file read under the workspace mutation id refetches it after each mutation.
   useAtomMount(
     canReadFiles &&
@@ -1824,7 +1864,7 @@ export default function FilePreviewPanel({
               copyContents={copyLargeText}
               preview={file.data?.contents ?? ""}
               sizeBytes={file.data?.byteLength ?? 0}
-              onPostRender={onFilePostRender}
+              onPostRender={fileLineReveal("codeView")}
               workspaceMutationId={workspaceMutationId}
               revealLine={reading.rowLine(renderTable)}
               revealRequestId={revealRequestId}
@@ -1912,7 +1952,7 @@ export default function FilePreviewPanel({
                 name={relativePath}
                 text={file.data.contents}
                 cacheKey={projectFileCacheKey(cwd, relativePath, file.data.contents)}
-                onPostRender={onFilePostRender}
+                onPostRender={fileLineReveal("codeView")}
                 wordWrap={wordWrap}
               />
             ) : (
@@ -1928,7 +1968,7 @@ export default function FilePreviewPanel({
                   resolvedTheme={resolvedTheme}
                   revealRequestId={revealRequestId}
                   wordWrap={wordWrap}
-                  onPostRender={onFilePostRender}
+                  onPostRender={fileLineReveal("virtualizer")}
                   onPendingChange={onPendingChange}
                   onEditorChange={handleEditorChangeStable}
                 />

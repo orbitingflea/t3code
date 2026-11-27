@@ -12,6 +12,7 @@ import {
   extractInlineCodeSpans,
   extractMarkdownLinkHrefs,
   inlineCodeFilePathCandidate,
+  parseMarkdownSandboxFileLink,
 } from "@t3tools/shared/markdownLinks";
 import { taskListMarkerOffset } from "@t3tools/shared/markdownTaskEdits";
 import { isHostPath, resolveWorkspaceFilePath } from "@t3tools/shared/path";
@@ -464,6 +465,7 @@ function markdownUrlTransform(href: string) {
   if (href.startsWith("board://")) return href;
   if (parseDashboardHref(href) !== null) return href;
   if (isLocalEditorFileHref(href)) return href;
+  if (parseMarkdownSandboxFileLink(href)) return href;
   return rewriteMarkdownFileUriHref(href) ?? safeUrl(href);
 }
 
@@ -1665,6 +1667,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const copyMarkdown =
       source.startsWith("[") && source.includes("](")
         ? source
+<<<<<<< origin/main
         : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${authoredHref})`;
     const chip = fileLinkChip(
       fileLinkMeta,
@@ -1673,6 +1676,16 @@ const CHAT_MARKDOWN_COMPONENTS = {
       authoredHref === normalizedHref ? undefined : authoredHref,
     );
     return isMarkdownFileLinkLabel(hostFileLinkLabel(label, hostFileOrigins), normalizedHref) ? (
+=======
+        : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${normalizedHref})`;
+    // Media previews resolve the parsed host path; they do not understand the sandbox: scheme.
+    const chip = fileLinkChip(
+      fileLinkMeta,
+      copyMarkdown,
+      parseMarkdownSandboxFileLink(normalizedHref) ? undefined : normalizedHref,
+    );
+    return isMarkdownFileLinkLabel(label, normalizedHref) ? (
+>>>>>>> upstream/main
       chip
     ) : (
       <span data-markdown-copy={copyMarkdown}>

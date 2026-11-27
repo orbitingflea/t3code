@@ -9,7 +9,12 @@ T3 Code runs Google's official Antigravity ACP agent on your selected environmen
 3. Click **Sign in** and complete browser sign-in. Wait for T3 Code to confirm access and load models. (Once installed, you can also sign in from mobile.)
 
 - **Remote sign-in**: Paste the temporary code (or full URL) from Google's completion page into T3 Code's code field.
+<<<<<<< origin/main
 - **Updates**: Click **Update Antigravity** in provider settings. T3 Code requires Antigravity **1.5+** (1.5.12+ recommended); running threads finish on their original runtime.
+=======
+- **Manual binary**: Install [Antigravity CLI](https://antigravity.google/docs/getting-started) and set **Binary path** to `agy`. Leave blank to use the managed runtime (or `PATH`).
+- **Updates**: Click **Update Antigravity** in provider settings. T3 Code requires Antigravity **1.5.1+** (1.5.12+ recommended); running threads finish on their original runtime.
+>>>>>>> upstream/main
 
 ### Sign-in methods
 
@@ -61,6 +66,6 @@ Add a separate Antigravity instance in **Settings → Providers** for each Googl
 
 ## Usage and troubleshooting
 
-- Check 5-hour and weekly Gemini / shared Claude & GPT quotas under **Usage → Limits**.
+- T3 Code does not read your Google account's Antigravity allowances; **Usage** shows tokens and cost from Antigravity's local history.
 - Use **Refresh provider status** (web/desktop) or **Refresh models** (mobile) to reload models and access.
 - For `SUBSCRIPTION_REQUIRED` or account restriction errors, see [Google's account plans](https://antigravity.google/docs/plans).
