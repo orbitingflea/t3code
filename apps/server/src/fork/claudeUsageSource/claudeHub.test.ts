@@ -110,7 +110,7 @@ describe("Claude through a CLIProxyAPI hub", () => {
           },
         }),
       });
-      const result = yield* (yield* test.api).readAccounts(config);
+      const { accounts: result } = yield* (yield* test.api).readAccounts(config);
       expect(result[0]?.usageLimits.resetCredits).toEqual({
         availableCount: 3,
         nextCreditId: "grant_a",
@@ -147,7 +147,7 @@ describe("Claude through a CLIProxyAPI hub", () => {
         }),
       });
       const api = yield* test.api;
-      const accounts = yield* api.readAccounts(config);
+      const { accounts } = yield* api.readAccounts(config);
       expect(
         accounts.map((account) => account.usageLimits.windows.map((window) => window.readAt)),
       ).toEqual([["2026-11-03T11:24:32.000Z"], ["2026-11-03T11:24:32.000Z"]]);
@@ -166,7 +166,9 @@ describe("Claude through a CLIProxyAPI hub", () => {
           body: { five_hour: { utilization: 10, resets_at: null } },
         }),
       });
-      const [account] = yield* (yield* test.api).readAccounts(config);
+      const {
+        accounts: [account],
+      } = yield* (yield* test.api).readAccounts(config);
       expect(account?.usageLimits.windows[0]).not.toHaveProperty("readAt");
     }),
   );

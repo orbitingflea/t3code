@@ -9,12 +9,7 @@ T3 Code runs Google's official Antigravity ACP agent on your selected environmen
 3. Click **Sign in** and complete browser sign-in. Wait for T3 Code to confirm access and load models. (Once installed, you can also sign in from mobile.)
 
 - **Remote sign-in**: Paste the temporary code (or full URL) from Google's completion page into T3 Code's code field.
-<<<<<<< origin/main
-- **Updates**: Click **Update Antigravity** in provider settings. T3 Code requires Antigravity **1.5+** (1.5.12+ recommended); running threads finish on their original runtime.
-=======
-- **Manual binary**: Install [Antigravity CLI](https://antigravity.google/docs/getting-started) and set **Binary path** to `agy`. Leave blank to use the managed runtime (or `PATH`).
 - **Updates**: Click **Update Antigravity** in provider settings. T3 Code requires Antigravity **1.5.1+** (1.5.12+ recommended); running threads finish on their original runtime.
->>>>>>> upstream/main
 
 ### Sign-in methods
 
@@ -33,7 +28,7 @@ API keys are stored outside `settings.json`, and ambient `GEMINI_API_KEY` / Goog
 
 Install [Antigravity CLI](https://antigravity.google/docs/getting-started) and set **Binary path** to `agy` (to find it on `PATH`) or to a full path. Leave **Binary path** blank to use the managed runtime (or `PATH`).
 
-When **Binary path** names your own `agy` of Antigravity CLI 1.5 or later:
+When **Binary path** names your own `agy` of Antigravity CLI 1.5.1 or later:
 
 - **Shared profile and login**: The instance has no private profile. The agent uses the CLI's own Google login, settings, and state folder (`~/.gemini/antigravity-cli`), so sign in with `agy` on the environment first. Every instance that uses it shares that login, and its sessions are stored with the CLI's own.
 - **Tool permissions**: The CLI's tool-permission setting decides whether it asks before a tool call. When it asks, T3 Code answers by the thread's [permission mode](./permission-modes.md). When the CLI is set to always proceed, tools run without asking in every mode.

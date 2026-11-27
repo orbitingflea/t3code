@@ -1667,25 +1667,15 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const copyMarkdown =
       source.startsWith("[") && source.includes("](")
         ? source
-<<<<<<< origin/main
         : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${authoredHref})`;
-    const chip = fileLinkChip(
-      fileLinkMeta,
-      copyMarkdown,
-      normalizedHref,
-      authoredHref === normalizedHref ? undefined : authoredHref,
-    );
-    return isMarkdownFileLinkLabel(hostFileLinkLabel(label, hostFileOrigins), normalizedHref) ? (
-=======
-        : `[${(label || fileLinkMeta.basename).replace(/[\\[\]]/g, "\\$&")}](${normalizedHref})`;
     // Media previews resolve the parsed host path; they do not understand the sandbox: scheme.
     const chip = fileLinkChip(
       fileLinkMeta,
       copyMarkdown,
       parseMarkdownSandboxFileLink(normalizedHref) ? undefined : normalizedHref,
+      authoredHref === normalizedHref ? undefined : authoredHref,
     );
-    return isMarkdownFileLinkLabel(label, normalizedHref) ? (
->>>>>>> upstream/main
+    return isMarkdownFileLinkLabel(hostFileLinkLabel(label, hostFileOrigins), normalizedHref) ? (
       chip
     ) : (
       <span data-markdown-copy={copyMarkdown}>

@@ -203,7 +203,8 @@ describe("closing a fresh quote's comment box", () => {
         await vi.waitFor(() => expect(document.activeElement).toBe(focusIn[afterSave]()));
         expect(screen.prompt()).toContain("comment=A%2C+please");
         if (afterSave === "composer") {
-          await userEvent.keyboard(" xyz");
+          // The caret lands after the space that follows the chip.
+          await userEvent.keyboard("xyz");
           await vi.waitFor(() =>
             expect(screen.prompt()).toContain(
               `${serializeAssistantCitation({ ...quote, comment: "A, please" })} xyz`,

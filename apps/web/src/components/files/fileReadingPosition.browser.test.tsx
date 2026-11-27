@@ -1,3 +1,4 @@
+import { VirtualizedFile } from "@pierre/diffs";
 import type { ChatFileAttachment } from "@t3tools/contracts";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { userEvent } from "vite-plus/test/browser";
@@ -89,6 +90,20 @@ describe("file reading position", () => {
     await vi.waitFor(() => expect(view.topLine()).toEqual(before));
   });
 
+  it("shows a read-only file's cited line again when the panel remounts", async () => {
+    using reading = await readingSetup("read-only-citation");
+    const { panel, ref } = reading;
+    state.files["/outside/a.ts"] = sourceFile("/outside/a.ts", "alpha", 300);
+    panel.openFile(ref, "/outside/a.ts", 150);
+    await using screen = await render(<ReadingPanel threadRef={ref} cwd={reading.cwd} />);
+    const view = sourceView(screen.container);
+    await vi.waitFor(() => view.expectLineInView(150, "alpha_150"), COLD_WORKER);
+
+    await screen.rerender(<></>);
+    await screen.rerender(<ReadingPanel threadRef={ref} cwd={reading.cwd} />);
+    await vi.waitFor(() => view.expectLineInView(150, "alpha_150"), COLD_WORKER);
+  });
+
   it("reveals a citation over a saved position, then keeps the reader's later place", async () => {
     using reading = await readingSetup("cited");
     const { panel, ref } = reading;
@@ -171,6 +186,97 @@ describe("file reading position", () => {
     expect(view.line(40)).toBeNull();
   });
 
+  it("shows an unscrolled read-only citation in wrapped lines again after Reopen Closed View", async () => {
+    using reading = await readingSetup("reopen-closed-read-only-wrapped");
+    const { panel, ref } = reading;
+    // Lines that wrap to different heights, which a new code view only estimates at first.
+    const contents = Array.from(
+      { length: 300 },
+      (_, index) =>
+        `const alpha_${index + 1} = "${"wrapped words ".repeat(2 + ((index * 7) % 9))}";`,
+    ).join("\n");
+    state.files["/outside/a.ts"] = {
+      relativePath: "/outside/a.ts",
+      contents,
+      byteLength: contents.length,
+      truncated: false,
+    };
+    panel.openFile(ref, "b.ts");
+    panel.openFile(ref, "/outside/a.ts", 150);
+    await using screen = await render(
+      <ReadingPanel threadRef={ref} cwd={reading.cwd} width={420} />,
+    );
+    const view = sourceView(screen.container);
+    await vi.waitFor(() => view.expectLineInView(150, "alpha_150"), COLD_WORKER);
+
+    await act(() => panel.closeSurface(ref, "file:/outside/a.ts"));
+    await vi.waitFor(() => view.expectLineInView(1, "beta_1"));
+    const entry = useClosedViewStore
+      .getState()
+      .entries.find(
+        (closed) => closed.kind === "panel-tab" && closed.surface.id === "file:/outside/a.ts",
+      )!;
+    panel.openFile(ref, "/outside/a.ts", 150);
+    await Promise.resolve();
+    useClosedViewStore.getState().remove(entry.id);
+
+    await vi.waitFor(() => view.expectLineInView(150, "alpha_150"), COLD_WORKER);
+  });
+
+  it("keeps a read-only reader's place over two tab switches after the citation landed", async () => {
+    using reading = await readingSetup("read-only-two-switches");
+    const { panel, ref } = reading;
+    state.files["/outside/a.ts"] = sourceFile("/outside/a.ts", "alpha", 300);
+    panel.openFile(ref, "b.ts");
+    panel.openFile(ref, "/outside/a.ts", 150);
+    await using screen = await render(<ReadingPanel threadRef={ref} cwd={reading.cwd} />);
+    const view = sourceView(screen.container);
+    await vi.waitFor(() => view.expectLineInView(150, "alpha_150"), COLD_WORKER);
+    await userEvent.wheel(view.scroller(), { delta: { y: 2000 } });
+    await vi.waitFor(() => expect(view.line(150)).toBeNull());
+    const before = view.topLine();
+
+    for (let round = 0; round < 2; round += 1) {
+      await act(() => panel.activateSurface(ref, "file:b.ts"));
+      await vi.waitFor(() => view.expectLineInView(1, "beta_1"));
+      await act(() => panel.activateSurface(ref, "file:/outside/a.ts"));
+      await vi.waitFor(() => expect(view.topLine()).toEqual(before), COLD_WORKER);
+    }
+    expect(view.line(150)).toBeNull();
+  });
+
+  it("shows a read-only citation on return when the reader switched tabs before it landed", async () => {
+    using reading = await readingSetup("read-only-early-switch");
+    const { panel, ref } = reading;
+    state.files["/outside/a.ts"] = sourceFile("/outside/a.ts", "alpha", 300);
+    panel.openFile(ref, "b.ts");
+    await using screen = await render(<ReadingPanel threadRef={ref} cwd={reading.cwd} />);
+    const view = sourceView(screen.container);
+    await vi.waitFor(() => view.expectLineInView(1, "beta_1"), COLD_WORKER);
+    // Switch away as soon as the code view starts its scroll to the line, before it settles.
+    const scrollToLine = VirtualizedFile.prototype.scrollToLine;
+    let switched = false;
+    using _restore = {
+      [Symbol.dispose]: () => {
+        VirtualizedFile.prototype.scrollToLine = scrollToLine;
+      },
+    };
+    VirtualizedFile.prototype.scrollToLine = function (...args) {
+      const result = scrollToLine.apply(this, args);
+      if (!switched) {
+        switched = true;
+        panel.activateSurface(ref, "file:b.ts");
+      }
+      return result;
+    };
+    await act(() => panel.openFile(ref, "/outside/a.ts", 150));
+    await vi.waitFor(() => expect(switched).toBe(true), COLD_WORKER);
+    await vi.waitFor(() => view.expectLineInView(1, "beta_1"));
+
+    await act(() => panel.activateSurface(ref, "file:/outside/a.ts"));
+    await vi.waitFor(() => view.expectLineInView(150, "alpha_150"), COLD_WORKER);
+  });
+
   it("jumps to a Markdown citation reopened at request 1 after it was read rendered", async () => {
     using reading = await readingSetup("reopen-md");
     const { panel, ref } = reading;
@@ -214,6 +320,25 @@ describe("file reading position", () => {
     await act(() => panel.openFile(reading.ref, "a.ts", 40));
 
     await vi.waitFor(() => view.expectLineInView(40, "alpha_40"));
+  });
+
+  it("jumps to a new citation of a read-only file reopened after its tab was closed", async () => {
+    using reading = await readingSetup("reopen-read-only");
+    const panel = useRightPanelStore.getState();
+    state.files["/outside/a.ts"] = sourceFile("/outside/a.ts", "alpha", 300);
+    panel.openFile(reading.ref, "b.ts");
+    panel.openFile(reading.ref, "/outside/a.ts", 40);
+    await using screen = await render(<ReadingPanel threadRef={reading.ref} cwd={reading.cwd} />);
+    const view = sourceView(screen.container);
+    await vi.waitFor(() => view.expectLineInView(40, "alpha_40"), COLD_WORKER);
+    await userEvent.wheel(view.scroller(), { delta: { y: 1500 } });
+    await vi.waitFor(() => expect(view.line(40)).toBeNull());
+
+    await act(() => panel.closeSurface(reading.ref, "file:/outside/a.ts"));
+    await vi.waitFor(() => view.expectLineInView(1, "beta_1"));
+    await act(() => panel.openFile(reading.ref, "/outside/a.ts", 225));
+
+    await vi.waitFor(() => view.expectLineInView(225, "alpha_225"), COLD_WORKER);
   });
 });
 

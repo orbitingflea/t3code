@@ -195,7 +195,7 @@ import {
   type CompiledClaudeModelSelection,
 } from "../../claudeModelOptions.ts";
 import * as ServerConfig from "../../config.ts";
-<<<<<<< origin/main
+import { NativeTelemetryClient } from "../../resourceTelemetry/NativeTelemetryClient.ts";
 import { claudeTerminalToolEnvironment } from "../../fork/userMessageTools/claudeTerminalTool.ts";
 import {
   claudeDisplayModeHooks,
@@ -204,9 +204,6 @@ import {
 } from "../../fork/displayModeWrap/DisplayModeCompactionNote.ts";
 import { claudeFyiHooks } from "../../fork/fyi/ClaudeFyiHook.ts";
 import * as FyiDelivery from "../../fork/fyi/FyiDelivery.ts";
-=======
-import { NativeTelemetryClient } from "../../resourceTelemetry/NativeTelemetryClient.ts";
->>>>>>> upstream/main
 import * as PortScanner from "../../preview/PortScanner.ts";
 import * as ProcessRunner from "../../processRunner.ts";
 import * as ServerSettings from "../../serverSettings.ts";

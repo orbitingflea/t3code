@@ -212,12 +212,8 @@ describe("CLIProxyAPI built-in management API", () => {
         yield* TestClock.setTime(1788710400000);
         const test = fixture({ accounts: [{ ...accounts[0]!, label: " Work " }, accounts[1]!] });
         const api = yield* test.api;
-<<<<<<< origin/main
-        const result = yield* api.readAccounts(config);
-        expect(result.map((account) => account.label)).toEqual(["Work", undefined]);
-=======
         const { accounts: result } = yield* api.readAccounts(config);
->>>>>>> upstream/main
+        expect(result.map((account) => account.label)).toEqual(["Work", undefined]);
         expect(result.map((account) => account.usageLimits.resetCredits)).toEqual([
           { availableCount: 2, nextCreditId: "first", nextExpiresAt: "2099-01-01T00:00:00.000Z" },
           { availableCount: 2, nextCreditId: "first", nextExpiresAt: "2099-01-01T00:00:00.000Z" },

@@ -170,7 +170,6 @@ describe("AntigravityAdapterV2 flavor", () => {
     });
   });
 
-<<<<<<< origin/main
   it.effect("keys the account by the refresh token alone and reads a bad token file as none", () =>
     Effect.gen(function* () {
       const fileSystem = yield* FileSystem.FileSystem;
@@ -207,7 +206,7 @@ describe("AntigravityAdapterV2 flavor", () => {
       assert.isTrue(Option.isNone(yield* readAccount!), "malformed");
     }).pipe(Effect.provide(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer))),
   );
-=======
+
   it("shows each ask_question question as the question body, not the generic form message", () => {
     // agy's ask_question puts each question in its field's title, with no description,
     // and a generic count in the form message.
@@ -244,7 +243,6 @@ describe("AntigravityAdapterV2 flavor", () => {
       assert.notStrictEqual(question.header, question.question);
     }
   });
->>>>>>> upstream/main
 });
 
 const layerSession = Layer.mergeAll(

@@ -1287,11 +1287,8 @@ export function wordsHast(written: string, options: WordsHastOptions): Root {
   const hast = sanitizeChatHast(tree);
   if (walk.math.size > 0) restoreMath(hast, walk.math);
   if (insights) restorePositions(hast, insights.toOriginal);
-<<<<<<< origin/main
-  forkHast(hast, written, text, options);
-=======
   if (extensions.footnotes) applyFootnoteMode(hast, extensions.footnotes);
->>>>>>> upstream/main
+  forkHast(hast, written, text, options);
   if (extensions.inert) makeInert(hast);
   if (extensions.preview) return flattenPreview(hast, extensions.preview);
   addHeadingIds(hast);

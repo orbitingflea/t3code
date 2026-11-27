@@ -58,15 +58,14 @@ function collectMentionTokens(text: string): ComposerInlineToken[] {
       (_match, escaped?: string, code?: string) => escaped ?? (code === "1" ? "[" : "]"),
     );
     const encodedPath = match[3] ?? "";
-<<<<<<< origin/main
     const start = (match.index ?? 0) + prefix.length;
     const end = start + fullMatch.length - prefix.length;
     if (encodedPath.startsWith("board://")) {
       const source = text.slice(start, end);
       matches.push({ type: "mention", value: source, source, start, end });
-=======
+      continue;
+    }
     if (encodedPath.startsWith("//")) {
->>>>>>> upstream/main
       continue;
     }
     let path = encodedPath;

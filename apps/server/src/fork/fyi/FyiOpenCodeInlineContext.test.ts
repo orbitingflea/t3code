@@ -168,7 +168,10 @@ it.layer(McpProviderSessions.layer)("OpenCode2 adapter inline context", (it) => 
       const terminal = yield* terminalOf(runtime).pipe(Effect.forkScoped);
       const text = "<fyi>Run $greet before you ship.</fyi>\n\nUser message:\nsay hi";
       yield* runtime.startTurn({
-        appThread: { title: TITLE } as OrchestrationV2AppThread,
+        appThread: {
+          title: TITLE,
+          lineage: { parentThreadId: null, relationshipToParent: null, rootThreadId: threadId },
+        } as OrchestrationV2AppThread,
         threadId,
         runId: RunId.make("run:opencode2-adapter"),
         runOrdinal: 1,
