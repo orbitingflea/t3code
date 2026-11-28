@@ -202,9 +202,9 @@ it.effect("hides itself from a caller outside a thread", () =>
   }).pipe(Effect.provide(layer)),
 );
 
-describe("the 1000-byte limit", () => {
+describe("the 2000-byte limit", () => {
   const ONE_POINT = "only say one concise point at a time";
-  const oversize = "a".repeat(1_001);
+  const oversize = "a".repeat(2_001);
   const replaceWith = (
     new_text: string,
     options: { readonly threadId?: ThreadId; readonly old_text?: string } = {},
@@ -246,14 +246,14 @@ describe("the 1000-byte limit", () => {
   );
 
   it.effect.each<readonly [string, string]>([
-    ["ASCII letters", "a".repeat(1_000)],
-    ["backslashes", "\\".repeat(500)],
-    ["line breaks", "\n".repeat(500)],
-    ["quotes", '"'.repeat(500)],
-    ["Chinese characters", "汉".repeat(333) + "a"],
-    ["control characters", "\u0001".repeat(166) + "aaaa"],
-    ["emoji", "😀".repeat(250)],
-  ])("shows 1000 bytes of %s and refuses one byte more", ([_name, atLimit]) =>
+    ["ASCII letters", "a".repeat(2_000)],
+    ["backslashes", "\\".repeat(1_000)],
+    ["line breaks", "\n".repeat(1_000)],
+    ["quotes", '"'.repeat(1_000)],
+    ["Chinese characters", "汉".repeat(666) + "aa"],
+    ["control characters", "\u0001".repeat(333) + "aa"],
+    ["emoji", "😀".repeat(500)],
+  ])("shows 2000 bytes of %s and refuses one byte more", ([_name, atLimit]) =>
     Effect.gen(function* () {
       history = [typed("u1", "Fix the build.")];
       expect((yield* answerU1(atLimit)).isError).not.toBe(true);
@@ -271,7 +271,7 @@ describe("the 1000-byte limit", () => {
         "an ack is at most 200 bytes. Say only that you got the message and are on it.",
       );
       expect((yield* answerU1("a".repeat(200), { ack: true })).isError).not.toBe(true);
-      expect((yield* answerU1("a".repeat(1_000))).isError).not.toBe(true);
+      expect((yield* answerU1("a".repeat(2_000))).isError).not.toBe(true);
       const normal = yield* call(
         "send_to_user",
         { text: "a".repeat(201), ack: true },
@@ -350,7 +350,7 @@ describe("the 1000-byte limit", () => {
       ]) {
         expect(schema).toMatchObject({ minLength: 1 });
         expect(schema).not.toHaveProperty("maxLength");
-        expect(schema?.description).toContain("1000 bytes of UTF-8 after JSON escaping");
+        expect(schema?.description).toContain("2000 bytes of UTF-8 after JSON escaping");
         expect(schema?.description).toContain("a longer text is refused and not shown");
       }
       expect(parameter("send_to_user", "text")?.description).toContain(
