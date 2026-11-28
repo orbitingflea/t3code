@@ -331,7 +331,7 @@ it.effect("takes one new message in the main list until the user sends one there
       answer("a5", "No.", "q5"),
       running(sent("s3", { text: "Lint is red." })),
       running(sent("s4", { text: "On it.", new_sub_thread: true, ack: true })),
-      running(news("s6", "a".repeat(1001))),
+      running(news("s6", "a".repeat(2001))),
       running(news("s7", "")),
       running(news("s5", "CI is red.")),
     ]);

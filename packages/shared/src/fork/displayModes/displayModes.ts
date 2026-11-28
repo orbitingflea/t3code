@@ -18,7 +18,7 @@ export const REPLACE_SEND_TO_USER_TOOL_NAME = "replace_send_to_user";
  */
 export const SEND_TO_USER_PAYLOAD_LIKE = `%"toolName":"%${SEND_TO_USER_TOOL_NAME}"%`;
 /** One concise point per message: a longer send or rewrite is refused. */
-export const SEND_TO_USER_MAX_BYTES = 1_000;
+export const SEND_TO_USER_MAX_BYTES = 2_000;
 /** An ack only says that the agent got the message and is on it. */
 export const ACK_MAX_BYTES = 200;
 export const DASHBOARD_SET_TOOL_NAME = "dashboard_set";
